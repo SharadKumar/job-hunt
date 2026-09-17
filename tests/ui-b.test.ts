@@ -79,12 +79,34 @@ async function seed(
   return row.id;
 }
 
+/**
+ * The two switches every unattended send passes, plus the channels that have a
+ * one-click adapter: between them they decide which lane a row is in, so every
+ * test below runs against a policy the person could actually have written.
+ */
+function writePolicy(opts: { autopilot?: boolean; killSwitch?: boolean; channels?: string[] } = {}): void {
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, "submission-policy.yaml"), [
+    "autopilot:",
+    `  enabled: ${opts.autopilot ?? true}`,
+    "  max_per_day: 5",
+    "  channels:",
+    ...(opts.channels ?? ["seek", "linkedin_jobs"]).map((c) => `    - ${c}`),
+    `kill_switch: ${opts.killSwitch ?? false}`,
+    "",
+  ].join("\n"));
+}
+
 function writePackage(id: string, files: Record<string, string>): string {
   const dir = path.join(archiveDir, id);
   fs.mkdirSync(dir, { recursive: true });
   for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body);
   return dir;
 }
+
+// Autopilot on, with both one-click channels listed: the state the person's own
+// machine is in, and the state in which the lanes actually differ.
+writePolicy();
 
 console.log("ui applications board (package b)");
 
@@ -113,11 +135,11 @@ await test("actionFor reads the run's own reason before the row's status", () =>
 
 await test("actionFor falls back to the status when the reason says nothing", () => {
   const at = (status: string) => ext.actionFor({ id: "seek-1", status, url: "https://example.test/ad" }, "package drafted");
-  assert.equal(at("awaiting_approval").kind, "approve");
+  assert.equal(at("awaiting_approval").kind, "approve", "the attended lane is the only lane with an approval to give");
   assert.equal(at("awaiting_approval").primary, true, "Approve is the black button on a to-approve row");
   assert.equal(at("parked").kind, "unpark");
   assert.equal(at("manual_action_needed").kind, "retry");
-  assert.equal(at("shortlisted").kind, "none");
+  assert.equal(at("shortlisted").kind, "in_flight", "a queued row is being prepared, not waiting on a click");
 });
 
 await test("a sent row offers nothing, and a reply offers the next rung", () => {
@@ -148,8 +170,152 @@ await test("GET /api/rows returns the derived action beside every row", async ()
   const byId = new Map(rows.map((r) => [r.id, r]));
   assert.equal(byId.get(blockedId)!.action.kind, "retry");
   assert.equal(byId.get(parkedId)!.action.kind, "unpark");
-  assert.equal(byId.get(approveId)!.action.kind, "approve");
+  assert.equal(byId.get(approveId)!.action.kind, "in_flight",
+    "a SEEK row awaiting approval is not waiting on a yes: the daily run sends it");
+  assert.equal(byId.get(approveId)!.lane, "autopilot");
+  assert.equal(byId.get(approveId)!.needs_you, false);
   assert.equal(byId.get(blockedId)!.title, "Solution Architect", "the rest of the row is untouched");
+});
+
+// ---------------------------------------------------------------------------
+// Which lane a row is in (AGENTS.md section 2)
+// ---------------------------------------------------------------------------
+
+/** Autopilot on, both one-click channels listed: the policy the person runs. */
+const ON = { autopilot_enabled: true, kill_switch: false, channels: ["seek", "linkedin_jobs"] };
+
+await test("the lane is the row's own facts first, and the two switches after", () => {
+  assert.deepEqual(ext.laneFor({ channel: "seek", applyMethod: "quick_apply" }, ON),
+    { lane: "autopilot", lane_reason: "seek is an autopilot channel" });
+
+  assert.deepEqual(ext.laneFor({ channel: "linkedin_jobs", applyMethod: "easy_apply" }, ON),
+    { lane: "autopilot", lane_reason: "linkedin_jobs Easy Apply" });
+  const unresolved = ext.laneFor({ channel: "linkedin_jobs", applyMethod: null }, ON);
+  assert.equal(unresolved.lane, "autopilot", "an unread LinkedIn ad stays in the lane the run will resolve");
+  assert.match(unresolved.lane_reason, /resolved by the run/);
+  const notEasy = ext.laneFor({ channel: "linkedin_jobs", applyMethod: "quick_apply" }, ON);
+  assert.equal(notEasy.lane, "attended", "only Easy Apply has a LinkedIn adapter");
+  assert.match(notEasy.lane_reason, /not Easy Apply/);
+
+  const external = ext.laneFor({ channel: "linkedin_jobs", applyMethod: "external" }, ON);
+  assert.equal(external.lane, "attended");
+  assert.equal(external.lane_reason, "applyMethod external needs a person");
+  assert.equal(ext.laneFor({ channel: "seek", applyMethod: "external" }, ON).lane, "attended",
+    "an advertiser's own ATS is attended whatever channel the ad was found on");
+
+  assert.deepEqual(ext.laneFor({ channel: "recruiter", applyMethod: "quick_apply" }, ON),
+    { lane: "attended", lane_reason: "channel recruiter is attended" });
+
+  const off = ext.laneFor({ channel: "seek", applyMethod: "quick_apply" }, { ...ON, autopilot_enabled: false });
+  assert.deepEqual(off, { lane: "attended", lane_reason: "autopilot is off" });
+  const killed = ext.laneFor({ channel: "seek", applyMethod: "quick_apply" }, { ...ON, kill_switch: true });
+  assert.deepEqual(killed, { lane: "attended", lane_reason: "kill switch on" });
+
+  assert.equal(ext.laneFor({ channel: "recruiter", applyMethod: null }, { ...ON, kill_switch: true }).lane_reason,
+    "channel recruiter is attended",
+    "a switch never explains a row that was attended before anyone touched it");
+});
+
+await test("on the autopilot lane there is nothing to approve, only something to stop", () => {
+  const row = { id: "seek-2", status: "shortlisted", url: "https://example.test/ad", channel: "seek", applyMethod: "quick_apply" };
+  for (const status of ["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending"]) {
+    const derived = ext.actionFor({ ...row, status }, "package drafted", "autopilot");
+    assert.equal(derived.kind, "in_flight", `${status} on the autopilot lane is the run's, not the person's`);
+    assert.equal(derived.label, "Autopilot handles this");
+    assert.equal(derived.primary, false, "there is no primary button: nothing is being asked");
+    assert.equal(derived.post, null);
+    assert.deepEqual(derived.also.map((a: any) => a.kind), ["hold", "reject"], "stop it, or drop it");
+    assert.deepEqual(derived.also.map((a: any) => a.post), ["hold", "reject"]);
+    assert.equal(derived.also[1].danger, true, "a reject carries the destructive weight");
+    assert.match(derived.note ?? "", /SEEK Quick Apply adapter\. Nothing needed from you\./,
+      "the note names the thing that will send it");
+  }
+  const linkedin = ext.actionFor({ ...row, status: "awaiting_approval", channel: "linkedin_jobs", applyMethod: "easy_apply" }, "package drafted", "autopilot");
+  assert.match(linkedin.note ?? "", /LinkedIn Easy Apply adapter/);
+
+  const blocked = ext.actionFor({ ...row, status: "manual_action_needed" }, "letter-critic block (1 fail): scope wording", "autopilot");
+  assert.equal(blocked.kind, "retry", "a row the run could not finish keeps the derivations it always had");
+  const asked = ext.actionFor({ ...row, status: "manual_action_needed" }, 'unknown screening question: "How many years"', "autopilot");
+  assert.equal(asked.kind, "answer");
+});
+
+await test("on the attended lane the person is the send, and the approval says so", () => {
+  const row = { id: "rec-1", status: "awaiting_approval", url: "https://example.test/ad", channel: "recruiter", applyMethod: "unknown" };
+  const approve = ext.actionFor(row, "package drafted", "attended");
+  assert.equal(approve.kind, "approve");
+  assert.equal(approve.label, "Approve for the next attended session");
+  assert.equal(approve.post, "approve");
+  assert.equal(approve.primary, true);
+
+  for (const status of ["shortlisted", "drafted"]) {
+    const derived = ext.actionFor({ ...row, status }, "package drafted", "attended");
+    assert.equal(derived.kind, "in_flight", `${status} is the run's work on either lane`);
+    assert.match(derived.note ?? "", /prepares the package; you send it in an attended session/);
+  }
+
+  const send = ext.actionFor({ ...row, status: "approved" }, "approved in the tray", "attended");
+  assert.equal(send.kind, "attended_send");
+  assert.equal(send.label, "Send in an attended session");
+  assert.equal(send.post, null, "no browser click ever sends on this lane");
+  assert.equal(ext.actionFor({ ...row, status: "submission_pending" }, "mid-flow", "attended").kind, "none",
+    "a send already in progress is nobody's button");
+});
+
+const attendedAwaitingId = await seed("Programme Lead", "Agency Recruiters", ["shortlisted", "drafted", "awaiting_approval"], {
+  channel: "recruiter", score: 71,
+}, "package drafted");
+const linkedinAwaitingId = await seed("Integration Architect", "Harbour Freight", ["shortlisted", "drafted", "awaiting_approval"], {
+  channel: "linkedin_jobs", score: 73, applyMethod: "easy_apply",
+}, "package drafted");
+
+await test("the approval queue counts what is actually waiting on the person", async () => {
+  const result = await handleApi({ method: "GET", pathname: "/api/rows", query: new URLSearchParams({ status: "awaiting_approval" }) }, ctx);
+  assert.equal(result.status, 200);
+  const body = result.body as any;
+  const byId = new Map((body.rows as any[]).map((r) => [r.id, r]));
+
+  const attended = byId.get(attendedAwaitingId)!;
+  assert.equal(attended.lane, "attended");
+  assert.equal(attended.lane_reason, "channel recruiter is attended");
+  assert.equal(attended.needs_you, true, "a recruiter package goes nowhere until the person sends it");
+  assert.equal(attended.action.kind, "approve");
+
+  const linkedin = byId.get(linkedinAwaitingId)!;
+  assert.equal(linkedin.lane, "autopilot");
+  assert.equal(linkedin.lane_reason, "linkedin_jobs Easy Apply");
+  assert.equal(linkedin.needs_you, false);
+  assert.equal(byId.get(approveId)!.needs_you, false, "and neither does the SEEK one");
+
+  assert.deepEqual(body.counts, { needs_you: 1, in_flight: 2 },
+    "three rows await approval and exactly one of them is a question for the person");
+
+  const detail = await handleApi({ method: "GET", pathname: `/api/rows/${attendedAwaitingId}` }, ctx);
+  assert.equal((detail.body as any).lane, "attended", "the detail derives the same lane as the list");
+  assert.equal((detail.body as any).needs_you, true);
+  assert.equal((detail.body as any).action.kind, "approve");
+});
+
+await test("GET /api/lanes is the same derivation per channel, for the tabs", async () => {
+  const result = await handleApi({ method: "GET", pathname: "/api/lanes" }, ctx);
+  assert.equal(result.status, 200);
+  const body = result.body as any;
+  assert.equal(body.autopilot_enabled, true);
+  assert.equal(body.kill_switch, false);
+  assert.deepEqual(body.channels, ["seek", "linkedin_jobs"], "the policy's own list, in the policy's own order");
+  assert.equal(body.lane_of.seek, "autopilot");
+  assert.equal(body.lane_of.linkedin_jobs, "autopilot");
+  assert.equal(body.lane_of.recruiter, "attended");
+  assert.equal(body.lane_of.linkedin_posts, "attended", "a channel with no one-click adapter is named, not missing");
+  assert.equal(body.reason_of.recruiter, "channel recruiter is attended");
+
+  writePolicy({ killSwitch: true });
+  const halted = await handleApi({ method: "GET", pathname: "/api/lanes" }, ctx);
+  const after = halted.body as any;
+  assert.equal(after.kill_switch, true);
+  assert.deepEqual(Object.values(after.lane_of).filter((l) => l === "autopilot"), [],
+    "with the kill switch on there is no autopilot lane today, and the tabs say so");
+  assert.equal(after.reason_of.seek, "kill switch on");
+  writePolicy();
 });
 
 // ---------------------------------------------------------------------------
@@ -392,20 +558,6 @@ await test("redraft records the request on the row without moving it", async () 
 // ---------------------------------------------------------------------------
 // Retry now
 // ---------------------------------------------------------------------------
-
-/** The two switches every unattended send passes, written where the UI reads them. */
-function writePolicy(opts: { autopilot?: boolean; killSwitch?: boolean } = {}): void {
-  fs.mkdirSync(profileDir, { recursive: true });
-  fs.writeFileSync(path.join(profileDir, "submission-policy.yaml"), [
-    "autopilot:",
-    `  enabled: ${opts.autopilot ?? true}`,
-    "  max_per_day: 5",
-    "  channels:",
-    "    - seek",
-    `kill_switch: ${opts.killSwitch ?? false}`,
-    "",
-  ].join("\n"));
-}
 
 // A stand-in for tools/autopilot-submit.ts: the real one drives a browser.
 const fakeAutopilot = path.join(root, "fake-autopilot.mjs");

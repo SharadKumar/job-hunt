@@ -7,10 +7,16 @@
  * list that api.ts already serves:
  *
  *   - `GET /api/rows` is wrapped rather than replaced: the rows come back from
- *     api.ts unchanged, with one derived field added. `actionFor` is the one
+ *     api.ts unchanged, with the derived fields added. `actionFor` is the one
  *     place that decides which single button a row deserves, so the list, the
  *     row detail and the tests all read the same derivation instead of three
  *     copies of a regex in the browser.
+ *   - Every row also carries its lane (`laneFor`, and `GET /api/lanes` for the
+ *     same view per channel). AGENTS.md section 2 has two of them and the
+ *     channel decides which: a SEEK row in the queue is drafted, checked and
+ *     sent by the daily run, so offering the person an Approve button on it
+ *     asks for a yes that authorises nothing. The lane is what keeps the board
+ *     honest about which rows are actually waiting on them (`needs_you`).
  *   - `GET /api/rows/:id` is wrapped the same way, and fills in the package
  *     directory when the stored row has no `draftDir`: most rows on this
  *     machine were archived before that field was written, and a letter that
@@ -53,6 +59,7 @@ import { log, type AuditEventType } from "../audit.ts";
 import { writeAtomic } from "../lib/fs.ts";
 import { repoPath } from "../repo-root.ts";
 import * as keywordsExt from "./keywords-ext-api.ts";
+import { HUNT_SCRIPTS } from "../channels/_interface.ts";
 import { getJob, listJobs, resolveAutopilotCommand, runningJobFor, startJob } from "./jobs.ts";
 import { getPolicy } from "./policy-api.ts";
 
@@ -83,7 +90,15 @@ const NUDGE_FILES = ["follow-up.md", "nudge.md", "follow-up-dm.md", "follow-up-e
 
 export type RowAction = {
   /** What the button does, so the front end does not re-read the label. */
-  kind: "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "decide" | "mark_sent" | "none";
+  kind:
+    | "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "decide" | "mark_sent"
+    /** The run owns this row: nothing to click, and the note says who is doing what. */
+    | "in_flight"
+    /** Keep the run off this row until the person says otherwise (Tray `hold`). */
+    | "hold"
+    /** Prepared, but only a person may send it: the attended lane's terminus. */
+    | "attended_send"
+    | "none";
   label: string;
   /** A Tray action for POST /api/rows/:id/action, when that is the move. */
   post: string | null;
@@ -101,9 +116,14 @@ export type RowAction = {
    * reason text in a second place.
    */
   also: RowAction[];
+  /**
+   * One sentence of why there is nothing to click, on the rows a run owns.
+   * Null on a row whose button already says everything.
+   */
+  note: string | null;
 };
 
-const NONE: RowAction = { kind: "none", label: "", post: null, outcome: null, href: null, primary: false, danger: false, also: [] };
+const NONE: RowAction = { kind: "none", label: "", post: null, outcome: null, href: null, primary: false, danger: false, also: [], note: null };
 
 const action = (patch: Partial<RowAction>): RowAction => ({ ...NONE, also: [], ...patch });
 
@@ -116,7 +136,76 @@ const EXTERNAL_PORTAL = /external ats|external portal|external application|exter
 const LETTER_BLOCKED = /letter[-\s]?critic|letter critic/i;
 const DUPLICATE = /duplicate|already submitted .{0,60}within \d+ days|needs a user decision/i;
 
-export type ActionRow = { id: string; status: string; url?: string | null; applyMethod?: string | null };
+export type ActionRow = { id: string; status: string; url?: string | null; applyMethod?: string | null; channel?: string | null };
+
+// ---------------------------------------------------------------------------
+// Which lane a row is in
+// ---------------------------------------------------------------------------
+
+/**
+ * AGENTS.md section 2: there are two lanes and the channel decides, never the
+ * person who asked. A row on the autopilot lane is drafted, checked and sent by
+ * the daily run with nobody present; a row on the attended lane is prepared by
+ * the run and sent by the person. The UI has to be able to tell them apart, or
+ * it asks for an approval that authorises nothing (a `shortlisted` SEEK row
+ * showing an Approve button was exactly that).
+ *
+ * The order of the checks is the order the facts are stable in. Channel and
+ * apply method belong to the row and do not change when a switch is flipped, so
+ * they are read first: a recruiter row is attended whatever the kill switch
+ * says, and saying "kill switch on" about it would be a lie the moment the
+ * switch goes off. The two switches come last, because they are the answer to
+ * "why is this row attended today" only once the row could otherwise qualify.
+ */
+export type Lane = "autopilot" | "attended";
+
+export type LaneVerdict = { lane: Lane; lane_reason: string };
+
+/** The policy fields the lane depends on; `getPolicy` in policy-api.ts is the reader. */
+export type LanePolicy = { autopilot_enabled: boolean; kill_switch: boolean; channels: string[] };
+
+/** LinkedIn is the one channel where the apply method decides the lane. */
+const LINKEDIN = "linkedin_jobs";
+
+/**
+ * Apply methods that leave a LinkedIn row on the autopilot lane. `unknown` (or
+ * an unrecorded method) counts: the run reads the ad and resolves it, and a row
+ * parked as attended before anyone has looked would be the wrong default for a
+ * channel whose ads are mostly Easy Apply.
+ */
+const LINKEDIN_AUTOPILOT_METHODS = new Set(["easy_apply", "unknown", ""]);
+
+/** How the person would name the thing that sends a row on this channel. */
+const ADAPTERS: Record<string, string> = {
+  seek: "the SEEK Quick Apply adapter",
+  [LINKEDIN]: "the LinkedIn Easy Apply adapter",
+};
+
+const adapterFor = (channel: string): string => ADAPTERS[channel] ?? (channel ? `the ${channel} adapter` : "the autopilot adapter");
+
+export function laneFor(row: { channel?: string | null; applyMethod?: string | null }, policy: LanePolicy): LaneVerdict {
+  const channel = String(row.channel ?? "");
+  const method = String(row.applyMethod ?? "");
+  const attended = (lane_reason: string): LaneVerdict => ({ lane: "attended", lane_reason });
+
+  if (!policy.channels.includes(channel)) return attended(`channel ${channel || "unknown"} is attended`);
+  // An advertiser's own ATS has no one-click adapter behind it, whatever the
+  // channel the ad was found on.
+  if (method === "external") return attended("applyMethod external needs a person");
+  if (channel === LINKEDIN && !LINKEDIN_AUTOPILOT_METHODS.has(method)) {
+    return attended(`linkedin_jobs applyMethod ${method} is not Easy Apply`);
+  }
+  if (policy.kill_switch) return attended("kill switch on");
+  if (!policy.autopilot_enabled) return attended("autopilot is off");
+
+  if (channel === LINKEDIN) {
+    return {
+      lane: "autopilot",
+      lane_reason: method === "easy_apply" ? "linkedin_jobs Easy Apply" : "linkedin_jobs, apply method resolved by the run",
+    };
+  }
+  return { lane: "autopilot", lane_reason: `${channel} is an autopilot channel` };
+}
 
 /**
  * A row the harness cannot lodge itself: the advertiser runs its own portal.
@@ -137,18 +226,51 @@ const decideButtons = (): RowAction[] => [
 ];
 
 /**
+ * The statuses a row passes through while a run is carrying it. On the
+ * autopilot lane these need nothing from the person: the daily run drafts, runs
+ * the letter-critic and the submission gate, and sends. `manual_action_needed`
+ * is deliberately not here; that is the run saying it could not finish, and the
+ * derivations below (answer, portal, retry, decide) are what it needs.
+ */
+const AUTOPILOT_IN_FLIGHT = new Set(["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending"]);
+
+/** The same, on the attended lane: the run prepares, and stops. */
+const ATTENDED_IN_FLIGHT = new Set(["shortlisted", "drafted"]);
+
+/**
+ * The two things a person may still do to a row the run owns: stop it, or drop
+ * it. Neither is an approval; there is no approval to give on this lane.
+ */
+const holdOrReject = (): RowAction[] => [
+  action({ kind: "hold", label: "Hold", post: "hold" }),
+  action({ kind: "reject", label: "Reject", post: "reject", danger: true }),
+];
+
+/**
  * One row, one button. The reason is what the run actually recorded, so it
  * decides first: a row blocked on a screening question wants an answer whatever
  * status it happens to sit in. Status decides the rest, and a row in flight or
  * finished gets nothing rather than a button that would be refused.
  */
-export function actionFor(row: ActionRow, reason: string | null): RowAction {
+export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "attended"): RowAction {
   const status = String(row.status ?? "");
   const text = String(reason ?? "");
   // A response is a ladder: the only useful button is the next rung.
   if (status === "responded") return action({ kind: "outcome", label: "Interview", outcome: "interview", primary: true });
   if (status === "interview") return action({ kind: "outcome", label: "Offered", outcome: "offered", primary: true });
   if (status === "offered") return action({ kind: "outcome", label: "Won", outcome: "won", primary: true });
+  // A row the run owns is not a row with a button. This sits above every
+  // derivation below because a SEEK row in the queue is not waiting on a yes:
+  // asking for one invents an authority the person never has to exercise
+  // (AGENTS.md section 2).
+  if (lane === "autopilot" && AUTOPILOT_IN_FLIGHT.has(status)) {
+    return action({
+      kind: "in_flight",
+      label: "Autopilot handles this",
+      also: holdOrReject(),
+      note: `The daily run drafts, checks and sends this through ${adapterFor(String(row.channel ?? ""))}. Nothing needed from you.`,
+    });
+  }
   if (NO_ACTION.has(status)) return NONE;
   // External first, and whatever the reason says afterwards: there is no button
   // on this machine that can finish someone else's portal.
@@ -158,9 +280,32 @@ export function actionFor(row: ActionRow, reason: string | null): RowAction {
   if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer", primary: true });
   if (DUPLICATE.test(text)) return action({ kind: "decide", label: "", also: decideButtons() });
   if (LETTER_BLOCKED.test(text)) return action({ kind: "retry", label: "Retry", post: "retry" });
-  if (status === "awaiting_approval") return action({ kind: "approve", label: "Approve", post: "approve", primary: true });
+  // Only here is an approval a real decision: on this lane nothing goes out
+  // until the person is present and sends it themselves.
+  if (status === "awaiting_approval") {
+    return action({ kind: "approve", label: "Approve for the next attended session", post: "approve", primary: true });
+  }
   if (status === "parked") return action({ kind: "unpark", label: "Unpark" });
   if (status === "manual_action_needed") return action({ kind: "retry", label: "Retry", post: "retry" });
+  if (ATTENDED_IN_FLIGHT.has(status)) {
+    return action({
+      kind: "in_flight",
+      label: "Being prepared",
+      also: holdOrReject(),
+      note: "The daily run prepares the package; you send it in an attended session.",
+    });
+  }
+  // Approved on this lane means approved to be sent by a person. There is no
+  // POST behind it: the send happens in an attended session (/submit-approved),
+  // never from a browser click in an unattended-capable surface.
+  if (status === "approved") {
+    return action({
+      kind: "attended_send",
+      label: "Send in an attended session",
+      also: holdOrReject(),
+      note: "Approved, and waiting on you: this channel is never sent unattended.",
+    });
+  }
   return NONE;
 }
 
@@ -212,14 +357,87 @@ async function filesPresent(dir: string | null): Promise<string[]> {
 // GET /api/rows  (the list, with one derived action per row)
 // ---------------------------------------------------------------------------
 
-export type RowSummaryWithAction = RowSummary & { action: RowAction };
+export type RowSummaryWithAction = RowSummary & {
+  action: RowAction;
+  lane: Lane;
+  lane_reason: string;
+  /** True when this row is waiting on the person rather than on a run. */
+  needs_you: boolean;
+};
+
+export type RowsCounts = { needs_you: number; in_flight: number };
+
+/**
+ * A row is waiting on the person when the server decided there is something for
+ * them to do: an answer, a portal, a decision, an approval, a send. A row a run
+ * owns (`in_flight`) and a row that is finished (`none`) are not. That makes
+ * `needs_you` false for every autopilot row in the approval queue, which is the
+ * whole point of the lane: `GET /api/rows?status=awaiting_approval` on a SEEK
+ * row counts as nothing to do.
+ */
+const needsYou = (action: RowAction): boolean => action.kind !== "in_flight" && action.kind !== "none";
 
 export async function getRowsWithActions(
   query: { status?: string | null; limit?: string | null; q?: string | null; channel?: string | null },
   ctx: ApiContext = {},
-): Promise<{ rows: RowSummaryWithAction[] }> {
+): Promise<{ rows: RowSummaryWithAction[]; counts: RowsCounts }> {
   const { rows } = await getRows(query, ctx);
-  return { rows: rows.map((row) => ({ ...row, action: actionFor(row, row.reason) })) };
+  // One policy read for the whole list: the lane is the same fact for every row
+  // in the response, and re-reading the YAML per row would be a lie waiting to
+  // happen if someone flipped a switch mid-request.
+  const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+  const decorated = rows.map((row) => {
+    const { lane, lane_reason } = laneFor(row, policy);
+    const derived = actionFor(row, row.reason, lane);
+    return { ...row, action: derived, lane, lane_reason, needs_you: needsYou(derived) };
+  });
+  return {
+    rows: decorated,
+    counts: {
+      needs_you: decorated.filter((row) => row.needs_you).length,
+      in_flight: decorated.filter((row) => row.action.kind === "in_flight").length,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/lanes  (the policy view the tabs and the Home count read)
+// ---------------------------------------------------------------------------
+
+/** Channels the harness knows about, so an attended one is named, not absent. */
+const KNOWN_CHANNELS = [...Object.keys(HUNT_SCRIPTS), "recruiter"];
+
+export type LanesResponse = {
+  autopilot_enabled: boolean;
+  kill_switch: boolean;
+  channels: string[];
+  lane_of: Record<string, Lane>;
+  /** Why each channel is where it is, in the same words a row carries. */
+  reason_of: Record<string, string>;
+};
+
+/**
+ * The lane each channel is in right now. It is the row derivation with the row
+ * left out, so a channel answers the same way its rows do: with the kill switch
+ * on, every channel here reads `attended`, because that is what today is.
+ */
+export async function getLanes(ctx: ApiContext = {}): Promise<LanesResponse> {
+  const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+  const channels = [...new Set([...KNOWN_CHANNELS, ...policy.channels])].sort();
+  const lane_of: Record<string, Lane> = {};
+  const reason_of: Record<string, string> = {};
+  for (const channel of channels) {
+    const verdict = laneFor({ channel, applyMethod: null }, policy);
+    lane_of[channel] = verdict.lane;
+    reason_of[channel] = verdict.lane_reason;
+  }
+  return {
+    autopilot_enabled: policy.autopilot_enabled,
+    kill_switch: policy.kill_switch,
+    channels: policy.channels,
+    lane_of,
+    reason_of,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +483,9 @@ export function normaliseCritic(critic: unknown): unknown {
 
 export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
   const detail = await getRowDetail(id, ctx);
+  const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+  const { lane, lane_reason } = laneFor(detail.row, policy);
+  const derived = actionFor(detail.row, detail.reason, lane);
   const dir = await packageDirFor(detail.row, ctx);
   // api.ts already read the package when the row carries a draftDir. Only the
   // fallback path has more to find.
@@ -283,7 +504,10 @@ export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
     // A redraft the person asked for is pending work on this row, so it belongs
     // beside the letter it is about rather than only in the row's history.
     redraft_requested: (detail.row as { redraftRequested?: unknown }).redraftRequested ?? null,
-    action: actionFor(detail.row, detail.reason),
+    lane,
+    lane_reason,
+    needs_you: needsYou(derived),
+    action: derived,
   };
 }
 
@@ -592,6 +816,10 @@ export async function postRetryNow(id: string, ctx: ApiContext = {}): Promise<Re
   const policy = await getPolicy({ profileId: ctx.profileId ?? null });
   if (policy.kill_switch) throw new ApiError(409, `the kill switch is on in ${policy.path}; nothing sends until it is off`);
   if (!policy.autopilot_enabled) throw new ApiError(409, `autopilot is off in ${policy.path}; turn it on before retrying a send`);
+  // The same derivation the list and the detail show, so a row the board calls
+  // attended can never be sent from this button either.
+  const lane = laneFor(row, policy);
+  if (lane.lane !== "autopilot") throw new ApiError(409, `retry runs the autopilot lane only: ${lane.lane_reason}`);
 
   const running = runningJobFor(id);
   if (running) throw new ApiError(409, `a retry is already running for ${id} (job ${running.id}, started ${running.started_at})`);
@@ -639,6 +867,10 @@ export async function handle(req: ApiRequest, ctx: ApiContext): Promise<ApiResul
         ctx,
       ),
     };
+  }
+
+  if (method === "GET" && pathname === "/api/lanes") {
+    return { status: 200, body: await getLanes(ctx) };
   }
 
   if (method === "GET" && pathname === "/api/followups") {
