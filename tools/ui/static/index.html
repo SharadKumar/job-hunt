@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Harness</title>
+    <link rel="stylesheet" href="app.css" />
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!--
+      Local harness UI. No build step, no framework, no CDN: every asset here is
+      served from the same local origin as the API, so the page works offline and
+      nothing about the person's pipeline leaves the machine.
+    -->
+    <header class="app-header">
+      <div class="header-top">
+        <a class="brand" href="#/queue">Harness</a>
+        <div class="header-flags" id="flags" aria-live="polite"></div>
+        <button type="button" class="ghost" id="refresh" title="Reload from the API">Refresh</button>
+      </div>
+
+      <nav class="nav" aria-label="Views">
+        <a href="#/queue" data-nav="queue">Queue</a>
+        <a href="#/keywords" data-nav="keywords">Keywords</a>
+        <a href="#/today" data-nav="today">Today</a>
+        <a href="#/digest" data-nav="digest">Digest</a>
+      </nav>
+
+      <div class="counts" id="counts" aria-label="Pipeline counts"></div>
+
+      <details class="token-box" id="token-box">
+        <summary>Token</summary>
+        <div class="token-row">
+          <label for="token-input">API token (stored in this browser only)</label>
+          <input
+            type="password"
+            id="token-input"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="paste once"
+          />
+          <button type="button" id="token-save">Save</button>
+          <button type="button" class="ghost" id="token-clear">Clear</button>
+          <span class="muted" id="token-state"></span>
+        </div>
+      </details>
+    </header>
+
+    <main id="view" class="view" tabindex="-1">
+      <p class="empty">Loading.</p>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
