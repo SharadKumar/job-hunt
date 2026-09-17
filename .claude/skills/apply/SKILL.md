@@ -11,7 +11,7 @@ One-shot, synchronous. The skill **orchestrates** Stage 2 — it spawns `resume-
 
 ## Inputs
 
-- `<opportunity-id>` — required positional argument. Must exist in `state/pipeline/opportunities.json`.
+- `<opportunity-id>` — required positional argument. Must exist in the pipeline store; `npm run pipeline -- get <opportunity-id>` returns the row or exits non-zero.
 
 ## Sequence
 
@@ -19,7 +19,7 @@ Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its
 
 ### 1. Load + verify opportunity
 
-Read the opportunity from `state/pipeline/opportunities.json`. Required fields:
+Read the opportunity with `npm run pipeline -- get <opportunity-id>`, which prints the single row as JSON with the description included. Required fields:
 - `id`, `url`, `title`, `company`, `description` (the JD)
 - `classification.matched_resume_id` — which resume this opportunity matches
 - `classification.requires_tailoring` (bool) — whether to take the tailor path
@@ -182,14 +182,17 @@ On success: transition status `→ submitted`. Record confirmation reference + s
 - **Never bypass the validation gate** (lint, slop, voice, rate, ATS).
 - **Never use a separate package-drafter subagent** — package assembly belongs to this skill-level orchestration. The orchestrator IS the skill.
 - **Never edit canonical content** (experiences, summaries, banlist, voice-rules) from inside the apply flow. If a quality issue traces to content, surface; route to `/onboarding`, `/resume-strategy`, `/refresh-cv`, or direct file editing.
-- **Never auto-send recruiter email**. The `submission-runner`'s recruiter-email path produces a Gmail draft for the user to one-click send from their own client.
+- **Never auto-send recruiter email**. A recruiter or hiring-manager email is always a draft saved in the opportunity's archive directory for the user to send themselves; there is no recruiter-email submit adapter.
 
 ## When the daily orchestrator runs apply
 
-The daily run may reuse only the package-assembly and validation portions of this
-skill. It must stop with a complete package in `manual_action_needed`. It never
-executes Sections 6–8 as a submission flow; those require a fresh attended
-confirmation for the exact application.
+The daily run reuses the package-assembly and validation portions of this skill,
+then splits by channel. For an autopilot channel (SEEK Quick Apply, LinkedIn Easy
+Apply) an unattended run submits through `npm run autopilot:submit` once the
+machine gates pass; it never runs Sections 6–8 or `submission-runner` to do it.
+For every other channel it stops at a complete prepared package in
+`manual_action_needed`, because Sections 6–8 as a submission flow require a fresh
+attended confirmation for the exact application.
 
 Step 2a is not skipped, it is enforced the other way: an unattended run never renders a positioning whose `clouds.missing` is true. Journal it, queue the refresh for the next attended session, and leave the opportunity in the prepared queue without a tailored CV.
 

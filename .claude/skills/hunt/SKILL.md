@@ -14,8 +14,8 @@ Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its
 Invoke the `opportunity-finder` subagent. Pass it any channel filter from the arguments. It:
 
 1. Reads `state/profile/channels.yaml`.
-2. Runs `npm run hunt:<channel> -- --upsert` for each enabled (or filtered) channel.
-3. Dedups against `state/pipeline/opportunities.json`.
+2. Runs `npm run hunt:<channel> -- --upsert` for each enabled (or filtered) channel. A `hunt:` script exists only for `seek`, `linkedin-jobs` (alias `linkedin_jobs`), `linkedin-posts` and `hn`; any other enabled channel has no scraper and is reported, not improvised.
+3. Dedups against the pipeline store (`state/pipeline/pipeline.db`), read through `npm run pipeline -- list` / `get`.
 4. Classifies each new discovered role in-agent, writes `state/pipeline/classifications.json`, then runs `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`.
 5. Hands off to `state-syncer` to mirror to the Sheet.
 

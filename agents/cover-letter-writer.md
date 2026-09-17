@@ -18,7 +18,7 @@ Plain markdown — no docx unless the channel requires it (most don't). If a doc
 For each invocation (`--opportunity-id <id> [--template <name>]`):
 
 1. **Load context**:
-   - The opportunity from `state/pipeline/opportunities.json` (company, role title, `classification.matched_resume_id`, JD text, recruiter contact if known). Refuse regex/default classifications; production letters require persisted agent classification.
+   - The opportunity from the pipeline store: `npm run pipeline -- get <opportunity-id>` prints the single row as JSON, description included (company, role title, `classification.matched_resume_id`, JD text, recruiter contact if known). Refuse regex/default classifications; production letters require persisted agent classification.
    - The resume from `<profile-dir>/resumes.yaml[matched_resume_id]`, merged with `state/org/resume-types.yaml` when present — get `cover_letter_angle` (lead hook), `could`, `rate_band` if relevant.
    - Voice: `references/voice/voice-rules.md` (framework), `<profile-dir>/voice-rules.md` (per-profile writing preferences, **binding** — where it disagrees with the framework rules, the profile file wins), `<profile-dir>/voice-samples.md` (per-profile writing samples).
    - Org voice when present: `state/org/voice-rules.md` and `state/org/slop-banlist.md`. Org rules win for brand terminology, compliance, and banned phrases; profile samples still guide cadence.
