@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "ui-api-"));
 // All three must be set before the tools are evaluated: repo-root, the pipeline
@@ -519,6 +520,104 @@ clouds:
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   console.log("  ✓ token enforcement, static shell, 404 and traversal");
+}
+
+// ---------- policy: the two gates the UI may flip ----------
+
+// Runs last on purpose: it replaces the fixture policy with a copy of the real
+// template, which every earlier block has already read.
+{
+  const templatePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../templates/profile/submission-policy.yaml");
+  const template = fs.readFileSync(templatePath, "utf8");
+  // A comment line directly above the key the UI writes. If parseDocument is
+  // ever swapped for a parse-and-dump, this is the line that disappears.
+  const seeded = template.replace(
+    "autopilot:\n  enabled: false",
+    "autopilot:\n  # The UI flips this one; this comment must survive the write.\n  enabled: false",
+  );
+  assert.notEqual(seeded, template, "the template still has autopilot.enabled to seed");
+  const policyFile = write("state/profile/submission-policy.yaml", seeded);
+
+  const before = await api.handleApi({ method: "GET", pathname: "/api/policy" }, ctx);
+  assert.equal(before.status, 200);
+  assert.deepEqual(before.body, {
+    autopilot_enabled: false,
+    kill_switch: false,
+    max_per_day: 10,
+    channels: ["seek", "linkedin_jobs"],
+    sheet_enabled: false,
+    path: path.join("state", "profile", "submission-policy.yaml"),
+  });
+
+  const badBody = await api.handleApi({ method: "POST", pathname: "/api/policy/autopilot", body: { enabled: "yes" } }, ctx);
+  assert.equal(badBody.status, 400, "only a real boolean flips a gate");
+  assert.equal(fs.readFileSync(policyFile, "utf8"), seeded, "a refused request writes nothing");
+
+  const on = await api.handleApi(
+    { method: "POST", pathname: "/api/policy/autopilot", body: { enabled: true, reason: "ran three attended cycles" } },
+    ctx,
+  );
+  assert.equal(on.status, 200);
+  assert.deepEqual(on.body, { ok: true, autopilot_enabled: true });
+
+  const kill = await api.handleApi({ method: "POST", pathname: "/api/policy/kill-switch", body: { enabled: true } }, ctx);
+  assert.equal(kill.status, 200);
+  assert.deepEqual(kill.body, { ok: true, kill_switch: true });
+
+  const after = fs.readFileSync(policyFile, "utf8");
+  assert.match(after, /  # The UI flips this one; this comment must survive the write\.\n  enabled: true\n/,
+    "the comment above autopilot.enabled survives, and the value moved");
+  assert.match(after, /^kill_switch: true +# Set true to halt every submission, attended or not\.$/m,
+    "kill_switch flipped and kept its trailing comment");
+
+  // Nothing else moved: same line count, and the only differences are the two
+  // lines that were asked for.
+  const beforeLines = seeded.split("\n");
+  const afterLines = after.split("\n");
+  assert.equal(afterLines.length, beforeLines.length, "no line was added or removed");
+  const changed = beforeLines.map((line, i) => [line, afterLines[i]]).filter(([a, b]) => a !== b);
+  assert.equal(changed.length, 2, `only two lines changed, got ${changed.length}`);
+  assert.deepEqual(
+    changed.map(([, b]) => b.replace(/ {2,}/g, "  ")),
+    ["kill_switch: true  # Set true to halt every submission, attended or not.", "  enabled: true"],
+    "exactly the two keys the UI was asked to flip changed, comments and all",
+  );
+  // Everything the UI did not touch is byte-identical, including the long
+  // quoted `notes:` strings and the aligned comment columns.
+  const untouched = (lines: string[]) => lines.filter((l) => !/^(kill_switch|  enabled):/.test(l)).join("\n");
+  assert.equal(untouched(afterLines), untouched(beforeLines), "no other byte of the policy moved");
+
+  const reread = await api.handleApi({ method: "GET", pathname: "/api/policy" }, ctx);
+  assert.equal((reread.body as any).autopilot_enabled, true);
+  assert.equal((reread.body as any).kill_switch, true);
+
+  const events = fs.readFileSync(path.join(root, "audit", "audit-log.jsonl"), "utf8")
+    .split("\n").filter(Boolean).map((line) => JSON.parse(line))
+    .filter((e: any) => e.event_type === "policy_change");
+  assert.equal(events.length, 2, "one audit event per flip, and none for the refused request");
+  assert.deepEqual(events[0].details, { key: "autopilot.enabled", from: false, to: true, reason: "ran three attended cycles" });
+  assert.deepEqual(events[1].details, { key: "kill_switch", from: false, to: true, reason: null });
+  assert.ok(events.every((e: any) => e.actor === "ui" && e.role_id === null && e.ts), "every flip names the UI and carries a timestamp");
+
+  // No policy file is "nothing is switched on", and a write refuses rather
+  // than conjuring a policy from a browser click.
+  fs.rmSync(policyFile);
+  const none = await api.handleApi({ method: "GET", pathname: "/api/policy" }, ctx);
+  assert.deepEqual(none.body, {
+    autopilot_enabled: false,
+    kill_switch: false,
+    max_per_day: null,
+    channels: [],
+    sheet_enabled: false,
+    path: path.join("state", "profile", "submission-policy.yaml"),
+  });
+  const refused = await api.handleApi({ method: "POST", pathname: "/api/policy/kill-switch", body: { enabled: false } }, ctx);
+  assert.equal(refused.status, 409, "with no policy file there is nothing to flip");
+  assert.equal(fs.existsSync(policyFile), false, "and the file is not created");
+
+  const wrongMethod = await api.handleApi({ method: "GET", pathname: "/api/policy/autopilot" }, ctx);
+  assert.equal(wrongMethod.status, 404, "the flips are POST only");
+  console.log("  \u2713 policy read, both flips, comment preservation, audit trail and the missing-file refusals");
 }
 
 fs.rmSync(root, { recursive: true, force: true });

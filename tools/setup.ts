@@ -48,10 +48,14 @@ type Stage = {
   /** The stage reports but never blocks: a failing check here is information. */
   informational?: boolean;
   checks: Check[];
+  /** Stage 9 only: the portless proxy, when it is on this machine. */
+  portless?: { installed: boolean; url: string | null };
 };
 
 /** The local approval UI's launchd job and its default bind address. */
 const UI_LABEL = "com.job-hunt-harness.ui";
+/** The portless service name scripts/install-ui-launchd.sh registers. */
+const UI_PORTLESS_NAME = "job-hunt";
 const UI_HOST = "127.0.0.1";
 const UI_PORT = Number(process.env.HARNESS_UI_PORT ?? 7788);
 const UI_PROBE_MS = 300;
@@ -302,7 +306,26 @@ async function stageUi(): Promise<Stage> {
     detail: `${UI_HOST}:${UI_PORT} ${answering ? "answering" : `not answering (${UI_PROBE_MS} ms probe)`}`,
     fix: `npm run ui -- --port ${UI_PORT}`,
   });
-  return { stage: 9, name: "ui", ok: true, informational: true, checks };
+  // portless is a nicety, never a requirement: it swaps the port for a stable
+  // https://job-hunt.localhost name. Report it when it is here, say nothing
+  // more than "not installed" when it is not, and never fail on it.
+  const portlessVersion = await cmdOk("portless", ["--version"]);
+  const portlessUrl = portlessVersion.ok ? await cmdOk("portless", ["get", UI_PORTLESS_NAME]) : { ok: false, out: "" };
+  const portless = {
+    installed: portlessVersion.ok,
+    url: portlessVersion.ok && portlessUrl.ok && portlessUrl.out.startsWith("http") ? portlessUrl.out : null,
+  };
+  checks.push({
+    id: "portless",
+    ok: true,
+    detail: !portless.installed
+      ? "not installed (optional; https://portless.sh gives the UI a stable https name)"
+      : portless.url
+        ? portless.url
+        : `installed, no route named ${UI_PORTLESS_NAME}`,
+    fix: portless.installed && !portless.url ? "bash scripts/install-ui-launchd.sh" : undefined,
+  });
+  return { stage: 9, name: "ui", ok: true, informational: true, checks, portless };
 }
 
 /* ------------------------------------------------------------ scaffold */

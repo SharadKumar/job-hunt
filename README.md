@@ -356,13 +356,29 @@ Each stage's commands are in the table. The only things the agent cannot do for 
 
 The local UI is the primary approval surface. It reads and writes the same SQLite pipeline the CLI does, so a decision you make in it is the decision, with no sync step and no Google account.
 
+### A stable name instead of a port (portless)
+
+If you have [portless](https://portless.sh) installed, use it. It runs the server for you, hands it `PORT`, `HOST` and `PORTLESS_URL`, and proxies a stable name to it, so the address never changes and no port is ever taken by something else:
+
+```
+npm run ui:portless              # https://job-hunt.localhost
+portless trust                   # once per machine, so the browser trusts the certificate
+```
+
+The proxy listens on 443 when it can. If it could not take 443 it uses another port, and the URL carries it, for example `https://job-hunt.localhost:8443`. `portless get job-hunt` prints the one that is true for you, and the server prints it on the line it starts with. portless is not a dependency of this repo: without it, nothing changes and the plain port below is the way in.
+
+### A plain port
+
 ```
 npm run ui                       # http://127.0.0.1:7788
 npm run ui -- --open             # and open a browser
 npm run ui -- --port 7799        # a different port
+PORT=7799 npm run ui             # the environment works too; an explicit --port wins
 ```
 
 It serves the same work the Sheet Tray did: the day's summary, every row with its classification and score, the pending keyword questions, today's journal and the critic digest, plus the per-row actions (approve, reject, hold, edit). Approving a row is preparation, exactly as in the Sheet: sending still obeys the two lanes in `AGENTS.md` section 2.
+
+It also shows the two gates from `submission-policy.yaml`, `autopilot.enabled` and `kill_switch`, and lets you flip either one. That is an attended act at your own machine: the file is edited in place with its comments intact and the change is written to the audit log as a `policy_change` event.
 
 ### From your phone
 
@@ -383,6 +399,8 @@ bash scripts/install-ui-launchd.sh --dry-run    # print the rendered plist, chan
 bash scripts/install-ui-launchd.sh --port 7799  # a different port
 bash scripts/install-ui-launchd.sh --uninstall  # unload and remove it
 ```
+
+When portless is on your PATH the installer also registers `portless alias job-hunt <port>`, so the supervised server answers on its stable name as well as on `127.0.0.1`; `--uninstall` removes that route again.
 
 It renders `templates/launchd/com.job-hunt-harness.ui.plist` with this checkout's path and installs it to `~/Library/LaunchAgents/com.job-hunt-harness.ui.plist`. `RunAtLoad` and `KeepAlive` mean it starts at login and comes back if it dies. Logs land in `state/journal/launchd/ui.log`. Re-running it is safe: the job is booted out and bootstrapped again. To bind beyond localhost from the launchd job, uncomment `HARNESS_UI_TOKEN` in the installed plist, add `--host <address>` to the command in `ProgramArguments`, and `launchctl kickstart -k gui/$UID/com.job-hunt-harness.ui`.
 

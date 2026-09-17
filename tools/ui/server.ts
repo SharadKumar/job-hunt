@@ -15,8 +15,17 @@
  * token the server refuses to start rather than putting the pipeline (and the
  * person's letters) on the network unauthenticated.
  *
+ * Port and host also come from the environment, because that is how a
+ * supervisor hands them over: `portless` (https://portless.sh) runs the server
+ * with PORT, HOST and PORTLESS_URL set and proxies https://job-hunt.localhost
+ * to it, so `npm run ui:portless` needs no flags at all. An explicit flag
+ * always wins over the environment, and the environment always wins over the
+ * built-in defaults. PORTLESS_URL is display only: it is the address the
+ * person should open, while the socket stays exactly where it was bound.
+ *
  * CLI:
  *   npm run ui -- [--port 7788] [--host 127.0.0.1] [--open]
+ *   npm run ui:portless              # portless supplies PORT/HOST/PORTLESS_URL
  */
 
 import http from "node:http";
@@ -120,11 +129,42 @@ export type UiServerOptions = {
 
 export type UiServer = {
   server: http.Server;
+  /** Where the socket actually is. */
   url: string;
+  /** PORTLESS_URL when a proxy is in front of us, else null. */
+  publicUrl: string | null;
   port: number;
   host: string;
   staticDir: string;
 };
+
+/** A non-empty environment variable, or null. An empty string is "unset". */
+export function envValue(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const raw = env[name];
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+/**
+ * The port to bind: an explicit `--port` first, then PORT from the
+ * environment (how portless and most supervisors pass it), then the default.
+ * Returns null when what was given is not a port, so the CLI can say so and
+ * exit rather than binding something surprising.
+ */
+export function resolvePort(flag: string | boolean | undefined, env: NodeJS.ProcessEnv = process.env): number | null {
+  const raw = flag === undefined ? envValue("PORT", env) : flag;
+  if (raw === null) return DEFAULT_PORT;
+  // A bare `--port` and an empty `--port=` are both mistakes, and `Number("")`
+  // is 0, which would quietly bind an ephemeral port instead of saying so.
+  if (typeof raw === "boolean" || !raw.trim()) return null;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : null;
+}
+
+/** The host to bind: `--host` first, then HOST, then loopback. */
+export function resolveHost(flag: string | boolean | undefined, env: NodeJS.ProcessEnv = process.env): string {
+  if (typeof flag === "string" && flag.trim()) return flag.trim();
+  return envValue("HOST", env) ?? DEFAULT_HOST;
+}
 
 export async function startUiServer(options: UiServerOptions = {}): Promise<UiServer> {
   const host = options.host ?? DEFAULT_HOST;
@@ -251,22 +291,26 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<UiSe
   });
 
   const url = `http://${host}:${port}/`;
+  // Behind portless the loopback URL still works, but it is not the one the
+  // person's browser should hold: cookies, storage and the certificate all
+  // belong to the proxied name.
+  const publicUrl = envValue("PORTLESS_URL");
   if (options.open && process.platform === "darwin") {
-    spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+    spawn("open", [publicUrl ?? url], { stdio: "ignore", detached: true }).unref();
   }
-  return { server, url, port, host, staticDir };
+  return { server, url, publicUrl, port, host, staticDir };
 }
 
 /* -------------------------------------------------------------------- cli */
 
 async function main(): Promise<void> {
   const { flags } = parseArgs(process.argv.slice(2));
-  const port = flags.port === undefined ? DEFAULT_PORT : Number(flags.port);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    console.error(`[ui] invalid --port '${String(flags.port)}'`);
+  const port = resolvePort(flags.port);
+  if (port === null) {
+    console.error(`[ui] invalid port '${String(flags.port ?? process.env.PORT)}'`);
     process.exit(2);
   }
-  const host = typeof flags.host === "string" && flags.host ? flags.host : DEFAULT_HOST;
+  const host = resolveHost(flags.host);
   const token = process.env.HARNESS_UI_TOKEN ?? null;
 
   const blocker = bindingError(host, token);
@@ -275,9 +319,10 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const { url, staticDir } = await startUiServer({ port, host, token, open: Boolean(flags.open) });
+  const { url, publicUrl, staticDir } = await startUiServer({ port, host, token, open: Boolean(flags.open) });
   console.log(`ui: serving ${staticDir}`);
-  console.log(`ui: ${url}`);
+  console.log(`ui: ${publicUrl ?? url}`);
+  if (publicUrl) console.log(`ui: bound ${url}`);
   console.log(token ? "ui: token required on /api (HARNESS_UI_TOKEN)" : "ui: local only, no token required");
   console.log("ui: ctrl-c to stop");
 }

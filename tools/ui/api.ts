@@ -37,6 +37,7 @@ import {
   type AppliedAnswers,
 } from "../resume/keyword-confirm.ts";
 import { getResumes, resolveResumeFile } from "./resumes-api.ts";
+import { getPolicy, postAutopilot, postKillSwitch, type PolicyToggleBody } from "./policy-api.ts";
 import { readJsonIfExists, readYamlIfExists } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
@@ -597,6 +598,19 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
     }
     if (method === "GET" && pathname === "/api/critic/digest") {
       return { status: 200, body: await getCriticDigest({ since: query.get("since") }, ctx) };
+    }
+
+    // The two gates in submission-policy.yaml. Reading them is free; flipping
+    // one is an attended act by the person at their own machine, audited in
+    // tools/ui/policy-api.ts.
+    if (method === "GET" && pathname === "/api/policy") {
+      return { status: 200, body: await getPolicy({ profileId: ctx.profileId ?? null }) };
+    }
+    if (method === "POST" && pathname === "/api/policy/autopilot") {
+      return { status: 200, body: await postAutopilot((req.body ?? {}) as PolicyToggleBody, { profileId: ctx.profileId ?? null }) };
+    }
+    if (method === "POST" && pathname === "/api/policy/kill-switch") {
+      return { status: 200, body: await postKillSwitch((req.body ?? {}) as PolicyToggleBody, { profileId: ctx.profileId ?? null }) };
     }
 
     if (method === "GET" && pathname === "/api/resumes") {

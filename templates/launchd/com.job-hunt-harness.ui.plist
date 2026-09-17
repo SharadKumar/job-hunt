@@ -8,7 +8,12 @@
   into ~/Library/LaunchAgents by hand; the placeholders are taken literally.
 
   It binds 127.0.0.1 only, so nothing outside this machine can reach it and no
-  token is needed. To reach it from a phone over Tailscale or the LAN, append
+  token is needed. The installer additionally registers a portless route when
+  portless is on PATH, so the same local server answers on
+  https://job-hunt.localhost as well; that proxy is local too and changes
+  nothing about the binding here.
+
+  To reach it from a phone over Tailscale or the LAN, append
   --host <address> to the command below and uncomment HARNESS_UI_TOKEN with a
   long random value (the server refuses a non-local bind without one), then
   kickstart the job.
