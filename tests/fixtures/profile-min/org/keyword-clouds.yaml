@@ -9,3 +9,19 @@ clouds:
     terms:
       - { term: delivery governance, tier: corpus }
       - { term: portfolio reporting, tier: confirm }
+  - id: example-sector
+    kind: domain
+    label: Example Sector
+    description: Fixture domain cloud; invented terms only.
+    refreshed_at: "2026-01-01"
+    terms:
+      - { term: public sector programme, tier: corpus }
+      - { term: regulated change control, tier: preppable }
+  - id: example-tooling
+    kind: tooling
+    label: Example Tooling
+    description: Fixture tooling cloud; invented terms only.
+    refreshed_at: "2026-01-01"
+    terms:
+      - { term: example workflow platform, tier: preppable }
+      - { term: example reporting suite, tier: forbidden, why: fixture never used it }

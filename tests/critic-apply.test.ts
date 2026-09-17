@@ -21,7 +21,18 @@ import { spawnSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
+import { makeTempRoot, repoFile } from "./helpers/temp-root.ts";
+import type { CriticFinding, CriticReviewFile } from "../tools/resume/critic-apply.ts";
+import type { ResumeContent, ResumeSourceProvenance } from "../templates/resume/_interface.ts";
+
+// The loop ends in a real `resume:audit`, which folds in the provenance gate,
+// which reads state/profile/cv-source.md through repoPath(). That file is
+// git-ignored, so a fresh clone has none: everything here runs inside a fixture
+// repo root built from tests/fixtures/profile-min. HARNESS_REPO_ROOT has to be
+// exported before the first tools/ import, hence the dynamic imports.
+const { root, profileDir } = makeTempRoot("critic-apply-");
+
+const {
   applyCriticFindings,
   criticSidecarPath,
   findRecurringFindings,
@@ -30,11 +41,8 @@ import {
   runCriticApply,
   suggestedBanRules,
   textSlot,
-  type CriticFinding,
-  type CriticReviewFile,
-} from "../tools/resume/critic-apply.ts";
-import { writeComposition, compositionContentHash } from "../tools/resume/lib/composition-io.ts";
-import type { ResumeContent, ResumeSourceProvenance } from "../templates/resume/_interface.ts";
+} = await import("../tools/resume/critic-apply.ts");
+const { writeComposition, compositionContentHash } = await import("../tools/resume/lib/composition-io.ts");
 
 const ref = (a: number, b: number) => [{ file: "state/profile/cv-source.md", lines: [a, b] as [number, number] }];
 
@@ -145,8 +153,6 @@ const provenance = (): ResumeSourceProvenance => ({
 
 /* ------------------------------------------ (a) the durable review trail -- */
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "critic-apply-"));
-const profileDir = path.join(root, "state", "profile");
 const resumesDir = path.join(profileDir, "resumes");
 const alphaDir = path.join(resumesDir, "alpha");
 await fs.mkdir(alphaDir, { recursive: true });
@@ -156,6 +162,9 @@ await fs.writeFile(path.join(profileDir, "resume-editorial-rules.md"), "# Profil
 await fs.writeFile(path.join(alphaDir, "metadata.json"), JSON.stringify({ resume_id: "alpha", content_hash: "c0ffee", approved_at: null, approved_hash: null, approval_status: "fresh" }, null, 2));
 
 const reviewedHash = await compositionContentHash(compositionPath);
+
+// The fixture profile ships an editorial-bans.yaml; nothing below may touch it.
+const bansBefore = await fs.readFile(path.join(profileDir, "editorial-bans.yaml"), "utf8").catch(() => null);
 
 const round1 = path.join(root, "round1.json");
 await fs.writeFile(round1, JSON.stringify({
@@ -225,8 +234,8 @@ const appliedHash = await compositionContentHash(compositionPath);
   console.log("  ✓ (b) metadata.json carries {verdict, round, at, composition_hash}");
 }
 
-const approveScript = path.resolve("tools/resume/resume-approve.ts");
-const tsxBin = path.resolve("node_modules/.bin/tsx");
+const approveScript = repoFile("tools/resume/resume-approve.ts");
+const tsxBin = repoFile("node_modules/.bin/tsx");
 const approve = (args: string[]) => spawnSync(tsxBin, [approveScript, ...args], {
   encoding: "utf8",
   env: { ...process.env, HARNESS_REPO_ROOT: root, HARNESS_PROFILE: "" },
@@ -479,7 +488,11 @@ const setCritic = async (critic: unknown) => {
 
 {
   const bansPath = path.join(profileDir, "editorial-bans.yaml");
-  assert.equal(await fs.readFile(bansPath, "utf8").catch(() => null), null, "critic-apply never creates the machine bans file");
+  assert.equal(
+    await fs.readFile(bansPath, "utf8").catch(() => null),
+    bansBefore,
+    "critic-apply never writes the machine bans file: suggestions are printed, a human adds the rule",
+  );
 }
 
 /* ------- (e) apply a finding, re-audit, approve: no --skip-critic needed --- */
@@ -496,7 +509,7 @@ const setCritic = async (critic: unknown) => {
   const { runAudit } = await import("../tools/resume/resume-audit.ts");
   const gammaDir = path.join(resumesDir, "gamma");
   await fs.mkdir(gammaDir, { recursive: true });
-  const sample = JSON.parse(await fs.readFile("templates/resume/classic/sample/sample-content.json", "utf8")) as ResumeContent;
+  const sample = JSON.parse(await fs.readFile(repoFile("templates/resume/classic/sample/sample-content.json"), "utf8")) as ResumeContent;
   const prefix = "Sample_Gamma";
   const gammaComposition = path.join(gammaDir, `${prefix}.composition.json`);
   await writeComposition(gammaComposition, sample, { provenance: provenance() });
