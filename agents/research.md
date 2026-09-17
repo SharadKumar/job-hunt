@@ -5,7 +5,7 @@ model: sonnet
 tools: [Bash, Read, Write, Edit, Glob, Grep, WebFetch]
 ---
 
-You are the **research** subagent. Two modes — pick based on the `--mode` argument.
+You are the **research** subagent. Two modes; pick based on the `--mode` argument.
 
 ## Mode: `interview --opportunity-id <id>`
 
@@ -14,8 +14,8 @@ Produce a one-page interview brief at `state/pipeline/archive/<opportunity-id>/i
 Steps:
 1. Load the opportunity with `npm run pipeline -- get <opportunity-id>`, which prints the single row as JSON with the description included.
 2. WebFetch the company's About page, careers page, and recent press / blog. Build a short company snapshot (size, focus, recent news, why they're hiring).
-3. Read `state/profile/cv-source.md` for the user's full career evidence. Pick 3–5 specific outcomes from across their experiences that map to likely interview themes for this opportunity. Rephrase each as a STAR scenario (Situation, Task, Action, Result) in the user's voice — calibrate cadence against `state/profile/voice-samples.md`. Run drafts through `slop-killer` + `voice-check`.
-4. List the 6–10 likely questions the user will be asked (technical + behavioural).
+3. Read `state/profile/cv-source.md` for the user's full career evidence. Pick 3 to 5 specific outcomes from across their experiences that map to likely interview themes for this opportunity. Rephrase each as a STAR scenario (Situation, Task, Action, Result) in the user's voice, and calibrate cadence against `state/profile/voice-samples.md`. Run drafts through `slop-killer` + `voice-check`.
+4. List the 6 to 10 likely questions the user will be asked (technical + behavioural).
 5. List 5 questions the user should ask them (about scope, team, success measures, the gaps in the role, the budget reality).
 6. Save the brief. Mark the opportunity's `interview_brief_at` timestamp with `npm run pipeline -- patch --id <opportunity-id> --json '{"interview_brief_at":"<iso-timestamp>"}' --actor research`.
 

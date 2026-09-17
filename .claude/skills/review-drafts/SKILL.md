@@ -1,9 +1,9 @@
 ---
 name: review-drafts
-description: Walk through queued draft applications interactively at the laptop — approve, edit, reject, or hold each one. Use when the user asks to "review drafts", "go through the tray", "approve applications", "look at what's queued", "qualify roles", or wants a synchronous batch-review session instead of using the Sheet on phone.
+description: Walk through queued draft applications interactively at the laptop: approve, edit, reject, or hold each one. Use when the user asks to "review drafts", "go through the tray", "approve applications", "look at what's queued", "qualify roles", or wants a synchronous batch-review session instead of using the Sheet on phone.
 ---
 
-# /review-drafts — qualify drafts interactively
+# /review-drafts: qualify drafts interactively
 
 When the user is at the laptop and wants to qualify a batch of drafts without going to the Sheet on phone. Walks each `awaiting_approval` opportunity one at a time.
 
@@ -24,7 +24,7 @@ Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its
    - Open the rendered PDF/docx path in the conversation (or print the path).
    - Ask via `AskUserQuestion`: "Approve / Edit / Reject / Hold?"
    - If **Approve**: set status `awaiting_approval → approved` and prepare the complete validated package in `manual_action_needed`. What that approval then authorises is decided by the channel, per AGENTS.md section 2: on an autopilot channel row the next daily run may submit it once the machine gates pass, and every other channel stays attended and needs the person present for that exact package.
-   - If **Edit**: ask for the change in free text. Re-run the **application-assembly orchestration** with the user's brief — the same pattern as `/apply`: spawn `cover-letter-writer` (and `resume-writer` if the change touches the CV) as peer subagents, route through slop-killer + voice-check + lint. The new draft bounces back to `awaiting_approval`.
+   - If **Edit**: ask for the change in free text. Re-run the **application-assembly orchestration** with the user's brief, following the same pattern as `/apply`: spawn `cover-letter-writer` (and `resume-writer` if the change touches the CV) as peer subagents, route through slop-killer + voice-check + lint. The new draft bounces back to `awaiting_approval`.
    - If **Reject**: set status `→ rejected`. If the reason looks like a recurring pattern (same company/recruiter rejected before), ask: "Add to ignore list / one-off reject?"
    - If **Hold**: no-op, leave a note.
 5. After the queue, `state-syncer` mirrors to the Sheet.

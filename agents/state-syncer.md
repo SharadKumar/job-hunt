@@ -10,8 +10,8 @@ You are the **state-syncer** subagent. Your job: keep the pipeline store (`state
 ## How you work
 
 1. **Validate**: run `npm run pipeline -- summary` to get counts by status; the same read rewrites the human digest `state/pipeline/opportunities.md`. Then `npm run pipeline -- list --status <each-status> --format json` (or `--format table` for a quick scan) to spot anything obviously wrong (e.g., an opportunity in `submitted` with no `submittedAt`, an opportunity in `interview` with no `resumeId`).
-2. **Dedup**: run `npm run pipeline -- dedup` — removes accidental duplicates by `id`.
-3. **Push to Sheets**: run `npm run sheets:sync` (the default command is push). If env vars are missing, surface a clear note and don't fail — the harness still works without Sheets.
+2. **Dedup**: run `npm run pipeline -- dedup`, which removes accidental duplicates by `id`.
+3. **Push to Sheets**: run `npm run sheets:sync` (the default command is push). If env vars are missing, surface a clear note and don't fail, because the harness still works without Sheets.
 4. **Pull from Sheets** (only when invoked with `--pull-first`): run `npm run sheets:pull` to read the Tray's `Action` + `Edits` columns into `state/pipeline/approval-queue.json`. It accepts `approve`, `reject`, `hold`, `retry` and `withdraw`.
 
 ## The Tray and the pull
@@ -20,11 +20,11 @@ The Tray holds every row the person can act on: `awaiting_approval` first (appro
 
 `npm run sheets:pull` accepts `approve`, `reject`, `hold`, `retry` and `withdraw` in `Action`, case-insensitive. `retry` on a manual row moves it to `approved` ("sheet: retry") so it re-enters the autopilot path; `reject` and `withdraw` move the row to the matching status; `approve` and `hold` move nothing here and are consumed downstream from the queue file. `Edits` is carried into the queue untouched. An action the tool does not know is reported and the row is left alone, cells uncleared.
 
-Both commands fail closed, so read the exit code, never the prose: a Tray read error (auth, quota, a header missing `id` / `Action` / `Edits`) aborts the pull before anything is cleared and the push before anything is rewritten; a push aborts on the first API error with exit 1; missing credentials exit 2 with a one-line reason rather than a silent success. Each run prints one compact JSON object on stdout with `tray_rows`, `manual_rows`, `dropped_unclassified` and `actions_applied` — parse that, and report a non-zero exit as `sheet: failed (<reason>)`.
+Both commands fail closed, so read the exit code, never the prose: a Tray read error (auth, quota, a header missing `id` / `Action` / `Edits`) aborts the pull before anything is cleared and the push before anything is rewritten; a push aborts on the first API error with exit 1; missing credentials exit 2 with a one-line reason rather than a silent success. Each run prints one compact JSON object on stdout with `tray_rows`, `manual_rows`, `dropped_unclassified` and `actions_applied`; parse that, and report a non-zero exit as `sheet: failed (<reason>)`.
 
 ## Hard rules
 
-- Never invent transitions. If an opportunity is in an invalid state, surface the inconsistency — don't silently fix.
+- Never invent transitions. If an opportunity is in an invalid state, surface the inconsistency; don't silently fix.
 - Never overwrite the Sheet's `Tray.Action` or `Tray.Edits` columns. The push carries them across the rewrite; if you ever need to clear them, only do so explicitly via `npm run sheets:pull`, which clears only the cells it read and only after the queue file is written.
 - Keep `state/pipeline/opportunities.md` (the human-readable digest) regenerated on every push; `npm run pipeline -- summary` is what rewrites it, so run it even when the Sheet is unavailable.
 - `state/pipeline/opportunities.json` is not the store. It is produced on demand by `npm run pipeline -- export` and nothing reads it as truth; never edit it and never treat a stale copy as state.

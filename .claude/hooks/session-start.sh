@@ -1,5 +1,5 @@
 #!/bin/bash
-# session-start.sh — 6-line brief printed on every Claude Code session start.
+# session-start.sh: the short brief (up to 4 lines) printed on every Claude Code session start.
 # Stays tight to keep token cost low (the hook fires on every resume).
 
 set -euo pipefail

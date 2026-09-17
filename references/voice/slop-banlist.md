@@ -102,7 +102,7 @@
 
 - Triple ellipses (…) anywhere they shouldn't be
 - Smart-quote / straight-quote mixing
-- Double em-dash sentences (— sentence has two em-dashes —)
+- Em dashes (U+2014) and en dashes (U+2013), anywhere and in any number: AGENTS.md section 3 rule 2 bans both outright, so rewrite the clause with a colon, a comma, parentheses or a new sentence
 - Bullet glyphs other than the project's chosen bullet style
 
 ## Forbidden phrases (instant fail, never)

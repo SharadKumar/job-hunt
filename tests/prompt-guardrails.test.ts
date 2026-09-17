@@ -57,7 +57,7 @@ const REQUIRED: Record<string, string[]> = {
     "**Hard cap of 20 findings**",
     "**Compact JSON only.**",
     // The verdict contract the skill and resume:approve both depend on.
-    "`block` — only for `contradiction`, `unsupported`, or `rule`.",
+    "`block`: only for `contradiction`, `unsupported`, or `rule`.",
     "\"verdict\": \"pass | revise | block\"",
     // The proposed edit is written into the CV verbatim, so its rules are load-bearing.
     "**Source-backed.**",
