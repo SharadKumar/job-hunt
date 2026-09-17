@@ -1,0 +1,11 @@
+# Copied to <fixture root>/state/org/keyword-clouds.yaml by the test.
+version: 1
+clouds:
+  - id: example-delivery
+    kind: capability
+    label: Example Delivery
+    description: Fixture cloud, two terms, always fresh enough to render.
+    refreshed_at: "2026-01-01"   # the test stamps today over this so the cloud is never stale
+    terms:
+      - { term: delivery governance, tier: corpus }
+      - { term: portfolio reporting, tier: confirm }
