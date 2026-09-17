@@ -1,24 +1,29 @@
 /*
- * settings.js - the token this browser holds, the safety control, and how to
- * run the server.
+ * settings.js - the token this browser holds, the safety control, and whether
+ * the harness itself is running.
  *
  * AGENTS.md section 2: the kill switch halts every unattended send, so it lives
  * here rather than in the header, behind an armed press and in red. Autopilot
  * is the everyday switch and sits in the header; this one is the brake.
+ *
+ * The Harness card is the same reading as the Home card, with the policy file's
+ * own numbers beside it: the caps, the channels the policy names, the Sheet
+ * flag and the schedule. It is read only. Everything it reports is changed by
+ * editing the policy file or re-running the setup skill, not by a browser.
  */
 
 import {
   api, clear, getPolicy, guarded, h, isPolicyAvailable, loadPolicy, pageHeader, panel, readToken, render, toast, writeToken,
 } from "./app.js";
+import { channelLabel, duration } from "./home.js";
 
-/** The ways to run this UI, best first. */
-const COMMANDS = [
-  "npm run ui:portless            # https://job-hunt.localhost, no port to remember",
-  "npm run ui -- --open           # the plain port way, http://127.0.0.1:7788",
-  "bash scripts/install-ui-launchd.sh   # keep it running across logins",
-  "npm run ui -- --host 100.x.y.z   # a Tailscale address, with HARNESS_UI_TOKEN set",
-  "sheet:\n  enabled: false   # the local UI is the approval surface",
-];
+/** Where the person reads the long version. A path, not a link off this machine. */
+const DOCS_LINE = "Docs: README, Local UI section.";
+
+/** The environment variable scripts/daily.sh posts its one-line summary to. */
+const NOTIFY_HELP = "Set HARNESS_NOTIFY_URL to an ntfy topic url, or any url that accepts a POST body, "
+  + "and the daily run posts one line to it when it finishes: how many went out, how many are blocked, and the exit code. "
+  + "Unset, nothing is posted and nothing fails.";
 
 function tokenCard() {
   const input = h("input", { type: "password", id: "token-input", autocomplete: "off",
@@ -85,18 +90,79 @@ function safetyCard() {
   return panel("Safety", body);
 }
 
-function browserCard() {
-  return panel("This browser", h("ul", { class: "history" },
-    h("li", { text: `This browser is using ${location.origin}` }),
-    h("li", { text: readToken() ? "This browser holds a token." : "This browser holds no token." })));
+/** One `label: value` row, with the value in red when it wants attention. */
+function row(label, value, bad) {
+  return h("p", { class: "setting-row" },
+    h("span", { class: "setting-label", text: label }),
+    h("span", { class: bad ? "alarm" : "", text: value }));
+}
+
+const when = (iso, withTime) => {
+  if (!iso) return "never";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return String(iso);
+  const day = at.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+  return withTime ? `${day}, ${at.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}` : day;
+};
+
+/** The machine's state, filled in once GET /api/health answers. */
+function harnessCard() {
+  const body = h("div", { class: "harness" });
+  body.append(h("p", { class: "grey", text: "Reading the harness state." }));
+
+  (async () => {
+    let health = null;
+    try { health = await api("health"); } catch (error) {
+      clear(body);
+      body.append(h("p", { class: "grey", text: `Could not read the harness health. ${error.message}` }));
+      return;
+    }
+    const policy = getPolicy();
+    clear(body);
+
+    const last = health.last_run;
+    if (!last) body.append(row("Last run", "nothing logged yet", true));
+    else {
+      const verdict = last.exit_code === null
+        ? "did not finish"
+        : last.exit_code === 0 ? "finished cleanly" : `exited ${last.exit_code}`;
+      const took = duration(last.duration_seconds);
+      body.append(row("Last run", `${when(last.started_at || `${last.date}T00:00:00`, true)}, ${verdict}${took ? `, ${took}` : ""}`, last.exit_code !== 0));
+      body.append(h("p", { class: "grey small", text: last.log }));
+    }
+
+    body.append(row("Next run", health.next_run ? when(health.next_run, true) : "nothing scheduled", !health.next_run));
+    body.append(row("Schedule", health.schedule.installed
+      ? `installed, ${health.schedule.at || "no time in the plist"}`
+      : "not installed; run bash scripts/install-launchd.sh", !health.schedule.installed));
+
+    const cap = typeof health.caps.max_per_day === "number" ? ` of ${health.caps.max_per_day}` : "";
+    body.append(row("Sent today", `${health.caps.sent_today}${cap}`));
+    body.append(row("Autopilot", health.caps.autopilot_enabled ? "on" : "off"));
+    body.append(row("Kill switch", health.caps.kill_switch ? "on" : "off", health.caps.kill_switch));
+
+    if (policy) {
+      body.append(row("Autopilot channels", policy.channels && policy.channels.length ? policy.channels.join(", ") : "none"));
+      body.append(row("Google Sheet", policy.sheet_enabled ? "mirroring" : "off, this UI is the approval surface"));
+      body.append(h("p", { class: "grey small", text: policy.path }));
+    }
+
+    for (const channel of health.channels || []) {
+      body.append(row(`Login: ${channelLabel(channel.id)}`, channel.note, channel.state !== "ok"));
+    }
+    if (!(health.channels || []).length) body.append(row("Logins", "no channel is switched on", true));
+
+    body.append(row("Notifications", health.notify_url_set ? "HARNESS_NOTIFY_URL is set" : "HARNESS_NOTIFY_URL is not set"));
+    body.append(h("p", { class: "grey small measure", text: NOTIFY_HELP }));
+  })();
+
+  return panel("Harness", body);
 }
 
 export function viewSettings(view) {
-  view.append(pageHeader({ title: "Settings", lede: "The token, the kill switch and how to reach this page." }));
+  view.append(pageHeader({ title: "Settings", lede: "The token, the kill switch and whether the harness is running." }));
   const stack = h("div", { class: "stack" });
-  stack.append(tokenCard(), safetyCard(), browserCard());
-  stack.append(panel("About", h("div", {},
-    h("p", { class: "grey small measure", text: "The portless way is the one to use day to day: it puts the UI on a name instead of a port." }),
-    h("pre", { class: "commands", text: COMMANDS.join("\n\n") }))));
+  stack.append(tokenCard(), safetyCard(), harnessCard());
+  stack.append(panel("About", h("p", { class: "grey small measure", text: DOCS_LINE })));
   view.append(stack);
 }

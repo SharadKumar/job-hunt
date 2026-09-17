@@ -41,7 +41,7 @@ const CSS_PATH = path.join(STATIC_DIR, "app.css");
  * module here, not another thousand lines in app.js. */
 const MODULES = [
   "app.js", "applications.js", "row.js", "keywords.js",
-  "home.js", "settings.js", "today.js", "digest.js", "resumes.js",
+  "home.js", "settings.js", "runs.js", "rules.js", "resumes.js",
 ];
 
 /** No module may pass this. It is the whole reason the front end is split. */
@@ -81,6 +81,8 @@ const keywords = src["keywords.js"];
 const home = src["home.js"];
 const settings = src["settings.js"];
 const resumesJs = src["resumes.js"];
+const rulesJs = src["rules.js"];
+const runsJs = src["runs.js"];
 
 test("index.html loads app.js and app.css", () => {
   assert.match(html, /<script[^>]+type="module"[^>]+src="app\.js"/, "index.html must load app.js as a module");
@@ -144,10 +146,15 @@ test("no module is longer than 500 lines", () => {
 });
 
 test("app.js imports every screen module", () => {
-  for (const name of MODULES.filter((m) => m !== "app.js")) {
+  // keywords.js is the exception: it is the Resumes screen's second tab now,
+  // so the screen that owns the tabs imports it and the router does not.
+  for (const name of MODULES.filter((m) => m !== "app.js" && m !== "keywords.js")) {
     assert.ok(app.includes(`from "./${name}"`), `app.js does not import ./${name}`);
   }
   assert.match(app, /import \{ viewResumes \} from "\.\/resumes\.js"/, "app.js must import the resumes view");
+  assert.match(resumesJs, /import \{ viewKeywords \} from "\.\/keywords\.js"/,
+    "the Resumes screen must own the evidence questions tab");
+  assert.ok(!app.includes('from "./keywords.js"'), "the router must not draw the keywords view itself");
 });
 
 test("no module uses a browser modal", () => {
@@ -264,21 +271,44 @@ test("the keyword view can drain a list of hundreds", () => {
   assert.match(keywords, /n >= 1 && n <= KEYWORD_OPTIONS\.length/, "1 to 4 must still pick an answer");
 });
 
-test("every route is present, and Home is the default", () => {
-  for (const route of ["home", "applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"]) {
+test("every address the UI answers on is routed, and Home is the default", () => {
+  // Nine addresses: the seven routes, the Resumes tab that carries a segment,
+  // and the row detail that carries an id.
+  for (const route of ["home", "applications", "row", "resumes", "rules", "runs", "settings"]) {
     assert.ok(app.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  for (const hash of ["#/home", "#/applications", "#/resumes", "#/keywords", "#/today", "#/digest", "#/settings"]) {
+  assert.match(app, /ROUTES = \["home", "applications", "row", "resumes", "rules", "runs", "settings"\]/,
+    "the route list is the contract and must read in nav order");
+  assert.ok(resumesJs.includes('hash: "#/resumes/evidence"'), "the evidence questions must have their own address");
+  assert.ok(applications.includes("#/row/"), "an application card must link to #/row/<id>");
+  for (const hash of ["#/home", "#/applications", "#/resumes", "#/rules", "#/runs", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
-  assert.ok(applications.includes("#/row/"), "app.js must link an application card to #/row/<id>");
   assert.match(app, /location\.hash \|\| "#\/home"/, "an empty hash must resolve to Home");
   assert.match(app, /if \(!location\.hash\) location\.hash = "#\/home"/, "a first load must land on Home");
   assert.match(app, /!ROUTES\.includes\(name\) \? "home"/, "an unknown hash must fall back to Home");
 });
 
+test("every address that moved still works", () => {
+  // Keywords became the Resumes screen's second tab, Digest became Rules and
+  // Today became Runs. All three are in the person's history and in the Home
+  // cards another package owns, so none of them may 404 into Home silently.
+  assert.match(app, /export const REDIRECTS = \{/, "app.js must name the moved addresses in one table");
+  for (const [from, to] of [
+    ["queue", "#/applications"],
+    ["keywords", "#/resumes/evidence"],
+    ["digest", "#/rules"],
+    ["today", "#/runs"],
+  ]) {
+    assert.match(app, new RegExp(`${from}: "${to.replace(/\//g, "\\/")}"`), `${from} must redirect to ${to}`);
+  }
+  assert.match(app, /history\.replaceState\(null, "", target\)/, "a moved address must be rewritten in the address bar");
+  assert.ok(!front.includes('"#/queue"'), "the front end must link to #/applications, not #/queue");
+  assert.ok(!/href="#\/(keywords|today|digest|queue)"/.test(html), "the nav must not still link to a moved address");
+});
+
 test("the nav is in the agreed order, with the switch then the cog last", () => {
-  const order = ["#/home", "#/applications", "#/resumes", "#/keywords", "#/today", "#/digest"];
+  const order = ["#/home", "#/applications", "#/resumes", "#/rules", "#/runs"];
   let at = -1;
   for (const hash of order) {
     const found = html.indexOf(`href="${hash}"`);
@@ -294,8 +324,8 @@ test("the screen is called Applications, and the old address still works", () =>
   assert.match(html, /<a href="#\/applications" data-nav="applications">Applications<\/a>/, "the nav link must read Applications");
   assert.ok(!/>Queue</.test(html), "index.html must not still call the screen Queue");
   assert.ok(!front.includes('"#/queue"'), "the front end must link to #/applications, not #/queue");
-  assert.match(app, /name === "queue"/, "app.js must still accept the old #/queue address");
-  assert.match(app, /history\.replaceState\(null, "", "#\/applications"\)/, "#/queue must redirect to the canonical address");
+  assert.ok(app.includes('queue: "#/applications"'), "app.js must still accept the old #/queue address");
+  assert.match(app, /name === "queue"/, "an applications tab must survive the redirect from #/queue");
 });
 
 test("the header carries an autopilot switch against the policy API", () => {
@@ -368,8 +398,7 @@ test("Home is a dashboard of cards, each linking to its screen", () => {
   ]) {
     assert.ok(home.includes(`"${title}"`), `Home is missing the card: ${title}`);
   }
-  for (const href of ["#/applications/needs", "#/applications/sent", "#/applications/waiting",
-    "#/resumes", "#/keywords", "#/digest", "#/today"]) {
+  for (const href of ["#/applications/needs", "#/applications/sent", "#/applications/waiting", "#/resumes"]) {
     assert.ok(home.includes(href), `a Home card does not link to ${href}`);
   }
   assert.ok(home.includes("Start deciding"), "the keywords card must carry the primary Start deciding button");
@@ -415,7 +444,7 @@ test("the run card renders markdown rather than printing the source", () => {
     "home.js must use the shared markdown renderer from app.js",
   );
   assert.match(app, /export function richMarkdown\s*\(/, "app.js must export the shared renderer");
-  assert.ok(src["today.js"].includes("richMarkdown"), "Today must use the same renderer as Home");
+  assert.ok(runsJs.includes("richMarkdown"), "Runs must use the same renderer as Home");
   assert.ok(
     !/h\("pre", \{ class: "home-journal"/.test(home),
     "the run card must not print the journal as raw preformatted source",
@@ -462,6 +491,10 @@ test("every API endpoint in the contract is called", () => {
     "policy",
     "policy/autopilot",
     "policy/kill-switch",
+    "runs?limit=30",
+    "runs/",
+    "rules",
+    "rules/standing",
   ]) {
     assert.ok(front.includes(endpoint), `the front end never calls the API endpoint: ${endpoint}`);
   }
@@ -512,7 +545,7 @@ test("the stylesheet handles dark mode and phone width", () => {
 
 test("every screen draws its title through the one page header", () => {
   // Titles, ledes and top margins used to be set per screen and drifted.
-  for (const name of ["home.js", "applications.js", "row.js", "resumes.js", "keywords.js", "today.js", "digest.js", "settings.js"]) {
+  for (const name of ["home.js", "applications.js", "row.js", "resumes.js", "keywords.js", "runs.js", "rules.js", "settings.js"]) {
     assert.match(src[name], /pageHeader\(\{/, `${name} must draw its title through pageHeader`);
   }
   assert.match(app, /export function pageHeader\s*\(/, "app.js must own the page header");
@@ -669,9 +702,11 @@ test("the stylesheet keeps to the flat card house style", () => {
   assert.match(rules, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
 });
 
-test("the Resumes screen sits between Applications and Keywords", () => {
+test("the Resumes screen sits between Applications and Rules", () => {
   assert.match(html, /<a href="#\/resumes" data-nav="resumes">Resumes<\/a>/, "the nav link must read Resumes");
-  const order = ["#/applications", "#/resumes", "#/keywords"];
+  assert.match(html, /<a href="#\/rules" data-nav="rules">Rules<\/a>/, "the nav link must read Rules");
+  assert.match(html, /<a href="#\/runs" data-nav="runs">Runs<\/a>/, "the nav link must read Runs");
+  const order = ["#/applications", "#/resumes", "#/rules", "#/runs"];
   let at = -1;
   for (const hash of order) {
     const found = html.indexOf(`href="${hash}"`);
@@ -686,27 +721,114 @@ test("the Resumes screen lives in its own module that app.js routes to", () => {
   assert.ok(resumesJs.includes('"resumes"'), "resumes.js must call GET /api/resumes");
 });
 
-test("the Resumes screen renders nothing and approves nothing", () => {
-  // AGENTS.md section 5: both belong to resume-writer, resume-critic and an
-  // attended `npm run resume:approve`. The screen says so in as many words.
+test("the Resumes screen renders nothing, and approves only through the tool", () => {
+  // AGENTS.md section 5: rendering belongs to resume-writer and the content
+  // review to resume-critic, so neither is offered here. Approval is offered,
+  // and it is the real `resume:approve` behind the API, gate and all.
   assert.ok(
-    resumesJs.includes("Rendering and approval run through /resume-review with the person present."),
-    "the note under the list must name /resume-review",
+    resumesJs.includes("Rendering runs through /resume-review with the person present."),
+    "the note under the list must still name /resume-review for rendering",
+  );
+  assert.ok(
+    resumesJs.includes("refuses without a current critic verdict"),
+    "the note must say that approval keeps the critic gate",
   );
   assert.ok(
     resumesJs.includes("No positionings yet. Run /onboarding, then /resume-review."),
     "the empty state must point at /onboarding and /resume-review",
   );
-  assert.ok(
-    !/text:\s*"(Render|Approve)(\s+[A-Za-z]+)?"/.test(resumesJs),
-    "resumes.js must not offer a Render or an Approve button",
-  );
+  assert.ok(!/text:\s*"Render\b/.test(resumesJs), "resumes.js must not offer a Render button");
   for (const label of ["Open PDF", "Open DOCX", "Markdown"]) {
     assert.ok(resumesJs.includes(label), `the card footer is missing the button: ${label}`);
   }
   assert.match(resumesJs, /Critic \$\{verdict\}/, "the card must carry a critic line");
   assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
   assert.ok(home.includes("stamp"), "the Home resumes card must carry the approval stamp");
+});
+
+test("approving a render is armed, gated on the critic, and posts to the tool", () => {
+  assert.match(resumesJs, /text: "Approve this render"/, "the approve control must say what it approves");
+  assert.match(resumesJs, /guarded\(button, "Approve"/, "approval must arm before it posts");
+  assert.match(resumesJs, /class: "btn primary approve"/, "approval is the black primary action on the card");
+  assert.match(resumesJs, /critic\.verdict !== "pass" \|\| approved\) return box/,
+    "approval must only be offered on a passing critic and an unapproved stamp");
+  assert.match(resumesJs, /api\(`resumes\/\$\{encodeURIComponent\(item\.id\)\}\/approve`/,
+    "approval must post to the resume approve route");
+  assert.match(resumesJs, /needs review: \$\{plural\(critic\.findings_count/,
+    "a critic that asked for a revision must be named as work, with its count");
+  assert.ok(resumesJs.includes('text: "run /resume-review"'), "and it must name the skill that does the work");
+  // A refusal is the tool's own words. Softening it into a pass is the failure
+  // mode AGENTS.md section 3.8 exists to stop.
+  assert.match(resumesJs, /text: error\.message/, "a refusal must be shown verbatim");
+});
+
+test("the gate chips are gone, replaced by a tally and a fold", () => {
+  assert.match(resumesJs, /Gates: \$\{tally\.pass\} pass, \$\{tally\.warn\} warn, \$\{tally\.fail\} fail/,
+    "the gates must read as one sentence");
+  assert.match(resumesJs, /text: "details", "aria-expanded": "false"/, "the names must sit behind a details fold");
+  assert.match(resumesJs, /class: `gate-verdict \$\{toneFor\(gate\.verdict\)\}`/,
+    "the fold must carry a toned verdict beside each gate name");
+  assert.ok(!/function gateChip/.test(resumesJs), "the unlabelled chip row must be gone");
+  assert.match(resumesJs, /class: "resume-stamp"/, "the stamp must sit on its own line");
+  assert.match(resumesJs, /text: `rendered \$\{String\(item\.last_render_at\)\.slice\(0, 10\)\}`/,
+    "the render date must sit with the stamp");
+});
+
+test("the Resumes screen has two tabs and the keyword view is the second", () => {
+  assert.match(resumesJs, /label: "Baselines"/, "the first tab must be Baselines");
+  assert.match(resumesJs, /label: "Evidence questions"/, "the second tab must be Evidence questions");
+  assert.match(resumesJs, /pageHeader\(\{ title: "Resumes", lede: count, aside: tabStrip\(active\) \}\)/,
+    "the tabs must sit in the one page header, not in a header of their own");
+  assert.match(resumesJs, /viewKeywords\(view, \{ lede: count \}\)/,
+    "the keyword view must render under the Resumes header rather than a second one");
+  assert.match(keywords, /Run \/keyword-triage first: it clears rows that are not skills/,
+    "a long ledger must be sent to /keyword-triage first");
+  assert.match(keywords, /TRIAGE_THRESHOLD = 40/, "the banner threshold must be 40 pending terms");
+  assert.match(keywords, /banner\.hidden = pending <= TRIAGE_THRESHOLD/, "and it must only show above it");
+});
+
+test("the Rules screen promotes a theme, edits a rule and shows the patterns read only", () => {
+  assert.match(rulesJs, /export async function viewRules\s*\(/, "rules.js must export the view");
+  for (const title of ["Recurring critic themes", "Standing rules", "Never named", "Editorial bans"]) {
+    assert.ok(rulesJs.includes(title), `the Rules screen is missing: ${title}`);
+  }
+  // A theme key is machinery. `standing-rule-4:other` is not a heading.
+  assert.match(rulesJs, /export function themeTitle\s*\(/, "a theme key must reach the page as words");
+  assert.match(rulesJs, /`Standing rule \$\{numbered\[1\]\}`/, "standing-rule-4 must read as Standing rule 4");
+  assert.match(rulesJs, /inflate: "inflation"/, "a verb class must read as its noun");
+  assert.match(rulesJs, /\(theme\.count \?\? 0\) >= 2/, "only a theme said twice is expanded");
+  assert.match(rulesJs, /Show \$\{plural\(singles\.length, "single finding"\)\}/, "singletons sit behind a toggle that counts them");
+  assert.match(rulesJs, /text: "Promote to standing rule"/, "a theme must offer promotion");
+  assert.match(rulesJs, /guarded\(promote, "Promote"/, "promotion must arm before it writes");
+  assert.match(rulesJs, /api\("rules\/standing", \{ method: "POST", body: \{ text, source_theme: theme\.key \} \}\)/,
+    "promotion must post the rule text and the theme it came from");
+  assert.match(rulesJs, /api\(`rules\/standing\/\$\{index\}`/, "a rule must be editable in place");
+  assert.match(rulesJs, /api\(`rules\/standing\/\$\{index\}\/remove`/, "a rule must be removable");
+  assert.match(rulesJs, /guarded\(remove, "Remove"/, "removal must arm before it writes");
+  assert.match(rulesJs, /class: "btn danger", text: "Remove"/, "removal is the red control");
+  // The patterns are read only on purpose: a regex typed into a browser is a
+  // way to quietly stop blocking a client's name.
+  assert.ok(
+    rulesJs.includes("Edit these in the file, not here."),
+    "the never-named card must say it is read only",
+  );
+  assert.ok(!/api\("rules\/never-named/.test(rulesJs), "nothing may post a never-named pattern");
+});
+
+test("the Runs screen lists runs newest first and opens one at a time", () => {
+  assert.match(runsJs, /export async function viewRuns\s*\(/, "runs.js must export the view");
+  assert.ok(runsJs.includes("runs?limit=30"), "the list must ask for the last thirty runs");
+  assert.match(runsJs, /newest first/, "the count line must say the order");
+  assert.ok(
+    runsJs.includes("No runs yet. The first daily run writes one at 07:00."),
+    "the empty state must say when the first run happens",
+  );
+  assert.match(runsJs, /api\(`runs\/\$\{encodeURIComponent\(run\.date\)\}`\)/,
+    "a row must fetch its own detail when it is opened");
+  assert.match(runsJs, /if \(!open \|\| loaded\) return/, "a row must not refetch what it already has");
+  assert.match(runsJs, /Sent unattended \(\$\{letters\.length\}\)/, "the letters an unattended run sent must be named as such");
+  assert.match(runsJs, /exit \$\{run\.exit_code\}/, "a nonzero exit must be shown, not hidden");
+  assert.match(runsJs, /export function duration\s*\(/, "a run must say how long it took");
 });
 
 test("the resume card is styled as the board asks", () => {

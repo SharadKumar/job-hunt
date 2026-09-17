@@ -137,6 +137,26 @@ a:hover { text-decoration: underline; }
 .nav a:hover { text-decoration: none; border-bottom-color: var(--grey); }
 .nav a[aria-current="page"] { font-weight: 500; border-bottom-color: var(--ink); }
 
+/* A screen's own tabs, on the page rather than in the header: the same
+   underline the nav uses, one step down the type scale, so the second level of
+   navigation is visibly second. They sit in the page header's aside slot. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 13px;
+  color: var(--grey);
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+}
+.tabs a:hover { text-decoration: none; color: var(--ink); border-bottom-color: var(--grey); }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 500; border-bottom-color: var(--ink); }
+
 /* The cog is a bare icon, not a second button: the autopilot switch is the one
    bordered control up here, so the two stop reading as a pair. The gap is
    24 px everywhere except switch to cog, which the -8 px pulls back to 16. */

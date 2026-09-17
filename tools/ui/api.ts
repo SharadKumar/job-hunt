@@ -363,15 +363,37 @@ export async function readPackage(draftDir: string | undefined | null): Promise<
   return { jd, cover_letter: coverLetter, metadata, letter_critic: letterCritic, confirmation };
 }
 
+/** True when `dir` is a directory that is actually there. */
+async function isDir(dir: string): Promise<boolean> {
+  const stat = await fsp.stat(dir).catch(() => null);
+  return stat ? stat.isDirectory() : false;
+}
+
+/**
+ * Where a row's prepared package actually sits.
+ *
+ * `draftDir` is a column only some writers fill: most rows were moved by a
+ * path that never set it, and the archive folder is still there under the
+ * row's id. Trusting the column alone showed an empty package on a row whose
+ * letter, JD and critic verdict were on disk all along. So the column is
+ * preferred, then checked, and the archive folder by id is the fallback.
+ */
+export async function packageDirOf(row: Opportunity, ctx: ApiContext = {}): Promise<string | null> {
+  if (row.draftDir && (await isDir(resolveDraftDir(row.draftDir)))) return row.draftDir;
+  const byId = path.join(archiveDirOf(ctx), row.id);
+  if (await isDir(byId)) return byId;
+  return null;
+}
+
 export async function getRowDetail(
   id: string,
-  _ctx: ApiContext = {},
+  ctx: ApiContext = {},
 ): Promise<{ row: Opportunity; reason: string | null; package: PackageFiles }> {
   const row = await getOpportunity(id);
   if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
   // The same one line the queue shows, picked the same way: the stored row has
   // no `reason` column of its own.
-  return { row, reason: displayReason(row), package: await readPackage(row.draftDir) };
+  return { row, reason: displayReason(row), package: await readPackage(await packageDirOf(row, ctx)) };
 }
 
 // ---------------------------------------------------------------------------

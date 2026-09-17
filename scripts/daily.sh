@@ -50,6 +50,28 @@ PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and follow i
 EXIT=0
 TIMED_OUT=0
 
+# "<sent> <blocked>" off the daily summary's own Numbers table, or nothing.
+# The table is the run's own arithmetic, and the columns are read by name so a
+# new column between them cannot silently shift the answer.
+notify_counts() {
+  local file="$SUMMARY_DIR/$DATE.md"
+  [ -f "$file" ] || return 0
+  awk -F'|' '
+    function number(cell) { return match(cell, /[0-9]+/) ? substr(cell, RSTART, RLENGTH) : "" }
+    /^\| *Sent today *\|/ {
+      for (i = 2; i < NF; i++) { gsub(/^ +| +$/, "", $i); col[$i] = i }
+      header = 1
+      next
+    }
+    header && /^\|[-:| ]+\|$/ { next }
+    header && /^\|/ {
+      if (col["Sent today"] == "" || col["Manual"] == "") exit
+      printf "%s %s", number($(col["Sent today"])), number($(col["Manual"]))
+      exit
+    }
+  ' "$file"
+}
+
 # `exec` so $! is the CLI itself, not a wrapper subshell the signals would stop at.
 run_cli() {
   if [ "$CLI" = "claude" ]; then
@@ -112,6 +134,23 @@ run_cli() {
         echo "- Log: $LOG_FILE"
         echo "- Nothing was submitted by this run. Re-run \`bash scripts/daily.sh\` or work the pipeline by hand."
       } >"$SUMMARY_DIR/$DATE.md"
+    fi
+  fi
+
+  # A one-line push, for a person who is not at the machine at 07:00.
+  # HARNESS_NOTIFY_URL is any url that accepts a POST body: an ntfy topic
+  # (https://ntfy.sh/<your-topic>) is the easy one. Unset, nothing is sent.
+  # A failed POST is logged and tolerated: the run already did its work, and a
+  # notification service being down is not a reason to report a failed run.
+  if [ -n "${HARNESS_NOTIFY_URL:-}" ]; then
+    COUNTS=$(notify_counts || true)
+    SENT=$(printf '%s' "$COUNTS" | cut -d' ' -f1)
+    BLOCKED=$(printf '%s' "$COUNTS" | cut -d' ' -f2)
+    MESSAGE="Job hunt $DATE: sent ${SENT:-?}, blocked ${BLOCKED:-?}, exit $EXIT"
+    if curl -fsS -m 10 -d "$MESSAGE" "$HARNESS_NOTIFY_URL" >/dev/null 2>&1; then
+      echo "notified: $MESSAGE"
+    else
+      echo "notify POST failed (tolerated): $MESSAGE"
     fi
   fi
 

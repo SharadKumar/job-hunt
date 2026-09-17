@@ -3,7 +3,7 @@
  *
  * No framework, no build step, no CDN. The screens live in their own modules
  * beside this one (home.js, applications.js, row.js, keywords.js, resumes.js,
- * today.js, digest.js, settings.js) and import what they need from here, so no
+ * runs.js, rules.js, settings.js) and import what they need from here, so no
  * single file has to be read end to end to change one screen.
  *
  * The import graph is a cycle on purpose: this module imports each view, each
@@ -22,15 +22,28 @@ import { viewHome } from "./home.js";
 import { viewApplications } from "./applications.js";
 import { viewRow } from "./row.js";
 import { viewResumes } from "./resumes.js";
-import { viewKeywords } from "./keywords.js";
-import { viewToday } from "./today.js";
-import { viewDigest } from "./digest.js";
+import { viewRuns } from "./runs.js";
+import { viewRules } from "./rules.js";
 import { viewSettings } from "./settings.js";
 
 // --- Constants ---
 
-/** Hash routes, in nav order. #/queue is the old address for #/applications. */
-export const ROUTES = ["home", "applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"];
+/** Hash routes, in nav order, plus the row detail the nav does not show. */
+export const ROUTES = ["home", "applications", "row", "resumes", "rules", "runs", "settings"];
+
+/**
+ * Addresses that moved, and where they moved to. Keywords became the Resumes
+ * screen's second tab (they are evidence questions about a CV, not a screen of
+ * their own), Digest became Rules and Today became Runs. Every one of them is
+ * still a working address: they are in the person's history, in the journal and
+ * in the Home cards another package owns.
+ */
+export const REDIRECTS = {
+  queue: "#/applications",
+  keywords: "#/resumes/evidence",
+  digest: "#/rules",
+  today: "#/runs",
+};
 
 /** Pipeline status in plain words. The raw keys are machinery: nobody reads
  * "manual_action_needed to manual_action_needed" and learns anything. */
@@ -402,14 +415,24 @@ function markNav(route) {
 
 // --- Router ---
 
+/** `#/applications/sent` into `{ name: "applications", id: "sent" }`. */
+function splitHash(hash) {
+  const [name, ...rest] = String(hash).replace(/^#\/?/, "").split("/");
+  return { name, id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
+}
+
 export function parseHash() {
-  const raw = (location.hash || "#/home").replace(/^#\/?/, "");
-  const [name, ...rest] = raw.split("/");
-  // #/queue is where the applications screen used to live. Move the address on.
-  if (name === "queue") history.replaceState(null, "", "#/applications");
-  if (name === "queue") return { route: "applications", id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
+  let { name, id } = splitHash(location.hash || "#/home");
+  const moved = REDIRECTS[name];
+  if (moved) {
+    // Only the applications tabs carry a segment worth keeping; the other old
+    // addresses had none, so they land on the new screen's own default.
+    const target = id && name === "queue" ? `${moved}/${encodeURIComponent(id)}` : moved;
+    history.replaceState(null, "", target);
+    ({ name, id } = splitHash(target));
+  }
   const route = !name || !ROUTES.includes(name) ? "home" : name;
-  return { route, id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
+  return { route, id };
 }
 
 let renderToken = 0;
@@ -424,16 +447,15 @@ export async function render() {
   await Promise.all([loadSummary(), loadPolicy()]);
   if (mine !== renderToken) return;
   autopilotSwitch(() => render());
-  const ui = { h, panel, fetchInto, pageHeader };
   try {
     if (route === "row") {
       if (id) await viewRow(view, id);
       else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the applications list." }));
     } else if (route === "applications") await viewApplications(view, id);
-    else if (route === "resumes") await viewResumes(view, ui);
-    else if (route === "keywords") await viewKeywords(view);
-    else if (route === "today") await viewToday(view);
-    else if (route === "digest") await viewDigest(view);
+    // `id` is the Resumes tab: "" is Baselines, "evidence" is the questions.
+    else if (route === "resumes") await viewResumes(view, id);
+    else if (route === "rules") await viewRules(view);
+    else if (route === "runs") await viewRuns(view);
     else if (route === "settings") viewSettings(view);
     else await viewHome(view);
   } catch (error) {

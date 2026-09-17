@@ -405,24 +405,31 @@ function summariseAudit(audit: RawAudit | null): AuditSummary {
   };
 }
 
-function approvalStatus(
+/**
+ * What the approval stamp says, from the metadata alone.
+ *
+ * The hashes are the truth. `approved_hash` is the content the person read and
+ * approved; `content_hash` is the content on disk now. They agree or they do
+ * not, and nothing else has a vote.
+ *
+ * This used to also call an approval stale when an artefact's mtime was newer
+ * than `approved_at`, on the theory that the pages had been rebuilt since. A
+ * file copy, a restore, a `touch`, or any of the several things that reset
+ * mtimes wholesale on a machine make that theory false, and it then declares
+ * every approved CV "stale, rebuilt after approval" while the hashes sit there
+ * agreeing. A rebuild that changed anything moves `content_hash` and is caught
+ * by the first rule; a rebuild that changed nothing was not a change.
+ *
+ * Exported so the decision table can be tested without a filesystem.
+ */
+export function approvalStatus(
   meta: RawMetadata | null,
   hasArtefacts: boolean,
-  mtimes: { audit: string | null; composition: string | null } = { audit: null, composition: null },
 ): { status: ResumeCard["status"]; date: string | null } {
   if (!meta) return { status: hasArtefacts ? "fresh" : "missing", date: null };
   // A stored approval goes stale as soon as the render's content_hash moves on.
   if (meta.approved_hash && meta.content_hash && meta.approved_hash !== meta.content_hash) {
     return { status: "stale", date: shortDate(meta.approved_at) };
-  }
-  // Hashes can agree while the artefacts on disk were rewritten after the
-  // approval: the approval was of pages that no longer exist as approved.
-  const approvedAt = meta.approved_at ? Date.parse(meta.approved_at) : NaN;
-  if (Number.isFinite(approvedAt)) {
-    const rebuilt = [mtimes.audit, mtimes.composition]
-      .map((iso) => (iso ? Date.parse(iso) : NaN))
-      .some((t) => Number.isFinite(t) && t > approvedAt + 1000);
-    if (rebuilt) return { status: "stale", date: shortDate(meta.approved_at) };
   }
   const declared = typeof meta.approval_status === "string" ? meta.approval_status : null;
   if (declared === "approved") return { status: "approved", date: shortDate(meta.approved_at) };
@@ -1004,7 +1011,7 @@ async function buildCard(args: {
 
   const hasArtefacts = Boolean(pdf || docx || html || md);
   const mtimes = { audit: await mtimeOf(auditPath), composition: await mtimeOf(compositionPath) };
-  const { status, date } = approvalStatus(meta, hasArtefacts, mtimes);
+  const { status, date } = approvalStatus(meta, hasArtefacts);
 
   let warnCount = 0;
   let failCount = 0;

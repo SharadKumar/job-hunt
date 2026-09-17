@@ -1,1 +1,79 @@
-/* Styles owned by work package a. */
+/* Styles owned by work package a: the Harness readings on Home and Settings,
+   and the screening answers card. Same palette and the same flat surfaces as
+   app.css; nothing here introduces a colour or a shadow of its own. */
+
+/* A clean exit, said in the one green this page allows. `.alarm` in app.css is
+   the red half of the same pair. */
+.ok { color: var(--green); font-weight: 600; }
+
+/* --- Settings: one reading per line ------------------------------------- */
+
+.harness .setting-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.setting-label {
+  flex: 0 0 150px;
+  color: var(--grey);
+}
+
+.harness p.grey.small { margin: 0 0 12px; }
+
+/* --- The screening card -------------------------------------------------- */
+
+.screening-ask {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-bottom: 16px;
+}
+
+.screening-ask:first-of-type { border-top: 0; padding-top: 0; }
+
+.screening-question { margin: 0 0 4px; font-weight: 600; }
+
+.screening-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 0;
+}
+
+.screening-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.screening-input.short { flex: 0 0 96px; }
+
+.screening-input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+.screening-years {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.screening-banked { margin-top: 16px; font-size: 14px; }
+
+.screening-banked summary { cursor: pointer; color: var(--grey); }
+
+.screening-banked-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}

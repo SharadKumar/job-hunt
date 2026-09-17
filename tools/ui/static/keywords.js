@@ -1,6 +1,12 @@
 /*
  * keywords.js - draining the pending keyword confirmations, one term at a time.
  *
+ * This is the Resumes screen's "Evidence questions" tab: a pending term is the
+ * ledger asking whether a term the market wants is actually true of this
+ * person, which is a question about their CV. The Resumes screen draws the page
+ * header and hands its lede down, so `viewKeywords` renders under that title
+ * when it is given one and draws its own when it is not.
+ *
  * Hundreds of terms sit pending, so the view keeps its own pass: the order to
  * work through, where the person is in it, what they settled and what they put
  * off. It lives in sessionStorage, so a refresh does not lose the place.
@@ -150,17 +156,32 @@ const categoryOf = (item) => {
 const mustHave = (item) => item.must_have === true || item.tier === "must_have"
   || (item.plans || []).some((plan) => plan && (plan.must_have === true || plan.tier === "must_have"));
 
-export async function viewKeywords(view) {
-  const count = h("p", { class: "page-count", text: "Loading pending terms." });
+/**
+ * Past this many pending terms the ledger is mostly rows that are not skills at
+ * all, and answering them one at a time is the wrong job: /keyword-triage
+ * clears those deterministically and leaves the real questions behind.
+ */
+const TRIAGE_THRESHOLD = 40;
+
+export async function viewKeywords(view, opts) {
+  const options = opts || {};
+  const count = options.lede || h("p", { class: "page-count", text: "Loading pending terms." });
+  const banner = h("p", { class: "triage-banner", hidden: true });
   const layout = h("div", { class: "layout kw-layout" });
   const left = h("aside", { class: "card kw-list", id: "kw-list" });
   const right = h("div", { class: "stack" });
-  view.append(pageHeader({ title: "Keywords", lede: count }), layout);
+  if (!options.lede) view.append(pageHeader({ title: "Evidence questions", lede: count }));
+  view.append(banner, layout);
   let terms = [];
   const load = async () => {
     const data = await api("keywords/pending?all=1");
     terms = data.terms || [];
-    count.textContent = `${data.term_total ?? terms.length} terms pending, ${data.pending_total ?? 0} questions behind them.`;
+    const pending = data.term_total ?? terms.length;
+    count.textContent = `${pending} terms pending, ${data.pending_total ?? 0} questions behind them.`;
+    banner.hidden = pending <= TRIAGE_THRESHOLD;
+    banner.textContent = banner.hidden
+      ? ""
+      : `Run /keyword-triage first: it clears rows that are not skills. ${pending} pending.`;
   };
   try { await load(); } catch (error) { return layout.append(errorBox(error, "Could not load the pending terms.", () => render())); }
   layout.append(left, right);

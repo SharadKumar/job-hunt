@@ -1,23 +1,30 @@
 /*
- * applications.js - the applications board: a list of job cards with a filter
- * column beside it.
+ * applications.js - the applications board: one compact row per job, with a
+ * filter column beside it.
  *
- * AGENTS.md section 2: nothing here sends. The buttons on a card move a row in
- * the local pipeline, which is the same thing the Sheet's Tray column does.
+ * A row is two lines. The first says what the job is and what it scored, the
+ * second says why it is sitting here and offers the single thing the person can
+ * do about it. Which button that is comes from the server (GET /api/rows
+ * returns `action`), so the list, the row detail and the tests all read one
+ * derivation instead of three copies of a regex.
+ *
+ * AGENTS.md section 2: nothing here sends. The buttons move a row in the local
+ * pipeline, which is the same thing the Sheet's Tray column does.
  */
 
 import {
-  $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, pageHeader, render, statusLabel, toast, when,
+  $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, pageHeader, panel, render, statusLabel, toast,
 } from "./app.js";
 
 /** Application tabs, in the order the person works them. Sent is capped at 30 rows.
  * `label` is the short name, `long` is how the filter column says it. */
 export const TABS = [
-  { key: "needs", label: "Blocked", long: "Blocked", status: "manual_action_needed", action: "retry" },
-  { key: "waiting", label: "To approve", long: "To approve", status: "awaiting_approval", action: "approve" },
-  { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted", action: "approve" },
-  { key: "parked", label: "Parked", long: "Parked", status: "parked", action: "retry" },
+  { key: "needs", label: "Blocked", long: "Blocked", status: "manual_action_needed" },
+  { key: "waiting", label: "To approve", long: "To approve", status: "awaiting_approval" },
+  { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted" },
+  { key: "parked", label: "Parked", long: "Parked", status: "parked" },
   { key: "sent", label: "Sent", long: "Sent", status: "submitted", limit: 30 },
+  { key: "responses", label: "Responses", long: "Responses", status: "responded,interview,offered,won" },
 ];
 
 /** What each tab says when it is empty: direction, not a shrug. */
@@ -27,6 +34,7 @@ const EMPTY = {
   shortlisted: "Nothing is shortlisted. The hunt adds roles here once they fit and nothing blocks them.",
   parked: "Nothing is parked. Roles that do not fit, or cannot be done from Sydney, end up here.",
   sent: "Nothing has been sent yet. Submitted applications appear here, most recent first.",
+  responses: "No replies yet. A row moves here when you record a response, an interview, an offer or a win.",
 };
 
 /** The person's five decisions on a row. The server maps each to a transition. */
@@ -36,11 +44,41 @@ export const ACTIONS = [
   { key: "withdraw", label: "Withdraw", danger: true },
 ];
 
+/** Where the row detail looks for a request to open with the screening panel
+ * focused. A hash carries the id and nothing else, so the intent travels here. */
+export const FOCUS_KEY = "jobHuntFocusScreening";
+
+/** A channel key as the person says it out loud. */
+export function channelLabel(channel) {
+  const key = String(channel || "").toLowerCase();
+  if (key === "seek") return "SEEK";
+  if (key === "linkedin_jobs" || key === "linkedin") return "LinkedIn";
+  return key.split(/[_\s-]+/).filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+
+/** home.js owns the plain rewrite of a run's reason; use it when it is there.
+ * Until it lands, strip the run stamp the daily writes and show the rest. */
+let plainReasonFn = null;
+export async function loadReasonHelper() {
+  if (plainReasonFn) return;
+  const mod = await import("./home.js").catch(() => null);
+  if (mod && typeof mod.plainReason === "function") plainReasonFn = mod.plainReason;
+}
+export function plainReasonText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (plainReasonFn) {
+    try { return String(plainReasonFn(raw) || "").trim() || raw; } catch { /* fall through */ }
+  }
+  return raw.replace(/^\[[^\]]*\]\s*/, "").trim();
+}
+
 /** A decision button: armed on the first press, committed on the second, and
  * posted to the local pipeline. It never submits to a channel (AGENTS.md
  * section 2); the worst it can do is move a row. */
 export function actionButton(row, action, fields, done) {
-  const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : ""];
+  const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : "", action.small ? "sm" : ""];
   const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: action.label });
   guarded(button, action.label, async () => {
     button.disabled = true;
@@ -58,38 +96,100 @@ export function actionButton(row, action, fields, done) {
   return button;
 }
 
-const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
-
-/** One job card: title and score, who and where, the tags, why it is here,
- * and the two things the person can do about it. */
-function jobCard(row, tab, refresh) {
-  const card = h("article", { class: "card job" });
-  const head = h("div", { class: "job-head" });
-  head.append(h("a", { class: "job-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
-  if (typeof row.score === "number") head.append(h("span", { class: "score", text: `${Math.round(row.score)} score` }));
-  card.append(head);
-  const meta = [row.company, row.location].filter(Boolean).join(", ");
-  if (meta) card.append(h("p", { class: "job-meta", text: meta }));
-  const pills = h("div", { class: "pills" });
-  // A job the person saved on the channel is an order to apply (AGENTS.md
-  // section 2), so it is said on the card rather than buried in the detail.
-  for (const tag of [row.channel, APPLY_METHODS[row.applyMethod] || row.applyMethod, row.userSaved ? "saved by you" : null]) {
-    if (tag) pills.append(h("span", { class: "pill", text: tag }));
-  }
-  if (pills.childElementCount) card.append(pills);
-  card.append(h("hr", { class: "rule" }), eyebrow("Why it is here"),
-    h("p", { class: "why", text: row.reason || "No reason recorded. Open the row to read its history." }));
-  const buttons = h("div", { class: "foot-actions" },
-    h("a", { class: "btn", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
-  const contextual = ACTIONS.find((a) => a.key === tab.action);
-  if (contextual) buttons.append(actionButton(row, { ...contextual, primary: true, danger: false }, null, refresh));
-  card.append(h("div", { class: "job-foot" },
-    h("span", { class: "when", text: row.updated_at ? `Updated ${when(row.updated_at)}` : "Never updated" }), buttons));
-  return card;
+/** A button that posts to one of the two extension routes this package adds
+ * (unpark, outcome). Same two-press arming as a Tray decision. */
+function routeButton(row, spec, done) {
+  const classes = ["btn", spec.primary ? "primary" : "", spec.danger ? "danger" : "", spec.small ? "sm" : ""];
+  const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: spec.label });
+  guarded(button, spec.label, async () => {
+    button.disabled = true;
+    try {
+      const result = await api(`rows/${encodeURIComponent(row.id)}/${spec.path}`, { method: "POST", body: spec.body });
+      toast(`${spec.label}: the row is now ${statusLabel(result.status_after)}.`);
+      done();
+    } catch (error) {
+      toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
+      button.disabled = false;
+    }
+  });
+  return button;
 }
 
-/** The filter column: the five statuses with their counts, the channels the
- * loaded rows actually use, and a floor on the score. */
+/**
+ * Open the row with the screening panel focused. On the row itself the address
+ * is already right, so the press scrolls to the panel rather than doing
+ * nothing: setting the same hash fires no hashchange.
+ */
+export function openScreening(id) {
+  const target = `#/row/${encodeURIComponent(id)}`;
+  const slot = document.querySelector(".screening-slot");
+  if (location.hash === target && slot && slot.childElementCount) {
+    slot.scrollIntoView({ block: "center" });
+    const focusable = slot.querySelector("input, textarea, button, select");
+    if (focusable) focusable.focus();
+    return;
+  }
+  try { sessionStorage.setItem(FOCUS_KEY, id); } catch { /* private mode: the panel still mounts */ }
+  location.hash = target;
+}
+
+/**
+ * The one contextual control a row earns, from the server's derivation. A row
+ * with nothing to decide gets a quiet link to its details instead, and a sent
+ * row gets nothing at all.
+ */
+export function contextualControl(row, done, { small = true } = {}) {
+  const act = row.action || { kind: "none" };
+  const cls = small ? "btn sm" : "btn";
+  if (act.kind === "portal") {
+    return h("a", { class: cls, href: act.href || row.url, target: "_blank", rel: "noreferrer noopener", text: act.label || "Open portal" });
+  }
+  if (act.kind === "answer") {
+    return h("button", { type: "button", class: `${cls} primary`, text: act.label || "Answer", onClick: () => openScreening(row.id) });
+  }
+  if (act.post) return actionButton(row, { key: act.post, label: act.label, primary: act.primary, danger: act.danger, small }, null, done);
+  if (act.kind === "unpark") return routeButton(row, { label: act.label || "Unpark", path: "unpark", body: { reason: "unparked from the board" }, small }, done);
+  if (act.kind === "outcome") {
+    return routeButton(row, { label: act.label, path: "outcome", body: { status: act.outcome, note: "recorded from the board" }, primary: act.primary, small }, done);
+  }
+  return null;
+}
+
+const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
+
+/** One job row: two lines, and at most one button. The whole row opens the
+ * detail; the button inside it does its own thing. */
+function jobRow(row, refresh) {
+  const article = h("article", { class: "app-row" });
+  const main = h("div", { class: "row-main" });
+  main.append(h("a", { class: "row-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
+  if (row.company) main.append(h("span", { class: "row-co", text: row.company }));
+  if (row.location) main.append(h("span", { class: "row-where", text: row.location }));
+  main.append(h("span", { class: "pill", text: channelLabel(row.channel) }));
+  const method = APPLY_METHODS[row.applyMethod] || row.applyMethod;
+  if (method) main.append(h("span", { class: "pill", text: method }));
+  // A job the person saved on the channel is an order to apply (AGENTS.md
+  // section 2), so it is said on the row rather than buried in the detail.
+  if (row.userSaved) main.append(h("span", { class: "pill", text: "saved by you" }));
+  const score = h("span", { class: "row-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "" });
+  const reason = h("p", {
+    class: "row-reason", "aria-label": "Why it is here",
+    text: plainReasonText(row.reason) || "No reason recorded. Open the row to read its history.",
+  });
+  const control = h("div", { class: "row-control" });
+  const button = contextualControl(row, refresh);
+  if (button) control.append(button);
+  else if (row.status !== "submitted") control.append(h("a", { class: "btn sm", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
+  article.append(main, score, reason, control);
+  article.addEventListener("click", (event) => {
+    if (event.target.closest("a, button, input, select, textarea")) return;
+    location.hash = `#/row/${encodeURIComponent(row.id)}`;
+  });
+  return article;
+}
+
+/** The filter column: the tabs with their counts, the channels the loaded rows
+ * actually use, and a floor on the score. */
 function filterCard(rows, repaint) {
   const card = h("aside", { class: "card filter-card", id: "filter-card" });
   card.hidden = !appState.filtersOpen && window.innerWidth < 900;
@@ -97,13 +197,14 @@ function filterCard(rows, repaint) {
   card.append(h("h2", { text: "Filters" }), body);
   const summary = getSummary();
   const counts = (summary && summary.counts) || {};
+  const tally = (tab) => tab.status.split(",").reduce((n, s) => n + (counts[s] ?? 0), 0);
   const statuses = h("div", { class: "filter-group" });
   statuses.append(eyebrow("Status"));
   for (const tab of TABS) {
     const input = h("input", { type: "radio", name: "status-tab", checked: tab.key === appState.tab });
     input.addEventListener("change", () => { location.hash = `#/applications/${tab.key}`; });
     statuses.append(h("label", { class: "choice" }, input, h("span", { text: tab.long }),
-      h("span", { class: "tally", text: String(counts[tab.status] ?? 0) })));
+      h("span", { class: "tally", text: String(tally(tab)) })));
   }
   body.append(statuses);
   const channels = [...new Set(rows.map((r) => r.channel).filter(Boolean))].sort();
@@ -116,7 +217,7 @@ function filterCard(rows, repaint) {
         if (input.checked) appState.channels.add(channel); else appState.channels.delete(channel);
         repaint();
       });
-      group.append(h("label", { class: "choice" }, input, h("span", { text: channel }),
+      group.append(h("label", { class: "choice" }, input, h("span", { text: channelLabel(channel) }),
         h("span", { class: "tally", text: String(rows.filter((r) => r.channel === channel).length) })));
     }
     body.append(group);
@@ -143,11 +244,56 @@ function visibleRows(rows) {
     : out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 }
 
+/** One stale application: what it was, how long ago, and the two quiet things
+ * the person may do about it. Nothing here sends (AGENTS.md section 2). */
+function followUpLine(item, refresh) {
+  const line = h("div", { class: "nudge-row" });
+  const main = h("div", { class: "row-main" });
+  main.append(h("a", { class: "row-title", href: `#/row/${encodeURIComponent(item.id)}`, text: item.title || "Untitled role" }));
+  if (item.company) main.append(h("span", { class: "row-co", text: item.company }));
+  main.append(h("span", { class: "row-where", text: `${item.days_since} days, no reply` }));
+  line.append(main);
+  const buttons = h("div", { class: "row-control" });
+  buttons.append(routeButton(item, {
+    label: "Mark responded", path: "outcome", body: { status: "responded", note: "recorded from the follow-up strip" }, small: true,
+  }, refresh));
+  if (item.nudge) {
+    const copy = h("button", { type: "button", class: "btn sm", text: "Copy nudge" });
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(item.nudge);
+        toast("The nudge is on the clipboard. Send it yourself.");
+      } catch { toast("This browser will not let the page write to the clipboard.", "bad"); }
+    });
+    buttons.append(copy);
+  }
+  line.append(buttons);
+  return line;
+}
+
+/** The strip above the Sent list: who has gone quiet. Drafts only. */
+async function followUpStrip(refresh) {
+  let data = null;
+  try { data = await api("followups?days=7"); } catch { return null; }
+  const rows = (data && data.rows) || [];
+  if (!rows.length) return null;
+  const body = h("div", { class: "nudges" });
+  for (const item of rows) body.append(followUpLine(item, refresh));
+  const title = rows.length === 1
+    ? "1 application with no reply after 7 days"
+    : `${rows.length} applications with no reply after 7 days`;
+  const card = panel(title, body);
+  card.classList.add("nudge-card");
+  card.append(h("p", { class: "grey small", text: "Nothing is sent from here. Copy the nudge and send it yourself." }));
+  return card;
+}
+
 /** `which` is the tab key from the address (#/applications/waiting), so Home
  * can link straight at the bucket it is talking about. */
 export async function viewApplications(view, which) {
   if (which && TABS.some((t) => t.key === which)) appState.tab = which;
   const tab = TABS.find((t) => t.key === appState.tab) || TABS[0];
+  await loadReasonHelper();
   const count = h("p", { class: "page-count", id: "row-count",
     text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." });
   const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
@@ -166,9 +312,11 @@ export async function viewApplications(view, which) {
     aside: h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort),
   });
   const layout = h("div", { class: "layout" });
-  const list = h("div", { class: "cards" });
+  const column = h("div", { class: "board" });
+  const list = h("div", { class: "rows" });
   list.append(h("p", { class: "empty", text: "Loading rows." }));
-  layout.append(list);
+  column.append(list);
+  layout.append(column);
   view.append(head, layout);
 
   const params = new URLSearchParams({ status: tab.status });
@@ -184,8 +332,12 @@ export async function viewApplications(view, which) {
       list.append(h("p", { class: "empty", text: rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[tab.key] }));
       return;
     }
-    for (const row of shown) list.append(jobCard(row, tab, () => render()));
+    for (const row of shown) list.append(jobRow(row, () => render()));
   };
   layout.prepend(filterCard(rows, paint));
   paint();
+  if (tab.key === "sent") {
+    const strip = await followUpStrip(() => render());
+    if (strip) column.prepend(strip);
+  }
 }
