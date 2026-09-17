@@ -49,6 +49,7 @@
 
 import { sha256 } from "../lib/hash.ts";
 import { repoPath } from "../repo-root.ts";
+import { get as getOpportunity } from "../pipeline.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -1187,14 +1188,19 @@ export function sourceHasCredentials(cvSource: string): boolean {
   return /^#{2,}\s*(education|certifications?|credentials?|qualifications?)\b/im.test(cvSource);
 }
 
-async function readJdTitle(opportunityId: string | null, jdText: string | null): Promise<string | null> {
+/**
+ * The advertised title, preferred from the pipeline row and otherwise read off
+ * the JD's own heading. It used to read state/pipeline/opportunities.json
+ * directly and swallow every error, so once the pipeline moved to SQLite and
+ * that file was renamed aside it silently fell through to the JD heading for
+ * every opportunity. A store error now propagates; a row that simply is not
+ * there still falls through, which is the intended behaviour for a JD the
+ * harness never ingested.
+ */
+export async function readJdTitle(opportunityId: string | null, jdText: string | null): Promise<string | null> {
   if (opportunityId) {
-    try {
-      const raw = JSON.parse(await fs.readFile(repoPath("state/pipeline/opportunities.json"), "utf8"));
-      const list: any[] = Array.isArray(raw) ? raw : raw.opportunities ?? Object.values(raw);
-      const hit = list.find((o) => o?.id === opportunityId);
-      if (hit?.title) return String(hit.title);
-    } catch { /* fall through to JD heading */ }
+    const hit = await getOpportunity(opportunityId);
+    if (hit?.title) return String(hit.title);
   }
   const first = (jdText ?? "").split("\n").map((l) => l.trim()).find((l) => l.length > 0);
   if (!first) return null;

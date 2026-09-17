@@ -7,7 +7,7 @@
  *                              [--include-titles] [--json] [--out <path>]
  *
  * Corpus for one resume type:
- *   - state/pipeline/opportunities.json rows whose classification
+ *   - pipeline rows (tools/pipeline.ts, SQLite) whose classification
  *     matched_resume_id (state/pipeline/classifications.json) equals the resume,
  *     whose pipeline resumeId equals the resume, or whose title matches one of
  *     the type's search_keywords. Full text only when description ≥ 500 chars.
@@ -33,6 +33,7 @@ import { resolveProfileContext } from "../profile-context.ts";
 import { normalise, stem, STOPWORDS, phraseInText, tokenInText, buildStemSet } from "./keyword-lexicon.ts";
 import { loadKeywordClouds, resolveCloudsForType } from "../keyword-clouds.ts";
 import { repoPath } from "../repo-root.ts";
+import { list as listOpportunities } from "../pipeline.ts";
 
 /** 1-based cv-source line numbers whose normalised text contains the (normalised, stem-tolerant) term. */
 function corpusLinesFor(term: string, corpusText: string, limit = 5): number[] {
@@ -126,12 +127,21 @@ export async function collectCorpus(opts: {
   classificationsPath?: string;
   archiveDir?: string;
 }): Promise<{ docs: MinedDoc[]; titles: string[]; matchingRows: number; backgroundDocs: MinedDoc[] }> {
-  const pipelinePath = opts.pipelinePath ?? repoPath("state/pipeline/opportunities.json");
   const classificationsPath = opts.classificationsPath ?? repoPath("state/pipeline/classifications.json");
   const archiveDir = opts.archiveDir ?? repoPath("state/pipeline/archive");
 
-  const rawPipeline = await readJson<any>(pipelinePath);
-  const rows: any[] = Array.isArray(rawPipeline) ? rawPipeline : Object.values(rawPipeline ?? {});
+  // The pipeline lives in SQLite. Reading state/pipeline/opportunities.json by
+  // hand used to yield an empty corpus the moment that file was renamed aside
+  // by the migration, and the miner just reported "no matching rows". An
+  // explicit --pipeline <json> still reads a JSON array, which is how the
+  // tests mine a synthetic pipeline without touching state/.
+  let rows: any[];
+  if (opts.pipelinePath) {
+    const rawPipeline = await readJson<any>(opts.pipelinePath);
+    rows = Array.isArray(rawPipeline) ? rawPipeline : Object.values(rawPipeline ?? {});
+  } else {
+    rows = await listOpportunities({ withDescription: true });
+  }
   const classifications = (await readJson<Record<string, any>>(classificationsPath)) ?? {};
 
   const matching = rows.filter((row) => {

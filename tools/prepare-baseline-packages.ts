@@ -11,7 +11,7 @@
 import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { load, save } from "./pipeline.ts";
+import { load, patchMany, type Opportunity } from "./pipeline.ts";
 import { repoPath } from "./repo-root.ts";
 
 type BaselineMetadata = {
@@ -37,6 +37,10 @@ async function main(): Promise<void> {
   const ids = parseIds();
   const opportunities = await load();
   const prepared: Array<Record<string, unknown>> = [];
+  // Only the rows named on --ids are touched. The old whole-array `save()`
+  // rewrote the entire pipeline (deleting anything a concurrent writer had
+  // added) to set two fields on a handful of rows.
+  const patches: { id: string; fields: Partial<Opportunity>; reason?: string }[] = [];
 
   for (const id of ids) {
     const opportunity = opportunities.find((candidate) => candidate.id === id);
@@ -95,12 +99,11 @@ async function main(): Promise<void> {
       preparedAt: new Date().toISOString(),
     };
     await fs.writeFile(path.join(archiveDir, "metadata.json"), JSON.stringify(packageMetadata, null, 2) + "\n");
-    opportunity.resumeId = resumeId;
-    opportunity.draftDir = `${archiveDir}/`;
+    patches.push({ id, fields: { resumeId, draftDir: `${archiveDir}/` }, reason: "approved baseline package prepared" });
     prepared.push({ id, resumeId, archiveDir, pageCount: baseline.page_count ?? null });
   }
 
-  await save(opportunities);
+  await patchMany(patches, "prepare-baseline-packages");
   console.log(JSON.stringify({ prepared }, null, 2));
 }
 

@@ -32,9 +32,27 @@ async function readMap(file: string): Promise<Record<string, Classification>> {
   return parsed;
 }
 
+/**
+ * The canonical map is the whole prior history of classification. A missing
+ * file is a legitimate first run; anything else (malformed JSON, a map with a
+ * row that has no `_classifier`, a permissions error) means we cannot see what
+ * is already there, and merging onto `{}` would silently delete all of it.
+ */
+async function readCanonical(target: string): Promise<{ map: Record<string, Classification>; existed: boolean }> {
+  try {
+    return { map: await readMap(target), existed: true };
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return { map: {}, existed: false };
+    throw new Error(
+      `refusing to merge: canonical classification map ${target} exists but could not be read (${error?.message ?? error}). ` +
+        "Repair it or move it aside; merging onto an empty map would drop every prior classification.",
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const { target, sources } = parseArgs();
-  const canonical: Record<string, Classification> = await readMap(target).catch(() => ({}));
+  const { map: canonical, existed } = await readCanonical(target);
   const replaced = new Set<string>();
   for (const source of sources) {
     const incoming = await readMap(source);
@@ -45,7 +63,14 @@ async function main(): Promise<void> {
   }
   await fs.mkdir(path.dirname(target), { recursive: true });
   await writeAtomic(target, `${JSON.stringify(canonical, null, 2)}\n`);
-  console.log(JSON.stringify({ target, total: Object.keys(canonical).length, merged: replaced.size, sources }, null, 2));
+  console.log(JSON.stringify({
+    target,
+    target_existed: existed,
+    ...(existed ? {} : { note: `${target} did not exist; started from an empty map` }),
+    total: Object.keys(canonical).length,
+    merged: replaced.size,
+    sources,
+  }, null, 2));
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

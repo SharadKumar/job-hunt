@@ -1,0 +1,16 @@
+resume_types:
+  - id: silent-failure-lens
+    label: Silent Failure Lens
+    active: true
+    search_keywords: [Silent Failure Lens]
+    should: [agentic systems]
+    could: []
+    flagged: []
+    cover_letter_angle: Built AI delivery systems.
+    market_lens:
+      must_signal: [formal LLM evals, autonomous production agents]
+      proof_questions:
+        - Were formal LLM evals used?
+        - Were autonomous production agents deployed?
+    rate_band: { floor: 1200, target: 1500, ceiling: 1800, currency: AUD, billing_unit: day, gst_handling: + GST }
+    preferred_channels: [linkedin_jobs]
