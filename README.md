@@ -371,7 +371,7 @@ The server binds `127.0.0.1` by default, so nothing off this machine can reach i
 1. Put the phone and the laptop on the same network. [Tailscale](https://tailscale.com) is the safer option, because the laptop keeps the same address on any network and nothing is exposed to the LAN; a plain Wi-Fi LAN works too.
 2. Choose a long random token and export it, for example `export HARNESS_UI_TOKEN=$(openssl rand -hex 24)`. The server refuses a non-local bind without one.
 3. Start it bound to that address: `npm run ui -- --host 100.x.y.z` (your Tailscale address), or `--host 0.0.0.0` on a trusted LAN.
-4. On the phone, open `http://<that address>:7788/`, expand "API token" in the header, paste the token and save. The browser keeps it locally and sends it as a bearer header on every call.
+4. On the phone, open `http://<that address>:7788/`, open Settings (the cog at the top right) and paste it into the API token field, paste the token and save. The browser keeps it locally and sends it as a bearer header on every call.
 
 Treat the token like a password: it is the only thing between the network and your pipeline. Never put it in a journal entry, a commit or a screenshot.
 

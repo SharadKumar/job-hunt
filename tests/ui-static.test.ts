@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * ui-static.test.ts - the local harness UI is three static files with no build
+ * ui-static.test.ts - the local Job Hunt UI is three static files with no build
  * step, so nothing else checks them. This test pins the properties that make
  * them safe to serve and load:
  *
@@ -10,7 +10,9 @@
  *   - app.js never uses a browser modal (alert / confirm / prompt). Every
  *     action confirms inline, with a second deliberate press.
  *   - the four fixed keyword answers appear verbatim (AGENTS.md section 9).
- *   - every hash route the work package specifies is present.
+ *   - every hash route the work package specifies is present, settings included.
+ *   - the visual contract of the board design: system sans, the fixed palette,
+ *     flat cards, one uppercase label, and the three button weights.
  *   - no em dash and no en dash anywhere (AGENTS.md section 3.2).
  *   - app.js actually parses.
  *
@@ -118,13 +120,23 @@ test("keyword bundles are capped at four", () => {
 });
 
 test("every route is present", () => {
-  for (const route of ["queue", "row", "keywords", "today", "digest"]) {
+  for (const route of ["queue", "row", "keywords", "today", "digest", "settings"]) {
     assert.ok(js.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  for (const hash of ["#/queue", "#/keywords", "#/today", "#/digest"]) {
+  for (const hash of ["#/queue", "#/keywords", "#/today", "#/digest", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
   assert.ok(js.includes("#/row/"), "app.js must link a queue card to #/row/<id>");
+});
+
+test("settings opens from a cog in the header, drawn in the page itself", () => {
+  assert.match(html, /aria-label="Settings"/, "the header must carry a cog labelled Settings");
+  assert.match(html, /<svg[^>]*width="20"/, "the cog must be an inline 20 px svg");
+  assert.ok(!/<img/i.test(html), "the cog must not be an external image");
+  assert.match(js, /function viewSettings\s*\(/, "app.js must draw the settings view");
+  for (const command of ["npm run ui -- --open", "bash scripts/install-ui-launchd.sh", "Tailscale", "enabled: false"]) {
+    assert.ok(js.includes(command), `the settings About card never says: ${command}`);
+  }
 });
 
 test("every API endpoint in the contract is called", () => {
@@ -145,7 +157,7 @@ test("the token is read from localStorage and sent as a bearer header", () => {
   assert.match(js, /harnessUiToken/, "app.js must use the localStorage key harnessUiToken");
   assert.match(js, /Authorization/, "app.js must set an Authorization header");
   assert.match(js, /Bearer \$\{token\}|Bearer " \+ token|Bearer \$\{/, "the token must go out as Bearer");
-  assert.match(html, /id="token-input"/, "index.html must have the token field");
+  assert.match(js, /id: "token-input"/, "app.js must draw the token field on the settings view");
 });
 
 test("no em dash and no en dash in any of the three files", () => {
@@ -156,6 +168,13 @@ test("no em dash and no en dash in any of the three files", () => {
       assert.fail(`${path.relative(ROOT, file)}:${line} contains a dash character that is banned`);
     }
   }
+});
+
+test("the product is named Job Hunt", () => {
+  assert.match(html, /<title>Job Hunt<\/title>/, "the document title must be Job Hunt");
+  assert.match(html, /class="brand"[^>]*>Job Hunt</, "the wordmark must read Job Hunt");
+  assert.ok(js.includes("Job Hunt drafts and sends applications overnight."), "the queue lede must name Job Hunt");
+  assert.ok(!/\bHarness\b/.test(html), "index.html must not still call the product Harness");
 });
 
 test("the stylesheet handles dark mode and phone width", () => {
@@ -186,14 +205,25 @@ test("app.js parses", () => {
   }
 });
 
-test("the type is the serif stack, not the system UI font", () => {
-  // One family for everything, headings and numbers included, so the page reads
-  // as a document rather than as a dashboard.
-  assert.match(css, /font-family:\s*Charter,/, "app.css must lead the font stack with Charter");
-  assert.match(css, /"Bitstream Charter"/, "app.css must fall back to Bitstream Charter");
-  assert.match(css, /"Iowan Old Style"/, "app.css must fall back to Iowan Old Style");
-  assert.match(css, /Georgia,\s*serif/, "app.css must end the stack at Georgia and serif");
-  assert.match(css, /font-variant-numeric:\s*tabular-nums/, "figures must be tabular so scores line up");
+test("the type is the system sans stack the board design asks for", () => {
+  // One system family, 15 px body, 1.5 line height: a job board, not a document.
+  assert.match(css, /font-family:\s*Inter,\s*-apple-system,\s*BlinkMacSystemFont/, "app.css must lead the font stack with Inter and the system faces");
+  assert.match(css, /"Segoe UI",\s*Roboto,\s*system-ui,\s*sans-serif/, "app.css must end the stack at system-ui and sans-serif");
+  assert.match(css, /font-size:\s*15px/, "body type must be 15 px");
+  assert.match(css, /line-height:\s*1\.5/, "body line height must be 1.5");
+});
+
+test("the palette is the one the brief fixes", () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const [name, value] of [
+    ["ink", "#111827"], ["grey", "#6b7280"], ["line", "#e5e7eb"],
+    ["pill", "#f3f4f6"], ["pill-ink", "#374151"], ["green", "#16a34a"], ["red", "#dc2626"],
+  ]) {
+    assert.ok(rules.includes(`--${name}: ${value}`), `app.css must set --${name} to ${value}`);
+  }
+  assert.match(rules, /--page:\s*#ffffff/, "the page must be pure white");
+  assert.match(rules, /--maxw:\s*1140px/, "the content column must be 1140 px");
+  assert.match(rules, /--gutter:\s*24px/, "the gutters must be 24 px");
 });
 
 test("the five queue tabs are named as the person names them", () => {
@@ -211,13 +241,30 @@ test("the five queue tabs are named as the person names them", () => {
   }
 });
 
-test("the row detail carries the gate strip", () => {
-  assert.match(js, /gate-strip/, "app.js must build the gate strip on the row detail");
-  assert.match(css, /\.gate-strip\s*\{/, "app.css must style the gate strip");
-  assert.match(css, /\.gate\.fail\s*\{/, "a failed gate must be styled apart from a passed one");
-  for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed"]) {
-    assert.ok(js.includes(stamp), `the gate strip never says: ${stamp}`);
+test("the row detail carries the three stat cards", () => {
+  assert.match(js, /function statsRow\s*\(/, "app.js must build the stats row on the row detail");
+  assert.match(css, /\.stats\s*\{/, "app.css must style the stats row");
+  assert.match(css, /\.stat\.good \.value\s*\{\s*color:\s*var\(--green\)/, "a passing verdict must be green");
+  assert.match(css, /\.stat\.bad \.value\s*\{\s*color:\s*var\(--red\)/, "a failed verdict must be red");
+  for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed", "Score"]) {
+    assert.ok(js.includes(stamp), `the stats row never says: ${stamp}`);
   }
+});
+
+test("the queue reads as cards with a filter column", () => {
+  for (const piece of ["Why it is here", "Filters", "Minimum score", "Details", "saved by you"]) {
+    assert.ok(js.includes(piece), `the queue card or filter column never says: ${piece}`);
+  }
+  assert.match(css, /\.layout \{ grid-template-columns: 280px/, "the filter column must be 280 px on the desktop layout");
+  assert.match(css, /\.job:hover \{ background: var\(--hover\)/, "a card must take a very light hover");
+  assert.match(css, /\.pill \{|\.pill\s*\{/, "tags must render as pills");
+});
+
+test("the buttons carry the three weights and the armed states", () => {
+  assert.match(css, /\.primary \{[\s\S]*?background: var\(--ink\)/, "the primary button must be black");
+  assert.match(css, /\.danger \{ color: var\(--red\)/, "a destructive button must be a red-on-white secondary");
+  assert.match(css, /\.armed \{[\s\S]*?background: var\(--green\)/, "an armed positive action must turn green");
+  assert.match(css, /\.armed\.danger \{[\s\S]*?background: var\(--red\)/, "an armed destructive action must turn red");
 });
 
 test("a status reaches the page as words, not as a key", () => {
@@ -231,13 +278,19 @@ test("a status reaches the page as words, not as a key", () => {
   );
 });
 
-test("the stylesheet keeps to the flat, unshouted house style", () => {
+test("the stylesheet keeps to the flat card house style", () => {
   // Prose in a comment must not satisfy or break the check, so read the rules only.
-  const css = read(CSS_PATH).replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.ok(!/box-shadow/i.test(css), "app.css must not use box-shadow: surfaces are flat");
-  assert.ok(!/text-transform:\s*uppercase/i.test(css), "app.css must not set uppercase: no shouted labels");
-  assert.ok(!/letter-spacing/i.test(css), "app.css must not set letter-spacing: no tracked-out labels");
-  assert.match(css, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
+  const rules = read(CSS_PATH).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/box-shadow/i.test(rules), "app.css must not use box-shadow: surfaces are flat");
+  // Uppercase and tracking are allowed now, but only on the 12 px section label.
+  const shouted = [...rules.matchAll(/text-transform:\s*uppercase/gi)];
+  assert.equal(shouted.length, 1, "only the small section label may be uppercase");
+  assert.match(rules, /\.eyebrow\s*\{[^}]*font-size:\s*12px[^}]*text-transform:\s*uppercase[^}]*letter-spacing/,
+    "the uppercase label must be the 12 px grey eyebrow with slight tracking");
+  assert.match(rules, /\.card\s*\{[^}]*border-radius:\s*12px/, "a card must have a 12 px radius");
+  assert.match(rules, /border-radius:\s*8px/, "controls and pills must have an 8 px radius");
+  assert.match(rules, /outline:\s*2px solid var\(--ink\)/, "focus must show a 2 px outline in the ink colour");
+  assert.match(rules, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
 });
 
 test("app.js stays small enough to read in one sitting", () => {

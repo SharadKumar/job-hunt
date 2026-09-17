@@ -3,31 +3,30 @@
  * One ES module, fetched from the same local origin that serves /api, so
  * nothing about the person's pipeline leaves the machine.
  *
- * The shape of the thing: a control room for an autonomous job applicant. The
- * queue is a ledger, a row is a dossier, and the gate strip at the top of the
- * dossier is the part the person reads first: did the critic pass, did slop and
- * voice pass, is the gate open. Everything else is supporting detail.
+ * The shape of the thing: a plain job board for an autonomous job applicant.
+ * The queue is a list of cards with a filter column beside it, and a row is a
+ * detail page whose first line of numbers says whether the letter may go out:
+ * the score, the critic verdict, the gate.
  *
- * AGENTS.md rules encoded here, each marked again at the point it bites:
- * section 2, this UI never submits: every button posts a decision to the local
- * pipeline, and the kill switch and autopilot state are always on screen.
- * Section 9, keyword confirmations use exactly four fixed answers, recommended
- * first, in bundles of at most four. Section 3, no em or en dashes, and
- * Australian English throughout.
+ * AGENTS.md rules encoded here, marked again where they bite: section 2, this
+ * UI never submits, and the kill switch is always on screen; section 9,
+ * keyword confirmations use four fixed answers in bundles of at most four;
+ * section 3, no em or en dashes, and Australian English throughout.
  */
 
 // --- Constants ---
 
 /** Hash routes: #/queue, #/row/<id>, #/keywords, #/today, #/digest. */
-const ROUTES = ["queue", "row", "keywords", "today", "digest"];
+const ROUTES = ["queue", "row", "keywords", "today", "digest", "settings"];
 
-/** Queue tabs, in the order the person works them. Sent is capped at 30 rows. */
+/** Queue tabs, in the order the person works them. Sent is capped at 30 rows.
+ * `label` is the short name, `long` is how the filter column says it. */
 const TABS = [
-  { key: "needs", label: "Needs you", status: "manual_action_needed" },
-  { key: "waiting", label: "Waiting", status: "awaiting_approval" },
-  { key: "shortlisted", label: "Shortlisted", status: "shortlisted" },
-  { key: "parked", label: "Parked", status: "parked" },
-  { key: "sent", label: "Sent", status: "submitted", limit: 30 },
+  { key: "needs", label: "Needs you", long: "Needs you", status: "manual_action_needed", action: "retry" },
+  { key: "waiting", label: "Waiting", long: "Waiting for you", status: "awaiting_approval", action: "approve" },
+  { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted", action: "approve" },
+  { key: "parked", label: "Parked", long: "Parked", status: "parked", action: "retry" },
+  { key: "sent", label: "Sent", long: "Sent", status: "submitted", limit: 30 },
 ];
 
 /** What each tab says when it is empty: direction, not a shrug. */
@@ -41,18 +40,13 @@ const EMPTY = {
 
 /** The person's five decisions on a row. The server maps each to a transition. */
 const ACTIONS = [
-  { key: "approve", label: "Approve" },
-  { key: "retry", label: "Retry" },
-  { key: "reject", label: "Reject", danger: true },
-  { key: "hold", label: "Hold" },
+  { key: "approve", label: "Approve", primary: true }, { key: "retry", label: "Retry" },
+  { key: "hold", label: "Hold" }, { key: "reject", label: "Reject", danger: true },
   { key: "withdraw", label: "Withdraw", danger: true },
 ];
 
-/*
- * AGENTS.md section 9: keyword and market-lens confirmations use four fixed
- * answers and no others, recommended first. The labels are verbatim; the values
- * are what POST /api/keywords/record expects.
- */
+/* AGENTS.md section 9: four fixed answers and no others, recommended first.
+ * The labels are verbatim; the values are what POST /api/keywords/record wants. */
 const KEYWORD_OPTIONS = [
   { value: "confirm", label: "Confirm and update source (Recommended)" },
   { value: "na", label: "Not applicable" },
@@ -63,28 +57,14 @@ const KEYWORD_OPTIONS = [
 /** AGENTS.md section 9: never ask more than four at a time. */
 const KEYWORD_BUNDLE = 4;
 
-/**
- * Pipeline status in plain words. The raw keys are machinery: nobody reads
- * "manual_action_needed to manual_action_needed" and learns anything. One map,
- * used everywhere a status reaches the page.
- */
+/** Pipeline status in plain words. The raw keys are machinery: nobody reads
+ * "manual_action_needed to manual_action_needed" and learns anything. */
 const STATUS_LABELS = {
-  discovered: "discovered",
-  shortlisted: "shortlisted",
-  drafted: "drafted",
-  awaiting_approval: "waiting for you",
-  approved: "approved",
-  submission_pending: "sending",
-  submitted: "sent",
-  responded: "responded",
-  interview: "interview",
-  offered: "offered",
-  won: "won",
-  rejected: "rejected",
-  withdrawn: "withdrawn",
-  parked: "parked",
-  awaiting_external: "waiting on them",
-  manual_action_needed: "needs you",
+  discovered: "discovered", shortlisted: "shortlisted", drafted: "drafted",
+  awaiting_approval: "waiting for you", approved: "approved", submission_pending: "sending",
+  submitted: "sent", responded: "responded", interview: "interview", offered: "offered",
+  won: "won", rejected: "rejected", withdrawn: "withdrawn", parked: "parked",
+  awaiting_external: "waiting on them", manual_action_needed: "needs you",
 };
 
 /** A status the map has not met yet still reads as words, not as a key. */
@@ -102,7 +82,6 @@ const APPLY_METHODS = {
 
 // --- Tiny DOM helpers. Nodes only, never an HTML string, so a company name
 // --- or a JD can never become markup.
-
 function h(tag, props, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
@@ -110,11 +89,9 @@ function h(tag, props, ...children) {
     if (key === "class") node.className = value;
     else if (key === "text") node.textContent = String(value);
     else if (key === "html") throw new Error("raw html is not allowed");
-    else if (key.startsWith("on") && typeof value === "function") {
-      node.addEventListener(key.slice(2).toLowerCase(), value);
-    } else if (key === "dataset") {
-      for (const [d, v] of Object.entries(value)) node.dataset[d] = String(v);
-    } else node.setAttribute(key, value === true ? "" : String(value));
+    else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2).toLowerCase(), value);
+    else if (key === "dataset") for (const [d, v] of Object.entries(value)) node.dataset[d] = String(v);
+    else node.setAttribute(key, value === true ? "" : String(value));
   }
   for (const child of children.flat()) {
     if (child === null || child === undefined || child === false) continue;
@@ -128,6 +105,9 @@ const $ = (sel) => document.querySelector(sel);
 function clear(node) {
   while (node.firstChild) node.firstChild.remove();
 }
+
+/** A small uppercase section label, as the reference board uses. */
+const eyebrow = (text) => h("p", { class: "eyebrow", text });
 
 /** Local time, short. Falls back to the raw string when it is not a date. */
 function when(iso) {
@@ -210,9 +190,8 @@ async function api(path, options) {
   return data;
 }
 
-// --- Minimal markdown: paragraphs and line breaks for letters, plus headings,
-// --- lists and preformatted tables for the journal. Text nodes only.
-
+// --- Minimal markdown: paragraphs for letters, plus headings, lists and
+// --- preformatted tables for the journal. Text nodes only.
 function paragraphs(source) {
   const out = [];
   for (const block of String(source).replace(/\r\n/g, "\n").split(/\n{2,}/)) {
@@ -225,7 +204,7 @@ function paragraphs(source) {
     });
     out.push(p);
   }
-  return out.length ? out : [h("p", { class: "slate", text: "(empty)" })];
+  return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
 }
 
 function richMarkdown(source) {
@@ -240,11 +219,8 @@ function richMarkdown(source) {
     para = [];
   };
   const flushList = () => { if (list) { out.push(list); list = null; } };
-  const flushTable = () => {
-    if (!table) return;
-    out.push(h("pre", { text: table.join("\n") })); // tables render as preformatted
-    table = null;
-  };
+  // A markdown table renders as preformatted text rather than as a grid.
+  const flushTable = () => { if (table) { out.push(h("pre", { text: table.join("\n") })); table = null; } };
   const flushAll = () => { flushPara(); flushList(); flushTable(); };
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, "");
@@ -275,18 +251,14 @@ function richMarkdown(source) {
     else para.push(line);
   }
   flushAll();
-  return out.length ? out : [h("p", { class: "slate", text: "(empty)" })];
+  return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
 }
 
 /** Package fields arrive as strings or as objects; show something either way. */
 function asText(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
+  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
 }
 
 // --- Header ---
@@ -329,34 +301,6 @@ function markNav(route) {
   }
 }
 
-function setupHeader() {
-  const input = $("#token-input");
-  const state = $("#token-state");
-  const paint = () => {
-    const token = readToken();
-    state.textContent = token ? "Saved in this browser." : "Not set.";
-    if (token) $("#token-box").removeAttribute("open");
-  };
-  input.value = readToken();
-  paint();
-  $("#token-save").addEventListener("click", () => {
-    writeToken(input.value.trim());
-    paint();
-    toast(input.value.trim() ? "Token saved." : "Token cleared.");
-    render();
-  });
-  $("#token-clear").addEventListener("click", () => {
-    writeToken("");
-    input.value = "";
-    paint();
-    toast("Token cleared.");
-    render();
-  });
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") $("#token-save").click();
-  });
-}
-
 // --- Inline confirm: the first press arms the button, a second press within
 // --- the window commits. No browser dialogs anywhere.
 
@@ -372,9 +316,8 @@ function disarm() {
   armed = null;
 }
 
-/** Wire a button so the first press arms it and the second runs `run`. `run`
- * is only ever reached from a second, deliberate press. The arming is a label
- * change and a fill, never an animation. */
+/** Wire a button so the first press arms it and the second runs `run`, which
+ * is only ever reached from a second, deliberate press. */
 function guarded(button, label, run) {
   button.addEventListener("click", () => {
     if (armed && armed.button === button) {
@@ -400,61 +343,140 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") disarm();
 });
 
-// --- View: queue ---
-
-const queueState = { tab: "needs" };
-
-/** Score as a number and a short bar. Scores are 0 to 100 in the pipeline, but
- * an older 0 to 10 row should not draw a full bar, so scale on what is there. */
-function scoreBar(score) {
-  const scale = score > 10 ? 100 : 10;
-  const pct = Math.max(0, Math.min(100, (score / scale) * 100));
-  const box = h("span", { class: "score" });
-  box.append(
-    h("span", { text: String(Math.round(score)) }),
-    h("span", { class: "track", role: "img", "aria-label": `score ${Math.round(score)} of ${scale}` },
-      h("span", { class: "fill", style: `width: ${pct.toFixed(0)}%` })),
-  );
-  return box;
+/** A decision button: armed on the first press, committed on the second, and
+ * posted to the local pipeline. It never submits to a channel (AGENTS.md
+ * section 2); the worst it can do is move a row. */
+function actionButton(row, action, fields, done) {
+  const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : ""];
+  const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: action.label });
+  guarded(button, action.label, async () => {
+    button.disabled = true;
+    const body = { action: action.key, ...(fields ? fields() : {}) };
+    try {
+      const result = await api(`rows/${encodeURIComponent(row.id)}/action`, { method: "POST", body });
+      toast(`${action.label}: the row is now ${statusLabel(result.status_after)}.`);
+      done();
+    } catch (error) {
+      // 409 means the state machine refused the move. Show the server's reason.
+      toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
+      button.disabled = false;
+    }
+  });
+  return button;
 }
 
-/** One ledger line: two rows of type, a hairline, and nothing else. */
-function entry(row) {
-  const link = h("a", { class: "entry", href: `#/row/${encodeURIComponent(row.id)}` });
-  const head = h("div", { class: "entry-head" });
-  const main = h("div", { class: "entry-main" });
-  main.append(h("span", { class: "entry-title", text: row.title || "Untitled role" }));
-  const bits = [row.company, row.location, APPLY_METHODS[row.applyMethod] || row.applyMethod]
-    .filter(Boolean).join(", ");
+// --- View: queue ---
+
+const queueState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
+
+/** One job card: title and score, who and where, the tags, why it is here,
+ * and the two things the person can do about it. */
+function jobCard(row, tab, refresh) {
+  const card = h("article", { class: "card job" });
+  const head = h("div", { class: "job-head" });
+  head.append(h("a", { class: "job-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
+  if (typeof row.score === "number") head.append(h("span", { class: "score", text: `${Math.round(row.score)} score` }));
+  card.append(head);
+  const meta = [row.company, row.location].filter(Boolean).join(", ");
+  if (meta) card.append(h("p", { class: "job-meta", text: meta }));
+  const pills = h("div", { class: "pills" });
   // A job the person saved on the channel is an order to apply (AGENTS.md
-  // section 2), so it is said on the line rather than buried in the detail.
-  const line = row.userSaved ? `${bits}, saved by you` : bits;
-  if (line) main.append(h("span", { class: "entry-bits", text: line }));
-  head.append(main);
-  if (typeof row.score === "number") head.append(scoreBar(row.score));
-  link.append(head);
-  link.append(h("p", { class: "entry-reason", text: row.reason || `Updated ${when(row.updated_at) || "at an unknown time"}.` }));
-  return link;
+  // section 2), so it is said on the card rather than buried in the detail.
+  for (const tag of [row.channel, APPLY_METHODS[row.applyMethod] || row.applyMethod, row.userSaved ? "saved by you" : null]) {
+    if (tag) pills.append(h("span", { class: "pill", text: tag }));
+  }
+  if (pills.childElementCount) card.append(pills);
+  card.append(h("hr", { class: "rule" }), eyebrow("Why it is here"),
+    h("p", { class: "why", text: row.reason || "No reason recorded. Open the row to read its history." }));
+  const buttons = h("div", { class: "foot-actions" },
+    h("a", { class: "btn", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
+  const contextual = ACTIONS.find((a) => a.key === tab.action);
+  if (contextual) buttons.append(actionButton(row, { ...contextual, primary: true, danger: false }, null, refresh));
+  card.append(h("div", { class: "job-foot" },
+    h("span", { class: "when", text: row.updated_at ? `Updated ${when(row.updated_at)}` : "Never updated" }), buttons));
+  return card;
+}
+
+/** The filter column: the five statuses with their counts, the channels the
+ * loaded rows actually use, and a floor on the score. */
+function filterCard(rows, repaint) {
+  const card = h("aside", { class: "card filter-card", id: "filter-card" });
+  card.hidden = !queueState.filtersOpen && window.innerWidth < 900;
+  const body = h("div", { class: "filters" });
+  card.append(h("h2", { text: "Filters" }), body);
+  const counts = (summary && summary.counts) || {};
+  const statuses = h("div", { class: "filter-group" });
+  statuses.append(eyebrow("Status"));
+  for (const tab of TABS) {
+    const input = h("input", { type: "radio", name: "queue-tab", checked: tab.key === queueState.tab });
+    input.addEventListener("change", () => { queueState.tab = tab.key; render(); });
+    statuses.append(h("label", { class: "choice" }, input, h("span", { text: tab.long }),
+      h("span", { class: "tally", text: String(counts[tab.status] ?? 0) })));
+  }
+  body.append(statuses);
+  const channels = [...new Set(rows.map((r) => r.channel).filter(Boolean))].sort();
+  if (channels.length > 1) {
+    const group = h("div", { class: "filter-group" });
+    group.append(eyebrow("Channel"));
+    for (const channel of channels) {
+      const input = h("input", { type: "checkbox", checked: queueState.channels.has(channel) });
+      input.addEventListener("change", () => {
+        if (input.checked) queueState.channels.add(channel); else queueState.channels.delete(channel);
+        repaint();
+      });
+      group.append(h("label", { class: "choice" }, input, h("span", { text: channel }),
+        h("span", { class: "tally", text: String(rows.filter((r) => r.channel === channel).length) })));
+    }
+    body.append(group);
+  }
+  const score = h("div", { class: "filter-group" });
+  score.append(eyebrow("Minimum score"));
+  const input = h("input", { type: "number", min: "0", max: "100", step: "1", value: queueState.minScore, placeholder: "Any" });
+  input.addEventListener("input", () => { queueState.minScore = input.value; repaint(); });
+  body.append(score);
+  score.append(input);
+  return card;
+}
+
+/** Sort and floor the fetched rows the way the filter column says. */
+function visibleRows(rows) {
+  const floor = Number(queueState.minScore);
+  const out = rows.filter((row) => {
+    if (queueState.channels.size && !queueState.channels.has(row.channel)) return false;
+    if (queueState.minScore !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
+    return true;
+  });
+  return queueState.sort === "updated"
+    ? out.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
+    : out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 }
 
 async function viewQueue(view) {
-  const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Queue" });
-  for (const tab of TABS) {
-    tabs.append(h("button", {
-      type: "button",
-      role: "tab",
-      "aria-selected": String(tab.key === queueState.tab),
-      text: tab.label,
-      onClick: () => {
-        queueState.tab = tab.key;
-        render();
-      },
-    }));
-  }
-  const list = h("div", { class: "ledger" });
-  list.append(h("p", { class: "empty", text: "Loading rows." }));
-  view.append(tabs, list);
   const tab = TABS.find((t) => t.key === queueState.tab) || TABS[0];
+  view.append(h("p", {
+    class: "lede",
+    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send.",
+  }));
+  const head = h("div", { class: "page-head" }, h("div", {},
+    h("h1", { text: tab.long }), h("p", { class: "page-count", id: "row-count", text: "Loading rows." })));
+  const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
+  toggle.addEventListener("click", () => {
+    queueState.filtersOpen = !queueState.filtersOpen;
+    const card = $("#filter-card");
+    if (card) card.hidden = !queueState.filtersOpen;
+  });
+  const sort = h("select", { "aria-label": "Sort rows" });
+  for (const [value, label] of [["score", "Score"], ["updated", "Updated"]]) {
+    sort.append(h("option", { value, selected: queueState.sort === value, text: label }));
+  }
+  sort.addEventListener("change", () => { queueState.sort = sort.value; render(); });
+  head.append(h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort));
+  const layout = h("div", { class: "layout" });
+  const list = h("div", { class: "cards" });
+  list.append(h("p", { class: "empty", text: "Loading rows." }));
+  layout.append(list);
+  view.append(head, layout);
+
   const params = new URLSearchParams({ status: tab.status });
   if (tab.limit) params.set("limit", String(tab.limit));
   let data;
@@ -465,13 +487,19 @@ async function viewQueue(view) {
     list.append(errorBox(error, "Could not load rows.", () => render()));
     return;
   }
-  clear(list);
   const rows = data.rows || [];
-  if (!rows.length) {
-    list.append(h("p", { class: "empty", text: EMPTY[tab.key] }));
-    return;
-  }
-  for (const row of rows) list.append(entry(row));
+  const paint = () => {
+    clear(list);
+    const shown = visibleRows(rows);
+    $("#row-count").textContent = shown.length === 1 ? "1 row" : `${shown.length} rows`;
+    if (!shown.length) {
+      list.append(h("p", { class: "empty", text: rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[tab.key] }));
+      return;
+    }
+    for (const row of shown) list.append(jobCard(row, tab, () => render()));
+  };
+  layout.prepend(filterCard(rows, paint));
+  paint();
 }
 
 /** Errors say what happened and what to do about it. */
@@ -480,59 +508,61 @@ function errorBox(error, what, retry) {
   const unauthorised = error instanceof ApiError && (error.status === 401 || error.status === 403);
   box.append(h("p", {
     text: unauthorised
-      ? `${what} The server refused the request. Open API token in the header, paste the token, then try again.`
+      ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
       : `${what} ${error.message}`,
   }));
-  if (retry) box.append(h("button", { type: "button", text: "Try again", onClick: retry }));
+  if (retry) box.append(h("button", { type: "button", class: "btn", text: "Try again", onClick: retry }));
   return box;
 }
 
 // --- View: row detail ---
 
-/** One stamped entry on the gate strip. */
-function gate(text, failed) {
-  return h("span", { class: failed ? "gate fail" : "gate", text });
+/** One small card in the stats row: a label, a verdict, and a quiet note. */
+function stat(label, value, tone, note) {
+  const card = h("div", { class: tone ? `card stat ${tone}` : "card stat" });
+  card.append(eyebrow(label), h("p", { class: "value", text: value }));
+  if (note) card.append(h("p", { class: "note", text: note }));
+  return card;
 }
 
-/**
- * The gate strip: the four machine verdicts that decide whether a letter may go
- * out, read left to right in the order they run. A missing verdict says so; it
- * is never quietly read as a pass (AGENTS.md section 8).
- */
-function gateStrip(row, pkg) {
-  const strip = h("div", { class: "gate-strip", "aria-label": "Gates" });
+
+/** The stats row: the machine verdicts that decide whether a letter may go out.
+ * A missing verdict says so; it is never read as a pass (AGENTS.md section 8). */
+function statsRow(row, pkg) {
+  const stats = h("div", { class: "stats", "aria-label": "Gates" });
+  stats.append(typeof row.score === "number"
+    ? stat("Score", String(Math.round(row.score)), "good")
+    : stat("Score", "Not scored", ""));
   const critic = pkg.letter_critic;
-  if (!critic) {
-    strip.append(gate("Critic not run", false));
-  } else {
+  if (!critic) stats.append(stat("Critic", "Critic not run", "", "No letter has been critiqued on this row."));
+  else {
     const findings = Array.isArray(critic.findings) ? critic.findings : [];
-    const fails = findings.filter((f) => f && f.severity === "fail").length;
-    const warns = findings.filter((f) => f && f.severity === "warn").length;
-    const blocked = String(critic.verdict || "").toLowerCase() !== "pass";
-    strip.append(blocked
-      ? gate(`Critic blocked, ${fails} fail`, true)
-      : gate(`Critic pass, ${warns} warn`, false));
+    const count = (severity) => findings.filter((f) => f && f.severity === severity).length;
+    stats.append(String(critic.verdict || "").toLowerCase() !== "pass"
+      ? stat("Critic", `Critic blocked, ${count("fail")} fail`, "bad")
+      : stat("Critic", `Critic pass, ${count("warn")} warn`, "good"));
   }
   const quality = (pkg.metadata && typeof pkg.metadata === "object" && pkg.metadata.quality) || {};
+  const notes = [];
   for (const [label, keys] of [["Slop", ["slop", "slopKiller", "slop_killer"]], ["Voice", ["voice", "voiceCheck", "voice_check"]]]) {
     const raw = keys.map((k) => quality[k]).find((v) => v !== undefined && v !== null);
-    if (raw === undefined) strip.append(gate(`${label} not recorded`, false));
-    else {
-      const passed = raw === true || String(raw).toLowerCase() === "pass";
-      strip.append(gate(`${label} ${passed ? "pass" : "fail"}`, !passed));
-    }
+    if (raw === undefined) notes.push(`${label} not recorded`);
+    else notes.push(`${label} ${raw === true || String(raw).toLowerCase() === "pass" ? "pass" : "fail"}`);
   }
-  strip.append(gate(row.status === "submitted"
-    ? "Gate passed"
-    : `Gate waiting, ${statusLabel(row.status)}`, false));
-  return strip;
+  const sent = row.status === "submitted";
+  stats.append(stat("Gate", sent ? "Gate passed" : `Gate waiting, ${statusLabel(row.status)}`, sent ? "good" : "", notes.join(". ") + "."));
+  return stats;
+}
+
+function panel(title, body) {
+  const card = h("section", { class: "card" });
+  card.append(h("h2", { text: title }), body);
+  return card;
 }
 
 function findingsBlock(critic) {
   const findings = critic && Array.isArray(critic.findings) ? critic.findings : [];
   if (!findings.length) return null;
-  const block = h("section", { class: "block" });
-  block.append(h("h2", { text: "Critic findings" }));
   const ul = h("ul", { class: "findings" });
   for (const finding of findings) {
     const text = typeof finding === "string" ? finding : [
@@ -542,18 +572,12 @@ function findingsBlock(critic) {
     ].filter(Boolean).map((part) => String(part).trim().replace(/\.+$/, "")).join(". ") + ".";
     ul.append(h("li", { text: text || asText(finding) }));
   }
-  block.append(ul);
-  return block;
+  return panel("Critic findings", ul);
 }
 
 function historyBlock(history) {
-  const block = h("section", { class: "block" });
-  block.append(h("h2", { text: "History" }));
   const entries = Array.isArray(history) ? history : [];
-  if (!entries.length) {
-    block.append(h("p", { class: "slate", text: "No transitions recorded on this row yet." }));
-    return block;
-  }
+  if (!entries.length) return panel("History", h("p", { class: "grey", text: "No transitions recorded on this row yet." }));
   const ul = h("ul", { class: "history" });
   for (const item of [...entries].reverse()) {
     const li = h("li", {});
@@ -562,49 +586,26 @@ function historyBlock(history) {
     // A field_update entry is an enrichment pass, not a decision: say which
     // fields moved and keep the raw machinery off the page.
     const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
-    if (fields) li.append(h("div", { class: "slate", text: `updated ${fields[1].trim() || "some fields"}` }));
-    else if (item.reason) li.append(h("div", { class: "slate", text: item.reason }));
+    if (fields) li.append(h("div", { class: "grey small", text: `updated ${fields[1].trim() || "some fields"}` }));
+    else if (item.reason) li.append(h("div", { class: "grey small", text: item.reason }));
     ul.append(li);
   }
-  block.append(ul);
-  return block;
+  return panel("History", ul);
 }
 
 function actionBar(row, onDone) {
-  const bar = h("section", { class: "actions" });
-  bar.append(h("h2", { text: "Your decision" }));
   const buttons = h("div", { class: "action-buttons" });
   const reason = h("input", { type: "text", "aria-label": "Reason, optional", placeholder: "Reason, optional" });
   const edits = h("textarea", { "aria-label": "Edits, optional", placeholder: "Edits to the letter or package, optional" });
-  const all = [];
-  for (const action of ACTIONS) {
-    const button = h("button", { type: "button", class: action.danger ? "danger" : "", text: action.label });
-    all.push(button);
-    guarded(button, action.label, async () => {
-      for (const b of all) b.disabled = true;
-      try {
-        const body = { action: action.key };
-        if (reason.value.trim()) body.reason = reason.value.trim();
-        if (edits.value.trim()) body.edits = edits.value.trim();
-        const result = await api(`rows/${encodeURIComponent(row.id)}/action`, { method: "POST", body });
-        toast(`${action.label}: the row is now ${statusLabel(result.status_after)}.`);
-        onDone();
-      } catch (error) {
-        // 409 means the pipeline state machine refused the transition. Show the
-        // server's own reason rather than guessing at one.
-        toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
-        for (const b of all) b.disabled = false;
-      }
-    });
-    buttons.append(button);
-  }
-  bar.append(buttons);
-  bar.append(h("div", { class: "action-fields" }, reason, edits));
-  bar.append(h("p", {
-    class: "slate small",
-    text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here.",
-  }));
-  return bar;
+  const fields = () => {
+    const out = {};
+    if (reason.value.trim()) out.reason = reason.value.trim();
+    if (edits.value.trim()) out.edits = edits.value.trim();
+    return out;
+  };
+  for (const action of ACTIONS) buttons.append(actionButton(row, action, fields, onDone));
+  return panel("Your decision", h("div", {}, buttons, h("div", { class: "action-fields" }, reason, edits),
+    h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." })));
 }
 
 async function viewRow(view, id) {
@@ -614,66 +615,53 @@ async function viewRow(view, id) {
     data = await api(`rows/${encodeURIComponent(id)}`);
   } catch (error) {
     clear(view);
-    view.append(
-      h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Back to the queue" })),
-      errorBox(error, "Could not load this row.", () => render()),
-    );
+    view.append(h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Queue" })),
+      errorBox(error, "Could not load this row.", () => render()));
     return;
   }
   clear(view);
   const row = data.row || {};
   const pkg = data.package || {};
-  view.append(h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Back to the queue" })));
-  view.append(h("h1", { class: "dossier-title", text: row.title || "Untitled role" }));
-
-  // The top block is one sentence, the way the person would say it.
+  view.append(h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Queue" })),
+    h("h1", { text: row.title || "Untitled role" }));
   const facts = [
-    row.company,
-    row.location,
-    row.classification?.work_arrangement || row.workArrangement,
+    row.company, row.location, row.classification?.work_arrangement || row.workArrangement,
     APPLY_METHODS[row.applyMethod] || row.applyMethod,
-    typeof row.score === "number" ? `score ${Math.round(row.score)}` : null,
-    row.userSaved ? "saved by you" : null,
-    statusLabel(row.status) || null,
+    row.userSaved ? "saved by you" : null, statusLabel(row.status) || null,
   ].filter(Boolean);
-  const line = h("p", { class: "dossier-line", text: `${facts.join(", ")}. ` });
+  const line = h("p", { class: "detail-meta", text: `${facts.join(", ")}. ` });
   if (row.url) line.append(h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
   view.append(line);
   const reasonLine = data.reason || row.reason;
-  if (reasonLine) view.append(h("p", { class: "dossier-reason", text: reasonLine }));
+  if (reasonLine) view.append(h("p", { class: "detail-reason", text: reasonLine }));
 
-  view.append(gateStrip(row, pkg));
+  view.append(statsRow(row, pkg));
 
   // Letter left at reading measure, JD right and quieter. Stacked on a phone,
   // letter first, because the letter is what the decision is about.
   const columns = h("div", { class: "columns" });
   const letterText = asText(pkg.cover_letter);
-  const letter = h("section", {});
-  letter.append(h("h2", { text: "Cover letter" }), letterText.trim()
+  columns.append(panel("Cover letter", letterText.trim()
     ? h("div", { class: "letter" }, paragraphs(letterText))
-    : h("p", { class: "slate", text: "No cover letter in this package. Retry to have the harness draft one." }));
+    : h("p", { class: "grey", text: "No cover letter in this package. Retry to have the harness draft one." })));
   const jdText = asText(row.description || pkg.jd);
-  const jd = h("section", {});
-  jd.append(h("h2", { text: "Job description" }), jdText.trim()
+  columns.append(panel("Job description", jdText.trim()
     ? h("div", { class: "jd" }, h("pre", { text: jdText }))
-    : h("p", { class: "slate", text: "No job description stored for this row. Open the advert to read it." }));
-  columns.append(letter, jd);
+    : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." })));
   view.append(columns);
 
+  const rest = h("div", { class: "stack" });
   const findings = findingsBlock(pkg.letter_critic);
-  if (findings) view.append(findings);
-  view.append(historyBlock(row.history));
-  view.append(actionBar(row, () => {
-    location.hash = "#/queue";
-    render();
-  }));
+  if (findings) rest.append(findings);
+  rest.append(historyBlock(row.history), actionBar(row, () => { location.hash = "#/queue"; render(); }));
+  view.append(rest);
 }
 
 // --- View: keywords ---
 
 async function viewKeywords(view) {
   view.append(h("h1", { text: "Keywords" }));
-  const host = h("div", {});
+  const host = h("div", { class: "stack" });
   host.append(h("p", { class: "empty", text: "Loading pending terms." }));
   view.append(host);
   let data;
@@ -691,6 +679,8 @@ async function viewKeywords(view) {
     host.append(h("p", { class: "empty", text: "Nothing pending. Every mined term has an answer. The next hunt will add more." }));
     return;
   }
+
+  view.insertBefore(h("p", { class: "page-count", text: `${total} pending.` }), host);
   const form = h("form", {});
   form.addEventListener("submit", (event) => event.preventDefault());
   for (const item of terms) {
@@ -704,27 +694,17 @@ async function viewKeywords(view) {
     const options = h("div", { class: "options" });
     // AGENTS.md section 9: exactly these four, recommended first, no free text.
     for (const option of KEYWORD_OPTIONS) {
-      const input = h("input", {
-        type: "radio",
-        name: `term:${item.term}`,
-        value: option.value,
-        dataset: { term: item.term },
-      });
+      const input = h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } });
       options.append(h("label", {}, input, h("span", { text: option.label })));
     }
     set.append(options);
     form.append(set);
   }
-  const submit = h("button", { type: "button", class: "primary", text: "Record these" });
+  const submit = h("button", { type: "button", class: "btn primary", text: "Record these" });
   guarded(submit, "Record these", async () => {
     const answers = {};
-    for (const input of form.querySelectorAll("input[type=radio]:checked")) {
-      answers[input.dataset.term] = input.value;
-    }
-    if (!Object.keys(answers).length) {
-      toast("Choose an answer for at least one term first.", "bad");
-      return;
-    }
+    for (const input of form.querySelectorAll("input[type=radio]:checked")) answers[input.dataset.term] = input.value;
+    if (!Object.keys(answers).length) return toast("Choose an answer for at least one term first.", "bad");
     submit.disabled = true;
     try {
       const result = await api("keywords/record", { method: "POST", body: { answers } });
@@ -738,12 +718,8 @@ async function viewKeywords(view) {
       submit.disabled = false;
     }
   });
-  form.append(submit);
-  form.append(h("p", { class: "slate small", text: `${total} pending.` }));
-  form.append(h("p", {
-    class: "slate small",
-    text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source.",
-  }));
+  form.append(submit, h("p", { class: "grey small",
+    text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source." }));
   host.append(form);
 }
 
@@ -768,28 +744,26 @@ async function viewToday(view) {
     host.append(h("p", { class: "empty", text: "No entry for today yet. The morning run writes one when it finishes." }));
     return;
   }
-  if (data.date) host.append(h("p", { class: "slate small", text: data.date }));
-  host.append(h("div", { class: "prose" }, richMarkdown(markdown)));
+  if (data.date) view.insertBefore(h("p", { class: "page-count", text: data.date }), host);
+  host.append(panel("Journal", h("div", { class: "prose" }, richMarkdown(markdown))));
 }
 
 // --- View: digest ---
 
 function copyButton(text) {
-  const button = h("button", { type: "button", class: "quiet", text: "Copy rule" });
+  const button = h("button", { type: "button", class: "btn", text: "Copy rule" });
   button.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(text);
       toast("Rule copied.");
-    } catch {
-      toast("This browser blocked the clipboard. Select the rule and copy it.", "bad");
-    }
+    } catch { toast("This browser blocked the clipboard. Select the rule and copy it.", "bad"); }
   });
   return button;
 }
 
 async function viewDigest(view) {
   view.append(h("h1", { text: "Digest" }));
-  const host = h("div", {});
+  const host = h("div", { class: "cards" });
   host.append(h("p", { class: "empty", text: "Loading the digest." }));
   view.append(host);
   let data;
@@ -802,30 +776,77 @@ async function viewDigest(view) {
   }
   clear(host);
   const themes = data.themes || [];
-  host.append(h("p", { class: "slate small", text: `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.` }));
+  view.insertBefore(h("p", { class: "page-count",
+    text: `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.` }), host);
   if (!themes.length) {
     host.append(h("p", { class: "empty", text: "No recurring themes in this window. Nothing to promote into the editorial rules." }));
     return;
   }
-  const list = h("ul", { class: "digest" });
   for (const theme of themes) {
-    const li = h("li", {});
-    li.append(h("div", {},
-      h("span", { class: "count", text: String(theme.count ?? 0) }),
+    const card = h("article", { class: "card" });
+    card.append(h("h3", {}, h("span", { class: "digest-count", text: String(theme.count ?? 0) }),
       h("span", { text: theme.key || "unnamed theme" })));
-    if (theme.sample) li.append(h("p", { class: "sample", text: theme.sample }));
+    if (theme.sample) card.append(h("p", { class: "sample", text: theme.sample }));
     if (theme.proposed_rule) {
-      li.append(h("div", { class: "rule" }, h("div", { text: theme.proposed_rule }), copyButton(theme.proposed_rule)));
+      card.append(h("div", { class: "proposed" }, h("div", { text: theme.proposed_rule }), copyButton(theme.proposed_rule)));
     }
-    list.append(li);
+    host.append(card);
   }
-  host.append(list);
   // AGENTS.md section 5: recurring findings become editorial rules, but the
   // person promotes them in an attended session. This view copies, never writes.
   host.append(h("p", {
-    class: "slate small",
+    class: "grey small",
     text: "Nothing here is written to the editorial rules. Copy a rule and promote it in an attended session.",
   }));
+}
+
+// --- View: settings ---
+
+/** The commands the README gives for running this UI. */
+const COMMANDS = [
+  "npm run ui -- --open",
+  "bash scripts/install-ui-launchd.sh",
+  "npm run ui -- --host 100.x.y.z   # a Tailscale address, with HARNESS_UI_TOKEN set",
+  "sheet:\n  enabled: false   # the local UI is the approval surface",
+];
+
+function viewSettings(view) {
+  view.append(h("h1", { text: "Settings" }));
+  const stack = h("div", { class: "stack" });
+  const input = h("input", { type: "password", id: "token-input", autocomplete: "off",
+    spellcheck: "false", placeholder: "Paste once", "aria-label": "API token" });
+  input.value = readToken();
+  const state = h("p", { class: "grey small", id: "token-state" });
+  const paint = () => {
+    state.textContent = readToken() ? "A token is set in this browser." : "No token is set in this browser.";
+  };
+  paint();
+
+  const show = h("button", { type: "button", class: "btn", text: "Show" });
+  show.addEventListener("click", () => {
+    const hidden = input.type === "password";
+    input.type = hidden ? "text" : "password";
+    show.textContent = hidden ? "Hide" : "Show";
+  });
+  const save = h("button", { type: "button", class: "btn primary", text: "Save" });
+  save.addEventListener("click", () => {
+    writeToken(input.value.trim());
+    paint();
+    toast(input.value.trim() ? "Token saved." : "Token cleared.");
+  });
+  const wipe = h("button", { type: "button", class: "btn", text: "Clear" });
+  wipe.addEventListener("click", () => { writeToken(""); input.value = ""; paint(); toast("Token cleared."); });
+  input.addEventListener("keydown", (event) => { if (event.key === "Enter") save.click(); });
+  const token = h("div", {},
+    h("p", { class: "grey small measure", text: "Stored in this browser only and sent as a bearer header on every call. It is needed only when the server is reached from another device, such as a phone over Tailscale." }),
+    h("div", { class: "token-fields" }, input, h("div", { class: "action-buttons" }, save, wipe, show)),
+    state);
+  stack.append(panel("API token", token));
+  stack.append(panel("This browser", h("ul", { class: "history" },
+    h("li", { text: `Serving from ${location.origin}` }),
+    h("li", { text: readToken() ? "This browser holds a token." : "This browser holds no token." }))));
+  stack.append(panel("About", h("pre", { class: "commands", text: COMMANDS.join("\n\n") })));
+  view.append(stack);
 }
 
 // --- Router ---
@@ -850,14 +871,12 @@ async function render() {
   if (mine !== renderToken) return;
   try {
     if (route === "row") {
-      if (!id) {
-        view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the queue." }));
-      } else {
-        await viewRow(view, id);
-      }
+      if (id) await viewRow(view, id);
+      else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the queue." }));
     } else if (route === "keywords") await viewKeywords(view);
     else if (route === "today") await viewToday(view);
     else if (route === "digest") await viewDigest(view);
+    else if (route === "settings") viewSettings(view);
     else await viewQueue(view);
   } catch (error) {
     if (mine !== renderToken) return;
@@ -871,6 +890,5 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-setupHeader();
 if (!location.hash) location.hash = "#/queue";
 render();
