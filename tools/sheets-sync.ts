@@ -3,14 +3,31 @@
  * sheets-sync.ts — bi-directional sync between local pipeline state and a
  * Google Sheet.
  *
- * Push (default): replaces tab contents for Pipeline, Tray, Followups,
- * Contacts, Market, leaving only the Tray's `Action` and `Edits` columns
- * intact (those are the user-writable surface). The Summary tab is owned by
- * tools/daily-summary.ts, which reuses the exported auth helpers below.
+ * Push (default): replaces tab contents for Pipeline and Tray, carrying over
+ * only the Tray's `Action` and `Edits` columns (the user-writable surface).
+ * The Summary tab is owned by tools/daily-summary.ts, which reuses the
+ * exported auth helpers below.
+ *
+ * Tray: every row the person can act on, not just the well-classified ones.
+ * `awaiting_approval` rows come first (approve / reject / hold), then
+ * `manual_action_needed` rows (retry / reject / withdraw — user decision
+ * 2026-09-17), each block sorted by score descending. An awaiting row without
+ * an agent classification is still shown, and counted in
+ * `dropped_unclassified` so nobody has to guess why the Tray is short.
  *
  * Pull: reads the Tray's `Action` and `Edits` columns into a queue file
- * (state/pipeline/approval-queue.json) and clears those cells so the user
- * doesn't reprocess them next run.
+ * (state/pipeline/approval-queue.json), applies the status moves the action
+ * implies (`retry` → approved, `reject` → rejected, `withdraw` → withdrawn;
+ * `approve` / `hold` are left to the consuming flow), then clears only the
+ * cells it processed.
+ *
+ * Fail closed. Any error reading the Tray aborts before anything is cleared or
+ * rewritten; a push aborts on the first API error with exit 1; missing
+ * credentials exit 2 rather than looking like a successful no-op to /daily.
+ *
+ * The Google client is injected (`runPush` / `runPull` take `deps`), so the
+ * tests drive a fake that records calls and never reaches the network. The CLI
+ * builds the real client.
  *
  * Auth: GOOGLE_APPLICATION_CREDENTIALS (service account JSON path) +
  * SHEETS_SPREADSHEET_ID env var. The service-account email must be added
@@ -20,27 +37,80 @@
  *   tsx tools/sheets-sync.ts            # push (default)
  *   tsx tools/sheets-sync.ts pull       # pull Tray.Action + Tray.Edits
  *   tsx tools/sheets-sync.ts init       # create missing tabs
- *
- * If credentials are missing, prints clear setup instructions and exits 0
- * with a warning (so the daily orchestrator doesn't crash when the user
- * hasn't wired up Sheets yet).
  */
 
 import { promises as fs } from "node:fs";
 import { google } from "googleapis";
-import YAML from "yaml";
-import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
+import { load as loadPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
 const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
-const TRAY_HEADER = [
+const SCORING_WEIGHTS_PATH = repoPath("state/profile/scoring-weights.yaml");
+const REASON_MAX = 160;
+
+export const TRAY_HEADER = [
   "id", "channel", "company", "title", "score", "profileRelevance", "fitReason", "domain",
   "isContract", "workArrangement", "resumeId", "resumeReason", "topReasons", "redFlags",
   "endEmployer", "requisitionId", "duplicateGroup", "duplicateOf",
-  "coverSnippet", "url", "draftDir", "classificationSource", "Action", "Edits", "Status",
+  "coverSnippet", "url", "draftDir", "classificationSource", "Reason", "Action", "Edits", "Status",
   "SubmittedAt", "ConfirmationRef",
 ];
+
+/** The Tray columns a pull cannot work without. */
+const TRAY_REQUIRED_COLUMNS = ["id", "Action", "Edits"];
+
+/** Statuses that earn a Tray row, in the order the blocks appear. */
+const TRAY_STATUSES: PipelineStatus[] = ["awaiting_approval", "manual_action_needed"];
+
+/**
+ * What a Sheet `Action` means locally. `approve` and `hold` are consumed
+ * downstream (submission-runner / the daily flow) and move nothing here;
+ * the rest are status moves this tool applies, each legal per
+ * VALID_TRANSITIONS from the status the row is actually in.
+ */
+const ACTION_STATUS: Record<string, PipelineStatus | null> = {
+  approve: null,
+  hold: null,
+  retry: "approved",
+  reject: "rejected",
+  withdraw: "withdrawn",
+};
+
+/** The slice of the googleapis sheets client this tool actually uses. */
+export type SheetsApi = {
+  spreadsheets: {
+    get(params: { spreadsheetId: string }): Promise<{ data: { sheets?: any[] } }>;
+    batchUpdate(params: { spreadsheetId: string; requestBody: any }): Promise<unknown>;
+    values: {
+      get(params: { spreadsheetId: string; range: string }): Promise<{ data: { values?: any[][] } }>;
+      update(params: { spreadsheetId: string; range: string; valueInputOption: string; requestBody: any }): Promise<unknown>;
+      clear(params: { spreadsheetId: string; range: string }): Promise<unknown>;
+      batchClear(params: { spreadsheetId: string; requestBody: { ranges: string[] } }): Promise<unknown>;
+    };
+  };
+};
+
+export type SyncDeps = {
+  sheets: SheetsApi;
+  spreadsheetId: string;
+  /** Overridable so a test never writes into state/. */
+  queuePath?: string;
+};
+
+export type SyncReport = {
+  command: "push" | "pull";
+  ok: boolean;
+  pipeline_rows: number;
+  tray_rows: number;
+  manual_rows: number;
+  dropped_unclassified: number;
+  actions_applied: number;
+  queued?: number;
+  unknown_actions?: { id: string; action: string }[];
+  errors?: string[];
+};
 
 export async function loadLocalEnv(): Promise<void> {
   try {
@@ -65,9 +135,15 @@ export function authReady(): boolean {
   return !!(process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.SHEETS_SPREADSHEET_ID);
 }
 
+/** The one-line reason auth is not usable, or null when it is. */
+export function authBlocker(): string | null {
+  const missing = ["GOOGLE_APPLICATION_CREDENTIALS", "SHEETS_SPREADSHEET_ID"].filter((k) => !process.env[k]);
+  return missing.length ? `Google Sheets not configured: ${missing.join(" and ")} unset (see npm run sheets:sync init)` : null;
+}
+
 export function warnSetup(): void {
   console.error(`
-[sheets-sync] Google Sheets not configured — skipping.
+[sheets-sync] Google Sheets not configured.
 To enable:
   1. Create a Google Cloud service account, download the JSON key.
   2. Create an empty Google Sheet, share it with the service-account email as Editor.
@@ -94,6 +170,39 @@ export async function ensureTabs(sheets: any, spreadsheetId: string): Promise<vo
     spreadsheetId,
     requestBody: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
   });
+}
+
+/** True when an agent (not regex triage, not nothing) classified the row. */
+export function isAgentClassified(r: Opportunity): boolean {
+  return (r.classificationSource ?? r.classification?._classifier) === "agent";
+}
+
+/**
+ * Why this row needs the person: the most recent history reason, else the
+ * note the tool left when it parked the row. Truncated so the Tray stays
+ * readable.
+ */
+export function reasonFor(r: Opportunity): string {
+  const fromHistory = [...(r.history ?? [])].reverse().find((h) => (h.reason ?? "").trim())?.reason ?? "";
+  const text = (fromHistory || r.notes || r.parkedReason || "").replace(/\s+/g, " ").trim();
+  return text.length > REASON_MAX ? `${text.slice(0, REASON_MAX - 1)}…` : text;
+}
+
+/**
+ * The Tray, in the order the person reads it: everything they can act on now
+ * (`awaiting_approval`) above everything the harness could not finish
+ * (`manual_action_needed`), each block by score descending.
+ */
+export function trayRoles(all: Opportunity[]): Opportunity[] {
+  const rank = new Map(TRAY_STATUSES.map((s, i) => [s, i] as const));
+  return all
+    .filter((r) => rank.has(r.status))
+    .sort((a, b) =>
+      (rank.get(a.status)! - rank.get(b.status)!)
+      || (b.score ?? -1) - (a.score ?? -1)
+      || a.company.localeCompare(b.company)
+      || a.title.localeCompare(b.title),
+    );
 }
 
 function rowFor(r: Opportunity): (string | number)[] {
@@ -123,18 +232,48 @@ function rowFor(r: Opportunity): (string | number)[] {
     r.url,
     r.draftDir ?? "",
     r.classificationSource ?? classification?._classifier ?? "none",
+    reasonFor(r),
     "", "", r.status, r.submittedAt ?? "", "",
   ];
 }
 
-async function push() {
-  if (!authReady()) { warnSetup(); return; }
-  const sheets = await sheetsClient();
-  const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID!;
+/**
+ * Read the Tray as a header plus rows, failing closed.
+ *
+ * A tab with no values at all is only acceptable on a push (a freshly
+ * initialised Sheet); anywhere else an empty read is indistinguishable from a
+ * failed read, and a header missing the columns we write is a broken Tray, not
+ * an empty one. Both are errors so nothing downstream clears the person's work.
+ */
+export async function readTray(
+  deps: SyncDeps,
+  opts: { allowEmpty?: boolean } = {},
+): Promise<{ header: string[]; rows: any[][] }> {
+  let got: { data: { values?: any[][] } };
+  try {
+    got = await deps.sheets.spreadsheets.values.get({ spreadsheetId: deps.spreadsheetId, range: "Tray!A1:AD" });
+  } catch (error: any) {
+    throw new Error(`Tray read failed: ${error?.message ?? error}`);
+  }
+  const values = got.data.values ?? [];
+  if (!values.length) {
+    if (opts.allowEmpty) return { header: [], rows: [] };
+    throw new Error("Tray read returned no rows at all (expected at least the header row); refusing to act on it");
+  }
+  const header = (values[0] ?? []).map((v) => String(v));
+  const missing = TRAY_REQUIRED_COLUMNS.filter((c) => !header.includes(c));
+  if (missing.length) {
+    throw new Error(`Tray header is missing ${missing.join(", ")} (read ${header.length} columns); refusing to act on it`);
+  }
+  return { header, rows: values.slice(1) };
+}
+
+export async function runPush(deps: SyncDeps): Promise<SyncReport> {
+  const { sheets, spreadsheetId } = deps;
   await ensureTabs(sheets, spreadsheetId);
 
   const all = await loadPipeline();
-  const scoringWeights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
+  const scoringWeights = (await readYamlIfExists<any>(SCORING_WEIGHTS_PATH, {})) ?? {};
   const pipelineSheetMinScore = scoringWeights.thresholds?.pipeline_sheet_min_score ?? 0;
 
   // Keep the operational view useful without requiring a manual Sheet sort:
@@ -198,43 +337,43 @@ async function push() {
     r.url,
     r.submittedAt ?? "",
   ])];
+
+  // Read the Tray BEFORE clearing anything: the person's Action/Edits live
+  // there and a failed read must abort the whole push, never fall through to
+  // the clear + rewrite below with an empty carry-over map.
+  const { header: existingHeader, rows: existingRows } = await readTray(deps, { allowEmpty: true });
+  const existingById = new Map<string, any[]>();
+  if (existingHeader.length) {
+    const idIdx = existingHeader.indexOf("id");
+    for (const row of existingRows) existingById.set(String(row[idIdx]), row);
+  }
+
   // A values.update only overwrites the addressed cells. If the refreshed
   // pipeline is shorter than the previous one, stale rows otherwise remain
   // visible below the new data. Clear the managed range before replacing it.
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId, range: "Pipeline!A:AD",
-  });
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "Pipeline!A:AD" });
   await sheets.spreadsheets.values.update({
     spreadsheetId, range: "Pipeline!A1", valueInputOption: "RAW",
     requestBody: { values: pipelineRows },
   });
 
-  // Tray tab — only `awaiting_approval` (the user qualifies here)
-  // Preserve any existing Action/Edits on rows still in awaiting_approval.
-  const existing = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Tray!A1:AD" }).catch(() => ({ data: { values: [] as (string | number)[][] } }));
-  const existingHeader = (existing.data.values?.[0] ?? []) as (string | number)[];
-  const existingById = new Map<string, (string | number)[]>();
-  if (existingHeader.length) {
-    const idIdx = existingHeader.findIndex((v) => v === "id");
-    for (const row of (existing.data.values ?? []).slice(1)) existingById.set(String(row[idIdx]), row);
-  }
-  const trayRoles = all.filter((r) => r.status === "awaiting_approval" && (r.classificationSource ?? r.classification?._classifier) === "agent");
-  const trayRows: (string | number)[][] = [TRAY_HEADER, ...trayRoles.map((r) => {
+  // Tray tab — awaiting_approval (the person qualifies here) plus
+  // manual_action_needed (the person unblocks here).
+  const tray = trayRoles(all);
+  const manualCount = tray.filter((r) => r.status === "manual_action_needed").length;
+  const droppedUnclassified = tray.filter((r) => r.status === "awaiting_approval" && !isAgentClassified(r)).length;
+  const trayRows: (string | number)[][] = [TRAY_HEADER, ...tray.map((r) => {
     const row = rowFor(r);
     const prev = existingById.get(r.id);
     if (prev) {
-      const newActionIdx = TRAY_HEADER.indexOf("Action");
-      const newEditsIdx = TRAY_HEADER.indexOf("Edits");
-      const oldActionIdx = existingHeader.findIndex((v) => v === "Action");
-      const oldEditsIdx = existingHeader.findIndex((v) => v === "Edits");
-      if (oldActionIdx >= 0) row[newActionIdx] = (prev[oldActionIdx] as string | undefined) ?? "";
-      if (oldEditsIdx >= 0) row[newEditsIdx] = (prev[oldEditsIdx] as string | undefined) ?? "";
+      const oldActionIdx = existingHeader.indexOf("Action");
+      const oldEditsIdx = existingHeader.indexOf("Edits");
+      if (oldActionIdx >= 0) row[TRAY_HEADER.indexOf("Action")] = (prev[oldActionIdx] as string | undefined) ?? "";
+      if (oldEditsIdx >= 0) row[TRAY_HEADER.indexOf("Edits")] = (prev[oldEditsIdx] as string | undefined) ?? "";
     }
     return row;
   })];
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId, range: "Tray!A:AD",
-  });
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "Tray!A:AD" });
   await sheets.spreadsheets.values.update({
     spreadsheetId, range: "Tray!A1", valueInputOption: "RAW",
     requestBody: { values: trayRows },
@@ -250,7 +389,7 @@ async function push() {
     Tray: {
       headerCols: TRAY_HEADER.length,
       rowCount: trayRows.length,
-      columnWidths: { 0: 150, 1: 70, 2: 190, 3: 340, 4: 70, 5: 90, 6: 360, 7: 190, 8: 90, 9: 120, 10: 140, 11: 360, 12: 320, 13: 220, 14: 220, 15: 260, 18: 110, 19: 220, 20: 130 },
+      columnWidths: { 0: 150, 1: 70, 2: 190, 3: 340, 4: 70, 5: 90, 6: 360, 7: 190, 8: 90, 9: 120, 10: 140, 11: 360, 12: 320, 13: 220, 14: 220, 15: 260, 18: 110, 19: 220, 20: 130, 22: 320 },
     },
   });
 
@@ -264,15 +403,26 @@ async function push() {
   const actualTrayRows = trayCheck.data.values?.length ?? 0;
   if (actualPipelineRows !== pipelineRows.length || actualTrayRows !== trayRows.length) {
     throw new Error(
-      `[sheets-sync] verification failed: Pipeline ${actualPipelineRows}/${pipelineRows.length} rows, `
+      `verification failed: Pipeline ${actualPipelineRows}/${pipelineRows.length} rows, `
       + `Tray ${actualTrayRows}/${trayRows.length} rows`,
     );
   }
 
   console.error(
     `[sheets-sync] pushed and verified ${pipelineView.length} visible Pipeline roles from ${all.length} local roles, `
-    + `${trayRoles.length} in Tray (Sheet minimum score ${pipelineSheetMinScore})`,
+    + `${tray.length} in Tray (${manualCount} manual, ${droppedUnclassified} awaiting without agent classification, `
+    + `Sheet minimum score ${pipelineSheetMinScore})`,
   );
+
+  return {
+    command: "push",
+    ok: true,
+    pipeline_rows: pipelineView.length,
+    tray_rows: tray.length,
+    manual_rows: manualCount,
+    dropped_unclassified: droppedUnclassified,
+    actions_applied: 0,
+  };
 }
 
 /**
@@ -340,42 +490,85 @@ export async function applyHeadersAndFilters(
   }
 }
 
-async function pull() {
-  if (!authReady()) { warnSetup(); return; }
-  const sheets = await sheetsClient();
-  const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID!;
-  const got = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Tray!A1:AD" });
-  const values = got.data.values ?? [];
-  if (!values.length) {
-    await fs.writeFile(APPROVAL_QUEUE_PATH, JSON.stringify([], null, 2));
-    return;
-  }
-  const header = values[0];
+export async function runPull(deps: SyncDeps): Promise<SyncReport> {
+  const { sheets, spreadsheetId } = deps;
+  const queuePath = deps.queuePath ?? APPROVAL_QUEUE_PATH;
+
+  // Fail closed: a read error throws out of here, before any clear.
+  const { header, rows } = await readTray(deps);
   const idIdx = header.indexOf("id");
   const actionIdx = header.indexOf("Action");
   const editsIdx = header.indexOf("Edits");
-  if (idIdx === -1 || actionIdx === -1 || editsIdx === -1) {
-    console.error(`[sheets-sync] Tray header missing required columns; ignoring pull`);
-    return;
-  }
+  const statusIdx = header.indexOf("Status");
+  const sourceIdx = header.indexOf("classificationSource");
+
   const queue: { id: string; action: string; edits: string }[] = [];
   const clearRanges: string[] = [];
-  for (let r = 1; r < values.length; r++) {
-    const row = values[r];
-    const action = (row[actionIdx] ?? "").trim();
-    const edits = (row[editsIdx] ?? "").trim();
-    if (action || edits) {
-      queue.push({ id: row[idIdx], action: action.toLowerCase(), edits });
-      // Range row indices are 1-based; header is row 1; data starts at row 2.
-      const sheetRow = r + 1;
-      clearRanges.push(`Tray!${colLetter(actionIdx + 1)}${sheetRow}:${colLetter(editsIdx + 1)}${sheetRow}`);
+  const unknownActions: { id: string; action: string }[] = [];
+  const errors: string[] = [];
+  let manualRows = 0;
+  let droppedUnclassified = 0;
+  let actionsApplied = 0;
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const id = String(row[idIdx] ?? "").trim();
+    if (!id) continue;
+    const status = statusIdx >= 0 ? String(row[statusIdx] ?? "").trim() : "";
+    if (status === "manual_action_needed") manualRows++;
+    if (status === "awaiting_approval" && sourceIdx >= 0 && String(row[sourceIdx] ?? "").trim() !== "agent") {
+      droppedUnclassified++;
     }
+
+    const action = String(row[actionIdx] ?? "").trim().toLowerCase();
+    const edits = String(row[editsIdx] ?? "").trim();
+    if (!action && !edits) continue;
+    if (action && !(action in ACTION_STATUS)) {
+      // Reported, row left alone: the cells stay so the person can correct it.
+      unknownActions.push({ id, action });
+      continue;
+    }
+
+    const nextStatus = action ? ACTION_STATUS[action] : null;
+    if (nextStatus) {
+      try {
+        await setStatus(id, nextStatus, `sheet: ${action}`, { actor: "sheets-sync:pull" });
+        actionsApplied++;
+      } catch (error: any) {
+        // Leave the cells intact so the person sees the action did not land.
+        errors.push(`${id}: ${action} → ${nextStatus} failed: ${error?.message ?? error}`);
+        continue;
+      }
+    }
+
+    queue.push({ id, action, edits });
+    // Range row indices are 1-based; header is row 1; data starts at row 2.
+    const sheetRow = r + 2;
+    clearRanges.push(`Tray!${colLetter(actionIdx + 1)}${sheetRow}:${colLetter(editsIdx + 1)}${sheetRow}`);
   }
-  await fs.writeFile(APPROVAL_QUEUE_PATH, JSON.stringify(queue, null, 2));
+
+  await fs.writeFile(queuePath, JSON.stringify(queue, null, 2));
   if (clearRanges.length) {
     await sheets.spreadsheets.values.batchClear({ spreadsheetId, requestBody: { ranges: clearRanges } });
   }
-  console.error(`[sheets-sync] pulled ${queue.length} approvals/edits into ${APPROVAL_QUEUE_PATH}`);
+
+  console.error(
+    `[sheets-sync] pulled ${queue.length} approvals/edits into ${queuePath}; `
+    + `${actionsApplied} status move(s) applied, ${unknownActions.length} unknown action(s), ${errors.length} error(s)`,
+  );
+
+  return {
+    command: "pull",
+    ok: errors.length === 0,
+    pipeline_rows: 0,
+    tray_rows: rows.length,
+    manual_rows: manualRows,
+    dropped_unclassified: droppedUnclassified,
+    actions_applied: actionsApplied,
+    queued: queue.length,
+    unknown_actions: unknownActions,
+    errors,
+  };
 }
 
 function colLetter(col1: number): string {
@@ -384,27 +577,42 @@ function colLetter(col1: number): string {
   return s;
 }
 
-async function init() {
-  if (!authReady()) { warnSetup(); return; }
-  const sheets = await sheetsClient();
-  await ensureTabs(sheets, process.env.SHEETS_SPREADSHEET_ID!);
-  console.error(`[sheets-sync] tabs ready`);
+async function realDeps(): Promise<SyncDeps> {
+  return { sheets: await sheetsClient() as unknown as SheetsApi, spreadsheetId: process.env.SHEETS_SPREADSHEET_ID! };
 }
 
 async function main() {
   await loadLocalEnv();
   const cmd = process.argv[2] || "push";
-  if (cmd === "push") await push();
-  else if (cmd === "pull") await pull();
-  else if (cmd === "init") await init();
-  else { console.error(`Unknown command: ${cmd}`); process.exit(2); }
+  if (!["push", "pull", "init"].includes(cmd)) {
+    console.error(`Unknown command: ${cmd}`);
+    process.exit(2);
+  }
+  const blocker = authBlocker();
+  if (blocker) {
+    // Exit 2, not 0: a silent no-op reads as success to /daily.
+    console.error(`[sheets-sync] ${blocker}`);
+    process.exit(2);
+  }
+  const deps = await realDeps();
+  let report: SyncReport;
+  if (cmd === "pull") {
+    report = await runPull(deps);
+  } else if (cmd === "init") {
+    await ensureTabs(deps.sheets, deps.spreadsheetId);
+    report = { command: "push", ok: true, pipeline_rows: 0, tray_rows: 0, manual_rows: 0, dropped_unclassified: 0, actions_applied: 0 };
+  } else {
+    report = await runPush(deps);
+  }
+  console.log(JSON.stringify(report));
+  if (!report.ok) process.exit(1);
 }
 
 // Guarded so tools/daily-summary.ts can import the auth + tab helpers without
 // triggering a push.
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((e) => {
-    console.error(e.message ?? e);
+    console.error(`[sheets-sync] ${e?.message ?? e}`);
     process.exit(1);
   });
 }
