@@ -1,0 +1,19 @@
+{
+  "verdict": "block",
+  "checked_at": "2026-09-16T22:10:04.000Z",
+  "letter_sha256": "3b1c9f0d2a7e4c5b8d6f1a0e9c2b4d7f8a1e3c5b7d9f0a2c4e6b8d0f2a4c6e81",
+  "model": "sonnet",
+  "findings": [
+    {
+      "severity": "fail",
+      "sentence": "I delivered the payments migration end to end for the client.",
+      "why": "The corpus records this engagement as scoped, not delivered.",
+      "fix": "Say it is scoped and in progress, and name what has shipped."
+    },
+    {
+      "text": "Twelve years across integration and platform work.",
+      "reason": "cv-source.md says eleven years.",
+      "suggestion": "Use eleven."
+    }
+  ]
+}

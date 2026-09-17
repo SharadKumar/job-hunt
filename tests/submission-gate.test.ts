@@ -22,7 +22,12 @@ import type { Opportunity } from "../tools/pipeline.ts";
 // real append-only trail. audit.ts reads AUDIT_DIR at module load, so the env
 // must be set before the dynamic import below. (Type-only imports above are
 // erased and don't trigger module execution.)
-process.env.AUDIT_DIR = mkdtempSync(path.join(tmpdir(), "gate-test-audit-"));
+const isolated = mkdtempSync(path.join(tmpdir(), "gate-test-audit-"));
+process.env.AUDIT_DIR = isolated;
+// Every case injects its own `opportunities`, but the gate falls back to the
+// pipeline store when a caller does not, and that fallback must never be the
+// person's own database. Set before the import for the same reason as above.
+process.env.PIPELINE_DB = path.join(isolated, "pipeline.db");
 
 const { evaluateSubmission } = await import("../tools/submission-gate.ts");
 const { log: auditLogEvent } = await import("../tools/audit.ts");

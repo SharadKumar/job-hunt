@@ -4,9 +4,11 @@
  *
  * The front end is vanilla ES modules with no build step, so everything that
  * can be decided on the server is decided on the server and pinned here: which
- * single button a row earns, the two status moves the Tray vocabulary has no
- * word for, which submitted rows have gone quiet, and what happens when a
- * letter is edited in the browser.
+ * single button a row earns, the status moves the Tray vocabulary has no word
+ * for (unpark, outcome, "I applied myself"), which submitted rows have gone
+ * quiet, what happens when a letter is edited in the browser, what a retry
+ * starts and refuses, and what the keyword queue recommends before it asks the
+ * person anything.
  *
  * Everything runs against a fixture repo root (HARNESS_REPO_ROOT), a throwaway
  * pipeline database (PIPELINE_DB) and a throwaway audit dir (AUDIT_DIR), so
@@ -19,6 +21,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "ui-b-"));
 // All three must be set before the tools are evaluated: repo-root, the pipeline
@@ -33,6 +36,10 @@ const { upsert, setStatus, patch, get } = await import("../tools/pipeline.ts");
 const ext = await import("../tools/ui/rows-ext-api.ts");
 const { handleApi } = await import("../tools/ui/api.ts");
 
+const here = path.dirname(fileURLToPath(import.meta.url));
+const fixtures = path.join(here, "fixtures", "ui-b");
+const realRoot = path.dirname(here);
+const profileDir = path.join(root, "state", "profile");
 const archiveDir = path.join(root, "archive");
 const outreachDir = path.join(root, "outreach");
 const ctx = { archiveDir, queuePath: path.join(root, "queue.json") };
@@ -96,9 +103,12 @@ await test("actionFor reads the run's own reason before the row's status", () =>
   );
   assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").kind, "retry");
   assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").post, "retry");
-  const duplicate = ext.actionFor({ ...row, status: "shortlisted" }, "Duplicate of DISR LH-07526; another agency represents it");
-  assert.equal(duplicate.kind, "reject");
-  assert.equal(duplicate.danger, true, "a reject is the destructive weight");
+  const duplicate = ext.actionFor({ ...row, status: "shortlisted" }, "Duplicate of LH-07526; another agency represents it");
+  assert.equal(duplicate.kind, "decide", "a duplicate is a decision, not a single move");
+  assert.equal(duplicate.primary, false, "neither choice is the default one");
+  assert.deepEqual(duplicate.also.map((a) => a.kind), ["reject", "retry"], "both choices come down already decided");
+  assert.equal(duplicate.also[0].danger, true, "a reject is the destructive weight");
+  assert.equal(duplicate.also[1].post, "retry", "sending it anyway is the other choice");
 });
 
 await test("actionFor falls back to the status when the reason says nothing", () => {
@@ -275,6 +285,296 @@ await test("the row detail finds a package the row never recorded a draftDir for
   assert.match(body.package.jd, /Solution Architect at Acme Federal/);
   assert.ok(body.package_files.includes("cover-letter.md"), "the detail lists what is in the package");
   assert.equal(body.action.kind, "retry", "the detail derives the same action as the list");
+});
+
+// ---------------------------------------------------------------------------
+// The action table, row by row
+// ---------------------------------------------------------------------------
+
+await test("an external row always opens the portal, whatever else the reason says", () => {
+  const external = { id: "seek-9", status: "manual_action_needed", url: "https://example.test/ad", applyMethod: "external" };
+  const byMethod = ext.actionFor(external, "[autopilot daily-2026-09-17] adapter failed on the review page");
+  assert.equal(byMethod.kind, "portal", "applyMethod external is enough on its own");
+  assert.equal(byMethod.href, "https://example.test/ad");
+  assert.deepEqual(byMethod.also.map((a) => a.kind), ["mark_sent"], "the only way an external row is ever sent is by the person");
+
+  const byReason = ext.actionFor({ ...external, applyMethod: "unknown" }, "LinkedIn ad says Apply on company website");
+  assert.equal(byReason.kind, "portal", "the reason carries the same fact when applyMethod does not");
+  const unknown = ext.actionFor({ ...external, applyMethod: "unknown" }, "[autopilot daily-2026-09-17] external/unknown apply method");
+  assert.equal(unknown.kind, "portal");
+
+  assert.notEqual(ext.actionFor(external, "letter-critic block (2 fail)").kind, "retry",
+    "an external row never offers a retry: there is no adapter to run");
+});
+
+await test("the rest of the table: unanswered, duplicate, letter block, to approve", () => {
+  const row = { id: "seek-10", status: "manual_action_needed", url: "https://example.test/ad", applyMethod: "quick_apply" };
+  assert.equal(ext.actionFor(row, 'unknown screening question: "How many years"').kind, "answer");
+  const dup = ext.actionFor(row, "already submitted to this advertiser within 60 days; needs a user decision");
+  assert.equal(dup.kind, "decide");
+  assert.deepEqual(dup.also.map((a) => a.label), ["Reject", "Retry"]);
+  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording").kind, "retry");
+  assert.equal(ext.actionFor({ ...row, status: "awaiting_approval" }, "package drafted").kind, "approve");
+});
+
+// ---------------------------------------------------------------------------
+// "I applied myself"
+// ---------------------------------------------------------------------------
+
+const externalId = await seed("Principal Architect", "Workday Advertiser", ["manual_action_needed"], {
+  score: 77, applyMethod: "external",
+}, "[autopilot daily-2026-09-17] external ATS: acme.wd105.myworkdayjobs.com");
+
+await test("mark-sent moves an external row to submitted and leaves the same receipt", async () => {
+  const result = await handleApi({
+    method: "POST",
+    pathname: `/api/rows/${externalId}/mark-sent`,
+    body: { confirmation: "Application 44821 received", note: "Lodged in the Workday portal, CV and letter uploaded." },
+  }, ctx);
+  assert.equal(result.status, 200);
+  const body = result.body as any;
+  assert.equal(body.status_after, "submitted");
+  assert.equal(body.confirmation_ref, "Application 44821 received");
+
+  const row = (await get(externalId))!;
+  assert.equal(row.status, "submitted");
+  assert.ok(row.submittedAt, "a manual send is stamped like any other");
+  assert.equal((row as any).confirmationRef, "Application 44821 received");
+  const last = row.history.filter((h) => h.from !== h.to).pop()!;
+  assert.match(last.reason ?? "", /applied manually via example\.test/, "the history names the portal it went through");
+
+  const receipt = fs.readFileSync(path.join(archiveDir, externalId, "confirmation.txt"), "utf8");
+  assert.match(receipt, /Applied by hand via example\.test/);
+  assert.match(receipt, /Application 44821 received/);
+  assert.match(receipt, /Lodged in the Workday portal/, "the person's own note is part of the receipt");
+
+  const audit = fs.readFileSync(path.join(root, "audit", "audit-log.jsonl"), "utf8");
+  assert.ok(audit.split("\n").some((line) => line.includes("manual_action_completed") && line.includes(externalId)),
+    "a send the person made by hand is audited like one the harness made");
+});
+
+await test("mark-sent refuses a row the state machine will not move", async () => {
+  const stuck = await seed("Network Lead", "Statewide Rail", ["parked"], { score: 51 }, "interstate onsite");
+  const result = await handleApi({ method: "POST", pathname: `/api/rows/${stuck}/mark-sent`, body: {} }, ctx);
+  assert.equal(result.status, 409);
+  assert.match(String((result.body as any).error), /invalid transition/);
+  const missing = await handleApi({ method: "POST", pathname: "/api/rows/seek-nosuchrow/mark-sent", body: {} }, ctx);
+  assert.equal(missing.status, 404);
+});
+
+// ---------------------------------------------------------------------------
+// "Write this letter again"
+// ---------------------------------------------------------------------------
+
+await test("redraft records the request on the row without moving it", async () => {
+  const before = (await get(blockedId))!.status;
+  const result = await handleApi({
+    method: "POST",
+    pathname: `/api/rows/${blockedId}/redraft`,
+    body: { reason: "the second paragraph claims delivery" },
+  }, ctx);
+  assert.equal(result.status, 200);
+  const request = (result.body as any).redraft_requested;
+  assert.equal(request.reason, "the second paragraph claims delivery");
+  assert.ok(request.at, "the request is stamped");
+
+  const row = (await get(blockedId))!;
+  assert.equal(row.status, before, "a redraft is not a status move");
+  assert.deepEqual((row as any).redraftRequested, request, "the daily letter loop reads this field");
+
+  const detail = await handleApi({ method: "GET", pathname: `/api/rows/${blockedId}` }, ctx);
+  assert.deepEqual((detail.body as any).redraft_requested, request, "and the browser sees it beside the letter");
+
+  const audit = fs.readFileSync(path.join(root, "audit", "audit-log.jsonl"), "utf8");
+  assert.ok(audit.split("\n").some((line) => line.includes("redraft_requested") && line.includes(blockedId)));
+});
+
+// ---------------------------------------------------------------------------
+// Retry now
+// ---------------------------------------------------------------------------
+
+/** The two switches every unattended send passes, written where the UI reads them. */
+function writePolicy(opts: { autopilot?: boolean; killSwitch?: boolean } = {}): void {
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, "submission-policy.yaml"), [
+    "autopilot:",
+    `  enabled: ${opts.autopilot ?? true}`,
+    "  max_per_day: 5",
+    "  channels:",
+    "    - seek",
+    `kill_switch: ${opts.killSwitch ?? false}`,
+    "",
+  ].join("\n"));
+}
+
+// A stand-in for tools/autopilot-submit.ts: the real one drives a browser.
+const fakeAutopilot = path.join(root, "fake-autopilot.mjs");
+fs.copyFileSync(path.join(fixtures, "fake-autopilot.mjs"), fakeAutopilot);
+fs.chmodSync(fakeAutopilot, 0o755);
+process.env.HARNESS_AUTOPILOT_BIN = fakeAutopilot;
+
+const retryId = await seed("Platform Architect", "Harbour Rail", ["manual_action_needed"], {
+  score: 79, applyMethod: "quick_apply", userSaved: true,
+}, "[autopilot daily-2026-09-17] letter-critic block (1 fail): scope wording");
+
+await test("retry refuses anything outside the autopilot lane", async () => {
+  writePolicy();
+  const external = await seed("Delivery Lead", "Portal Advertiser", ["manual_action_needed"], {
+    score: 72, applyMethod: "external",
+  }, "[autopilot daily-2026-09-17] external ATS: careers.example.test");
+  const result = await handleApi({ method: "POST", pathname: `/api/rows/${external}/retry-now`, body: {} }, ctx);
+  assert.equal(result.status, 409);
+  assert.match(String((result.body as any).error), /autopilot lane/);
+  assert.equal((await get(external))!.status, "manual_action_needed", "a refused retry moves nothing");
+});
+
+await test("retry refuses while the kill switch is on, or autopilot is off", async () => {
+  writePolicy({ killSwitch: true });
+  const killed = await handleApi({ method: "POST", pathname: `/api/rows/${retryId}/retry-now`, body: {} }, ctx);
+  assert.equal(killed.status, 409);
+  assert.match(String((killed.body as any).error), /kill switch/);
+
+  writePolicy({ autopilot: false });
+  const off = await handleApi({ method: "POST", pathname: `/api/rows/${retryId}/retry-now`, body: {} }, ctx);
+  assert.equal(off.status, 409);
+  assert.match(String((off.body as any).error), /autopilot is off/);
+
+  assert.equal((await get(retryId))!.status, "manual_action_needed", "neither refusal approved the row");
+  assert.deepEqual((await handleApi({ method: "GET", pathname: "/api/jobs" }, ctx)).body, { jobs: [] },
+    "and neither refusal started anything");
+});
+
+/** Poll a job the way the browser does, until it is finished or the test gives up. */
+async function pollJob(jobId: string, timeoutMs = 20_000): Promise<any> {
+  const started = Date.now();
+  for (;;) {
+    const result = await handleApi({ method: "GET", pathname: `/api/jobs/${jobId}` }, ctx);
+    assert.equal(result.status, 200);
+    const job = result.body as any;
+    if (job.finished_at) return job;
+    if (Date.now() - started > timeoutMs) throw new Error(`job ${jobId} never finished: ${JSON.stringify(job)}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+await test("retry approves the row, starts the tool, and the job carries its output", async () => {
+  writePolicy();
+  process.env.FAKE_AUTOPILOT_DELAY_MS = "400";
+  const started = await handleApi({ method: "POST", pathname: `/api/rows/${retryId}/retry-now`, body: {} }, ctx);
+  assert.equal(started.status, 200);
+  const jobId = (started.body as any).job_id;
+  assert.ok(jobId, "the caller gets a job id to poll");
+  assert.equal((await get(retryId))!.status, "approved", "a manual row re-enters the lane at approved");
+  const moved = (await get(retryId))!.history.filter((h) => h.from !== h.to).pop()!;
+  assert.match(moved.reason ?? "", /ui: retry now/);
+
+  const second = await handleApi({ method: "POST", pathname: `/api/rows/${retryId}/retry-now`, body: {} }, ctx);
+  assert.equal(second.status, 409, "one retry per row at a time");
+  assert.match(String((second.body as any).error), /already running/);
+
+  const job = await pollJob(jobId);
+  delete process.env.FAKE_AUTOPILOT_DELAY_MS;
+  assert.equal(job.exit_code, 0);
+  assert.equal(job.row_id, retryId);
+  assert.match(job.tail, /\[fake-autopilot\] starting/, "the tail is what the tool printed");
+  assert.equal(job.result.outcome, "submitted", "the tool's own final JSON line is parsed for the UI");
+  assert.match(job.args.join(" "), new RegExp(`--id ${retryId}`));
+
+  const list = await handleApi({ method: "GET", pathname: "/api/jobs" }, ctx);
+  assert.equal((list.body as any).jobs[0].id, jobId, "the newest run is first");
+  const missing = await handleApi({ method: "GET", pathname: "/api/jobs/job-nosuch" }, ctx);
+  assert.equal(missing.status, 404);
+});
+
+// ---------------------------------------------------------------------------
+// Letter findings, whatever the verdict file calls its fields
+// ---------------------------------------------------------------------------
+
+await test("a critic verdict written with the old field names still reads", async () => {
+  const legacyId = await seed("Integration Architect", "Old Verdict Co", ["manual_action_needed"], { score: 64 }, "letter-critic block (2 fail)");
+  writePackage(legacyId, {
+    "cover-letter.md": "Dear hiring team,\n\nI delivered the payments migration end to end for the client.\n",
+    "letter-critic.json": fs.readFileSync(path.join(fixtures, "letter-critic-legacy.json"), "utf8"),
+  });
+  const result = await handleApi({ method: "GET", pathname: `/api/rows/${legacyId}` }, ctx);
+  assert.equal(result.status, 200);
+  const findings = (result.body as any).package.letter_critic.findings;
+  assert.equal(findings.length, 2);
+  for (const finding of findings) {
+    assert.deepEqual(Object.keys(finding).sort(), ["fix", "issue", "quote", "severity", "source"],
+      "every finding has the five fields the browser renders");
+  }
+  assert.equal(findings[0].severity, "fail");
+  assert.match(findings[0].quote, /payments migration/, "legacy `sentence` is the quote");
+  assert.match(findings[0].issue, /scoped, not delivered/, "legacy `why` is the issue");
+  assert.equal(findings[1].severity, "fail", "a finding with no severity reads as the stronger one");
+  assert.match(findings[1].quote, /Twelve years/, "legacy `text` is the quote");
+  assert.match(findings[1].issue, /eleven years/, "legacy `reason` is the issue");
+  assert.match(findings[1].fix, /Use eleven/, "legacy `suggestion` is the fix");
+  assert.equal((result.body as any).package.letter_critic.verdict, "block", "nothing else in the file is touched");
+});
+
+// ---------------------------------------------------------------------------
+// The keyword queue: what the triage would say, before anyone is asked
+// ---------------------------------------------------------------------------
+
+const keywordOppId = await seed("Integration Lead", "Example Utility", ["shortlisted"], { score: 75 }, "shortlisted");
+
+fs.mkdirSync(profileDir, { recursive: true });
+fs.copyFileSync(path.join(fixtures, "cv-source.md"), path.join(profileDir, "cv-source.md"));
+fs.writeFileSync(
+  path.join(profileDir, "market-confirmations.yaml"),
+  fs.readFileSync(path.join(fixtures, "market-confirmations.yaml"), "utf8").replaceAll("{{opportunity}}", keywordOppId),
+);
+// The deterministic stoplist is a framework file; the temp root needs the real one.
+const stoplistDir = path.join(root, ".claude", "skills", "keyword-triage", "references");
+fs.mkdirSync(stoplistDir, { recursive: true });
+fs.copyFileSync(
+  path.join(realRoot, ".claude", "skills", "keyword-triage", "references", "boilerplate.yaml"),
+  path.join(stoplistDir, "boilerplate.yaml"),
+);
+writePackage(keywordOppId, {
+  "keyword-plan.json": JSON.stringify({
+    resume_id: "solution-architect",
+    opportunity_id: keywordOppId,
+    terms: [{ term: "Azure API Management", jd_form: "Azure API Management", category: "platform", must_have: true, tier: "must_have" }],
+    questions: [],
+  }),
+});
+
+await test("every pending term carries the triage's recommendation and the ads that asked", async () => {
+  const result = await handleApi({ method: "GET", pathname: "/api/keywords/pending", query: new URLSearchParams({ all: "1" }) }, ctx);
+  assert.equal(result.status, 200);
+  const terms = (result.body as any).terms as any[];
+  const byTerm = new Map(terms.map((t) => [t.term, t]));
+
+  const junk = byTerm.get("Apply Now");
+  assert.ok(junk, "the junk term is still listed; the person is never asked about it, not hidden from it");
+  assert.equal(junk.recommendation.answer, "na", "ad furniture is a recommendation to answer not applicable");
+  assert.equal(junk.recommendation.rule, "jd_boilerplate", "named by the rule that decided it");
+  assert.match(junk.recommendation.note, /apply now/i);
+  assert.equal(junk.must_have, false);
+
+  const corpus = byTerm.get("Azure API Management");
+  assert.equal(corpus.recommendation.answer, "confirm", "a term the corpus already carries is a confirm");
+  assert.equal(corpus.recommendation.rule, "in_cv_source");
+  assert.match(corpus.recommendation.note, /cv-source\.md:\d+/, "with the line that is the evidence");
+  assert.equal(corpus.must_have, true, "the plan marked it must-have");
+  assert.deepEqual(corpus.opportunities, [{ id: keywordOppId, title: "Integration Lead", company: "Example Utility" }],
+    "the advert is named, not hashed");
+  assert.equal(corpus.count, 1, "the rest of the api.ts shape is untouched");
+});
+
+await test("the triage route is the same dry run, whole", async () => {
+  const result = await handleApi({ method: "GET", pathname: "/api/keywords/triage" }, ctx);
+  assert.equal(result.status, 200);
+  const report = result.body as any;
+  assert.equal(report.dry_run, true, "reading the queue never records an answer");
+  assert.equal(report.pending, 2);
+  assert.equal(report.reject, 1);
+  assert.equal(report.keep, 1);
+  assert.equal(report.by_rule.jd_boilerplate, 1);
+  assert.deepEqual(report.rejects.map((r: any) => r.term), ["Apply Now"]);
 });
 
 if (process.exitCode) {

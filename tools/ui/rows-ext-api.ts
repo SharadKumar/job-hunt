@@ -23,6 +23,20 @@
  *     vocabulary has no word for. Both go through `setStatus`, so the state
  *     machine in tools/pipeline.ts refuses an illegal move and the row keeps
  *     its audit trail.
+ *   - `POST /api/rows/:id/mark-sent` is the row the harness could not finish:
+ *     the person lodged it themselves in the advertiser's portal and says so.
+ *     It walks the row to `submitted` through the state machine and leaves the
+ *     same `confirmation.txt` receipt an autopilot send leaves, so a manual
+ *     send and an automatic one are read the same way afterwards.
+ *   - `POST /api/rows/:id/redraft` asks for a new letter without moving the
+ *     row. It records the request on the row; the /daily skill's letter loop
+ *     reads it and treats the row like a saved job (two regenerations, then
+ *     park), and clears it when a regeneration lands.
+ *   - `POST /api/rows/:id/retry-now` runs `tools/autopilot-submit.ts` for one
+ *     row, attended, and returns a job id to poll (`GET /api/jobs/:id`). That
+ *     tool owns the letter-critic, the gate and the audit trail, so the button
+ *     adds no authority: it refuses anything outside the autopilot lane, and
+ *     refuses again when the kill switch is on or autopilot is off.
  *   - `POST /api/rows/:id/letter` writes the package's cover letter back and
  *     re-runs the deterministic pre-checks from tools/letter-critic.ts. The
  *     model critic is deliberately NOT run from a browser click: it is the
@@ -33,11 +47,14 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 
 import { ApiError, getRowDetail, getRows, type ApiContext, type ApiRequest, type ApiResult, type RowSummary } from "./api.ts";
-import { get as getOpportunity, list as listOpportunities, setStatus, type Opportunity, type PipelineStatus } from "../pipeline.ts";
+import { get as getOpportunity, list as listOpportunities, patch as patchOpportunity, setStatus, type Opportunity, type PipelineStatus } from "../pipeline.ts";
 import { deterministicFindings, loadProfileRules, requisitionCodesNotInJd, type CriticFinding } from "../letter-critic.ts";
 import { log, type AuditEventType } from "../audit.ts";
 import { writeAtomic } from "../lib/fs.ts";
 import { repoPath } from "../repo-root.ts";
+import * as keywordsExt from "./keywords-ext-api.ts";
+import { getJob, listJobs, resolveAutopilotCommand, runningJobFor, startJob } from "./jobs.ts";
+import { getPolicy } from "./policy-api.ts";
 
 /**
  * A letter edited by hand at the person's own machine. `AuditEventType` is
@@ -46,6 +63,9 @@ import { repoPath } from "../repo-root.ts";
  * does for `policy_change`.
  */
 const LETTER_EDITED = "letter_edited" as AuditEventType;
+
+/** A letter the person sent back for a rewrite. Same reasoning as above. */
+const REDRAFT_REQUESTED = "redraft_requested" as AuditEventType;
 
 /** Default age for a follow-up, matching the /follow-up skill's own default. */
 const DEFAULT_FOLLOWUP_DAYS = 7;
@@ -63,7 +83,7 @@ const NUDGE_FILES = ["follow-up.md", "nudge.md", "follow-up-dm.md", "follow-up-e
 
 export type RowAction = {
   /** What the button does, so the front end does not re-read the label. */
-  kind: "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "none";
+  kind: "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "decide" | "mark_sent" | "none";
   label: string;
   /** A Tray action for POST /api/rows/:id/action, when that is the move. */
   post: string | null;
@@ -73,22 +93,48 @@ export type RowAction = {
   href: string | null;
   primary: boolean;
   danger: boolean;
+  /**
+   * The secondary buttons beside the primary one, already decided here. A row
+   * that needs a choice rather than an action (a duplicate: drop it, or send it
+   * anyway) has no primary at all and carries both options in this list, so the
+   * browser renders what the server decided instead of re-deriving it from the
+   * reason text in a second place.
+   */
+  also: RowAction[];
 };
 
-const NONE: RowAction = { kind: "none", label: "", post: null, outcome: null, href: null, primary: false, danger: false };
+const NONE: RowAction = { kind: "none", label: "", post: null, outcome: null, href: null, primary: false, danger: false, also: [] };
 
-const action = (patch: Partial<RowAction>): RowAction => ({ ...NONE, ...patch });
+const action = (patch: Partial<RowAction>): RowAction => ({ ...NONE, also: [], ...patch });
 
 /** Rows that are finished, or in flight in a way a button cannot help. */
 const NO_ACTION = new Set(["submitted", "won", "rejected", "withdrawn", "submission_pending"]);
 
 /** The reason patterns the daily run writes when it parks a row on a human. */
 const UNANSWERED_QUESTION = /screening question|unanswered question|question is not in/i;
-const EXTERNAL_PORTAL = /external ats|external portal|external application|apply on (the )?company|not quick apply|non-quick-apply|redirect(ed)? to/i;
+const EXTERNAL_PORTAL = /external ats|external portal|external application|external\/unknown|external or unknown|apply on (the )?company|not quick apply|non-quick-apply|redirect(ed)? to/i;
 const LETTER_BLOCKED = /letter[-\s]?critic|letter critic/i;
-const DUPLICATE = /duplicate/i;
+const DUPLICATE = /duplicate|already submitted .{0,60}within \d+ days|needs a user decision/i;
 
-export type ActionRow = { id: string; status: string; url?: string | null };
+export type ActionRow = { id: string; status: string; url?: string | null; applyMethod?: string | null };
+
+/**
+ * A row the harness cannot lodge itself: the advertiser runs its own portal.
+ * `applyMethod` is the fact, the reason text is the same fact as the run
+ * recorded it, and either is enough. Retry would hand this to an adapter with
+ * nothing to drive, so an external row always opens the advert instead.
+ */
+const isExternal = (row: ActionRow, reason: string): boolean =>
+  String(row.applyMethod ?? "") === "external" || EXTERNAL_PORTAL.test(reason);
+
+/** "I applied myself", the only way an external row ever reaches `submitted`. */
+const markSentButton = (): RowAction => action({ kind: "mark_sent", label: "I applied myself" });
+
+/** A duplicate is a decision, not an action: drop this one, or send it anyway. */
+const decideButtons = (): RowAction[] => [
+  action({ kind: "reject", label: "Reject", post: "reject", danger: true }),
+  action({ kind: "retry", label: "Retry", post: "retry" }),
+];
 
 /**
  * One row, one button. The reason is what the run actually recorded, so it
@@ -104,10 +150,14 @@ export function actionFor(row: ActionRow, reason: string | null): RowAction {
   if (status === "interview") return action({ kind: "outcome", label: "Offered", outcome: "offered", primary: true });
   if (status === "offered") return action({ kind: "outcome", label: "Won", outcome: "won", primary: true });
   if (NO_ACTION.has(status)) return NONE;
+  // External first, and whatever the reason says afterwards: there is no button
+  // on this machine that can finish someone else's portal.
+  if (isExternal(row, text)) {
+    return action({ kind: "portal", label: "Open portal", href: row.url ?? null, also: [markSentButton()] });
+  }
   if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer", primary: true });
-  if (EXTERNAL_PORTAL.test(text)) return action({ kind: "portal", label: "Open portal", href: row.url ?? null });
+  if (DUPLICATE.test(text)) return action({ kind: "decide", label: "", also: decideButtons() });
   if (LETTER_BLOCKED.test(text)) return action({ kind: "retry", label: "Retry", post: "retry" });
-  if (DUPLICATE.test(text)) return action({ kind: "reject", label: "Reject", post: "reject", danger: true });
   if (status === "awaiting_approval") return action({ kind: "approve", label: "Approve", post: "approve", primary: true });
   if (status === "parked") return action({ kind: "unpark", label: "Unpark" });
   if (status === "manual_action_needed") return action({ kind: "retry", label: "Retry", post: "retry" });
@@ -176,6 +226,43 @@ export async function getRowsWithActions(
 // GET /api/rows/:id  (the detail, with the package found either way)
 // ---------------------------------------------------------------------------
 
+/** The five fields the current letter-critic writes for every finding. */
+export type NormalisedFinding = { severity: string; quote: string; issue: string; fix: string; source: string };
+
+/** The first of these that is a non-empty string, trimmed. */
+function firstString(...values: unknown[]): string {
+  for (const value of values) if (typeof value === "string" && value.trim()) return value.trim();
+  return "";
+}
+
+/**
+ * One shape for the findings the browser renders.
+ *
+ * `tools/letter-critic.ts` writes `{severity, quote, issue, fix, source}`, but
+ * verdicts on this machine were written over months and older ones carry the
+ * issue as `why` or `reason` and the quote as `sentence`. Rendering those keys
+ * blindly showed three empty rows where three blocking findings were, so the
+ * legacy names are mapped onto the current ones here, once, rather than in the
+ * browser. An unlabelled severity reads as `fail`: the stronger reading is the
+ * safe one when the file does not say (AGENTS.md section 8).
+ */
+export function normaliseCritic(critic: unknown): unknown {
+  if (!critic || typeof critic !== "object") return critic;
+  const findings = (critic as { findings?: unknown }).findings;
+  if (!Array.isArray(findings)) return critic;
+  const normalised: NormalisedFinding[] = findings.map((raw) => {
+    const f = (raw ?? {}) as Record<string, unknown>;
+    return {
+      severity: firstString(f.severity, f.level) || "fail",
+      quote: firstString(f.quote, f.sentence, f.text),
+      issue: firstString(f.issue, f.why, f.reason, f.problem),
+      fix: firstString(f.fix, f.suggestion, f.rewrite),
+      source: firstString(f.source, f.origin) || "llm",
+    };
+  });
+  return { ...(critic as Record<string, unknown>), findings: normalised };
+}
+
 export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
   const detail = await getRowDetail(id, ctx);
   const dir = await packageDirFor(detail.row, ctx);
@@ -190,9 +277,12 @@ export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
   };
   return {
     ...detail,
-    package: pkg,
+    package: { ...pkg, letter_critic: normaliseCritic(pkg.letter_critic) },
     package_dir: dir,
     package_files: await filesPresent(dir),
+    // A redraft the person asked for is pending work on this row, so it belongs
+    // beside the letter it is about rather than only in the row's history.
+    redraft_requested: (detail.row as { redraftRequested?: unknown }).redraftRequested ?? null,
     action: actionFor(detail.row, detail.reason),
   };
 }
@@ -367,6 +457,154 @@ export async function postLetter(id: string, body: { text?: unknown } = {}, ctx:
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/rows/:id/mark-sent
+// ---------------------------------------------------------------------------
+
+/** The advertiser's own portal, named the way a person would name it. */
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "the advertiser's portal"; }
+}
+
+export type MarkSentResult = {
+  ok: true;
+  id: string;
+  status_after: PipelineStatus;
+  submitted_at: string;
+  confirmation_ref: string | null;
+  file: string;
+};
+
+/**
+ * "I applied myself." An external portal, a recruiter's own form or an ATS the
+ * harness has no adapter for all end the same way: the person finishes it in
+ * their browser and the row has to catch up. The move goes through `setStatus`,
+ * so an illegal one is refused here exactly as it would be anywhere else, and
+ * the receipt is written into the package under the same name an autopilot send
+ * uses, so nothing downstream has to know which lane sent it.
+ */
+export async function postMarkSent(
+  id: string,
+  body: { confirmation?: unknown; note?: unknown } = {},
+  ctx: ApiContext = {},
+): Promise<MarkSentResult> {
+  const row = await getOpportunity(id);
+  if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
+  const confirmation = trimmed(body.confirmation);
+  const note = trimmed(body.note);
+  const host = hostOf(row.url);
+
+  const moved = await move(id, "submitted", `applied manually via ${host}`);
+  const now = new Date().toISOString();
+  await patchOpportunity(
+    id,
+    { submittedAt: now, ...(confirmation ? { confirmationRef: confirmation } : {}) } as Partial<Opportunity>,
+    "ui",
+    "applied manually",
+  );
+
+  const dir = (await packageDirFor(row, ctx)) ?? path.join(archiveDirOf(ctx), row.id);
+  await fsp.mkdir(dir, { recursive: true });
+  const file = path.join(dir, "confirmation.txt");
+  await writeAtomic(file, [
+    `Applied by hand via ${host}.`,
+    "",
+    `Opportunity: ${id}`,
+    `Role: ${row.title}`,
+    `Advertiser: ${row.company}`,
+    `Channel: ${row.channel}`,
+    `Ad URL: ${row.url}`,
+    `Submitted at: ${now}`,
+    `Confirmation: ${confirmation || "(none recorded)"}`,
+    "Recorded: by the person, in the local UI",
+    ...(note ? ["", note] : []),
+  ].join("\n") + "\n");
+
+  await log({
+    event_type: "manual_action_completed",
+    role_id: id,
+    actor: "ui",
+    channel: row.channel,
+    details: { company: row.company, title: row.title, host, confirmation_ref: confirmation || null, file, note: note || null },
+    provenance: { url: row.url, channel: row.channel },
+  });
+
+  return { ok: true, id, status_after: moved.status_after, submitted_at: now, confirmation_ref: confirmation || null, file };
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/rows/:id/redraft
+// ---------------------------------------------------------------------------
+
+export type RedraftResult = { ok: true; id: string; redraft_requested: { at: string; reason: string | null } };
+
+/**
+ * "Write this letter again." No status move: the row is wherever it was, and
+ * the request is a field on it. The /daily letter loop reads that field and
+ * treats the row like a saved job (up to two `cover-letter-writer` passes with
+ * the critic findings, then park), and clears it when a regeneration lands.
+ */
+export async function postRedraft(id: string, body: { reason?: unknown } = {}): Promise<RedraftResult> {
+  const row = await getOpportunity(id);
+  if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
+  const reason = trimmed(body.reason) || null;
+  const request = { at: new Date().toISOString(), reason };
+  await patchOpportunity(id, { redraftRequested: request } as Partial<Opportunity>, "ui", "redraft requested");
+  await log({
+    event_type: REDRAFT_REQUESTED,
+    role_id: id,
+    actor: "ui",
+    channel: row.channel,
+    details: { company: row.company, title: row.title, status: row.status, reason },
+    provenance: { url: row.url, channel: row.channel },
+  });
+  return { ok: true, id, redraft_requested: request };
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/rows/:id/retry-now, and the jobs it starts
+// ---------------------------------------------------------------------------
+
+/** The two statuses a retry may start from. */
+const RETRY_FROM = ["manual_action_needed", "approved"] as const;
+/** The one-click apply methods `autopilot-submit` has an adapter for. */
+const ONE_CLICK = ["quick_apply", "easy_apply"] as const;
+
+export type RetryNowResult = { ok: true; id: string; job_id: string; command: string; status_before: PipelineStatus };
+
+/**
+ * Run the autopilot tool for one row, now, with the person present.
+ *
+ * This adds no authority. `tools/autopilot-submit.ts` runs the letter-critic
+ * and the submission gate itself and refuses anything they refuse; the button
+ * only decides that a run is worth starting. So the refusals here are about the
+ * lane, not the package: a row outside the one-click channels has no adapter to
+ * drive, and a kill switch or a disabled autopilot means no send happens today
+ * whoever asks (AGENTS.md section 2).
+ */
+export async function postRetryNow(id: string, ctx: ApiContext = {}): Promise<RetryNowResult> {
+  const row = await getOpportunity(id);
+  if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
+  const method = String(row.applyMethod ?? "unknown");
+  if (!(RETRY_FROM as readonly string[]).includes(row.status) || !(ONE_CLICK as readonly string[]).includes(method)) {
+    throw new ApiError(409, `retry runs the autopilot lane only: this row is ${row.status} with applyMethod '${method}', and the lane is ${RETRY_FROM.join(" or ")} with ${ONE_CLICK.join(" or ")}`);
+  }
+
+  const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+  if (policy.kill_switch) throw new ApiError(409, `the kill switch is on in ${policy.path}; nothing sends until it is off`);
+  if (!policy.autopilot_enabled) throw new ApiError(409, `autopilot is off in ${policy.path}; turn it on before retrying a send`);
+
+  const running = runningJobFor(id);
+  if (running) throw new ApiError(409, `a retry is already running for ${id} (job ${running.id}, started ${running.started_at})`);
+
+  const statusBefore = row.status;
+  if (row.status === "manual_action_needed") await move(id, "approved", "ui: retry now");
+
+  const { command, args } = resolveAutopilotCommand(id);
+  const job = startJob({ rowId: id, command, args });
+  return { ok: true, id, job_id: job.id, command: [command, ...args].join(" "), status_before: statusBefore };
+}
+
+// ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
 
@@ -374,6 +612,24 @@ export async function handle(req: ApiRequest, ctx: ApiContext): Promise<ApiResul
   const method = req.method.toUpperCase();
   const pathname = req.pathname.replace(/\/+$/, "") || "/";
   const query = req.query ?? new URLSearchParams();
+
+  // The keyword routes are their own module (api.ts is not editable from this
+  // package, so one extension module hands on to the other).
+  const keywords = await keywordsExt.handle(req, ctx);
+  if (keywords) return keywords;
+
+  // The jobs a "Retry now" started. Read-only: a job is started by the row it
+  // belongs to, never from here.
+  const job = pathname.match(/^\/api\/jobs\/([^/]+)$/);
+  if (job) {
+    if (method !== "GET") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    const found = getJob(decodeURIComponent(job[1]));
+    return found ? { status: 200, body: found } : { status: 404, body: { error: `no such job: ${decodeURIComponent(job[1])}` } };
+  }
+  if (pathname === "/api/jobs") {
+    if (method !== "GET") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    return { status: 200, body: { jobs: listJobs(20) } };
+  }
 
   if (method === "GET" && pathname === "/api/rows") {
     return {
@@ -399,6 +655,24 @@ export async function handle(req: ApiRequest, ctx: ApiContext): Promise<ApiResul
   if (outcome) {
     if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
     return { status: 200, body: await postOutcome(decodeURIComponent(outcome[1]), (req.body ?? {}) as { status?: unknown; note?: unknown }) };
+  }
+
+  const markSent = pathname.match(/^\/api\/rows\/([^/]+)\/mark-sent$/);
+  if (markSent) {
+    if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    return { status: 200, body: await postMarkSent(decodeURIComponent(markSent[1]), (req.body ?? {}) as { confirmation?: unknown; note?: unknown }, ctx) };
+  }
+
+  const redraft = pathname.match(/^\/api\/rows\/([^/]+)\/redraft$/);
+  if (redraft) {
+    if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    return { status: 200, body: await postRedraft(decodeURIComponent(redraft[1]), (req.body ?? {}) as { reason?: unknown }) };
+  }
+
+  const retryNow = pathname.match(/^\/api\/rows\/([^/]+)\/retry-now$/);
+  if (retryNow) {
+    if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    return { status: 200, body: await postRetryNow(decodeURIComponent(retryNow[1]), ctx) };
   }
 
   const letter = pathname.match(/^\/api\/rows\/([^/]+)\/letter$/);

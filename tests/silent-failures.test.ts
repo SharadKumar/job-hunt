@@ -237,10 +237,14 @@ function ok(name: string): void {
     AUDIT_DIR: path.join(dbRoot, "audit"),
   };
 
-  const { upsert, opportunityIdFor } = await import("../tools/pipeline.ts");
-  const { canonicaliseUrl } = await import("../tools/url-canonical.ts");
+  // Set both BEFORE the first import of pipeline.ts: it pulls in audit.ts,
+  // which pins AUDIT_DIR at module load. Importing first sent every audit event
+  // in this file to the real state/audit/audit-log.jsonl.
   process.env.PIPELINE_DB = env.PIPELINE_DB;
   process.env.AUDIT_DIR = env.AUDIT_DIR;
+
+  const { upsert, opportunityIdFor } = await import("../tools/pipeline.ts");
+  const { canonicaliseUrl } = await import("../tools/url-canonical.ts");
 
   // Two rows for the same SEEK job: one already canonical, one with tracking
   // parameters that canonicalise onto the first.
@@ -293,6 +297,8 @@ function ok(name: string): void {
   const dbRoot = path.join(tmpRoot, "jdtitle");
   fs.mkdirSync(dbRoot, { recursive: true });
   process.env.PIPELINE_DB = path.join(dbRoot, "pipeline.db");
+  // AUDIT_DIR was pinned by the first import of audit.ts above; this only keeps
+  // any child process spawned from here pointed at the same throwaway dir.
   process.env.AUDIT_DIR = path.join(dbRoot, "audit");
   const { useStore } = await import("../tools/pipeline-store.ts");
   useStore(path.join(dbRoot, "pipeline.db"));
@@ -319,6 +325,8 @@ function ok(name: string): void {
   const dbRoot = path.join(tmpRoot, "lexicon");
   fs.mkdirSync(dbRoot, { recursive: true });
   process.env.PIPELINE_DB = path.join(dbRoot, "pipeline.db");
+  // AUDIT_DIR was pinned by the first import of audit.ts above; this only keeps
+  // any child process spawned from here pointed at the same throwaway dir.
   process.env.AUDIT_DIR = path.join(dbRoot, "audit");
   const { useStore } = await import("../tools/pipeline-store.ts");
   useStore(path.join(dbRoot, "pipeline.db"));

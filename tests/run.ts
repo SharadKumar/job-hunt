@@ -11,17 +11,45 @@
  * process.exit, a chdir or a mutated env in one file cannot reach another.
  * Output is captured and only replayed for failures, so a green run stays short.
  *
+ * Every child is also isolated from the person's own state: the runner hands it
+ * a fresh `AUDIT_DIR` and `PIPELINE_DB` under one temp dir per run. A test that
+ * imports `tools/pipeline.ts` before setting those itself used to append to the
+ * real append-only audit log, which is the person's send history; the row was
+ * fictional and the trail was not. The parent's values win when they are
+ * already set, so `AUDIT_DIR=... npx tsx tests/run.ts` still works for
+ * debugging. `HARNESS_TEST=1` marks the whole run for any tool that needs to
+ * know it is not in production.
+ *
  * Paths resolve through tools/repo-root.ts, never process.cwd(), so the runner
  * works from any directory (launchd, a git hook, an editor task).
  */
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { repoRoot } from "../tools/repo-root.ts";
 
 const DEFAULT_CONCURRENCY = 4;
+
+/** One throwaway root for the whole run; each child gets its own folder in it. */
+const runTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-tests-"));
+
+/**
+ * The environment a test file runs in. Defaults only: a test that sets its own
+ * `AUDIT_DIR` or `PIPELINE_DB` (most of them do, before their first import)
+ * keeps doing exactly that, and so does a caller who set one on the way in.
+ */
+export function childEnv(file: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const own = path.join(runTempDir, path.basename(file).replace(/\.test\.ts$/, ""));
+  return {
+    ...base,
+    HARNESS_TEST: "1",
+    AUDIT_DIR: base.AUDIT_DIR ?? path.join(own, "audit"),
+    PIPELINE_DB: base.PIPELINE_DB ?? path.join(own, "pipeline.db"),
+  };
+}
 
 type Options = {
   dir: string;
@@ -80,7 +108,7 @@ function runOne(file: string, root: string): Promise<Result> {
   return new Promise((resolve) => {
     const child = spawn(command, [...prefix, file], {
       cwd: root,
-      env: process.env,
+      env: childEnv(file),
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
