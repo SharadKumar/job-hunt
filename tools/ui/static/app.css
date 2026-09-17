@@ -139,6 +139,32 @@ a:hover { text-decoration: underline; }
 .cog:hover { background: var(--hover); text-decoration: none; }
 .cog[aria-current="page"] { border-color: var(--ink); }
 
+/* The autopilot switch: a button that says the lane it is in. Green dot on,
+   grey dot off, and the armed state turns the whole control green as every
+   other two-press control does. */
+.switch-slot { display: inline-flex; align-items: center; gap: 8px; }
+
+.switch {
+  font-size: 14px;
+  padding: 7px 14px 7px 12px;
+  border-radius: 8px;
+}
+
+.switch::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 8px;
+  background: var(--grey);
+  vertical-align: baseline;
+}
+
+.switch.on::before { background: var(--green); }
+.switch.armed::before { background: #ffffff; }
+.switch-note { max-width: 240px; }
+
 .token-fields { display: grid; gap: 12px; margin: 12px 0; }
 
 .token-fields input {
@@ -160,6 +186,7 @@ a:hover { text-decoration: underline; }
   font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
+  font-variant-ligatures: none;
 }
 
 /* On a phone the wordmark takes its own line and the nav sits under it, with
@@ -169,13 +196,6 @@ a:hover { text-decoration: underline; }
   .brand { flex: 1 0 100%; white-space: nowrap; }
   .nav { width: 100%; justify-content: flex-start; gap: 16px; }
   .nav .cog { margin-left: auto; }
-}
-
-.standing {
-  margin: 0;
-  padding: 16px 0 4px;
-  font-size: 13px;
-  color: var(--grey);
 }
 
 .alarm { color: var(--red); font-weight: 600; }
@@ -641,6 +661,58 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .btn.disabled { color: var(--grey); cursor: default; }
 .btn.disabled:hover { background: var(--card); }
+
+/* --- Home ---------------------------------------------------------------
+   A dashboard of cards, each a summary of one screen and a link into it.
+   Nothing here acts: Home reads, the screen it links to decides. */
+
+.home-grid { display: grid; gap: 16px; align-items: start; }
+
+@media (min-width: 900px) {
+  .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.home-card { display: flex; flex-direction: column; }
+.home-card h2 { margin-bottom: 12px; }
+.home-line { margin: 0 0 8px; }
+.home-big { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+
+.home-row {
+  margin: 0 0 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.home-row:first-of-type { border-top: 0; padding-top: 0; }
+.home-row p { margin: 0; flex: 1 0 100%; }
+.home-row-title { font-weight: 600; text-decoration: none; }
+.home-row-title:hover { text-decoration: underline; }
+
+.home-actions { margin: 12px 0 0; }
+.home-more { margin: auto 0 0; padding-top: 12px; font-size: 14px; }
+
+.home-journal {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 13px;
+  color: var(--grey);
+}
+
+/* --- Safety ------------------------------------------------------------- */
+
+.safety { border-left: 2px solid var(--red); padding-left: 16px; }
+.safety p:first-child { margin-top: 0; }
+.kill { border-color: var(--red); }
+
+/* One term, one decision: the two buttons sit under the answers. */
+.term-actions { margin: 16px 0 0; }
 
 /* --- Empty, error, toast ------------------------------------------------ */
 

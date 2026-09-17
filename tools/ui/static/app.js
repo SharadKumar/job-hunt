@@ -1,63 +1,36 @@
 /*
- * app.js - the whole local harness UI. No framework, no build step, no CDN.
- * One ES module, fetched from the same local origin that serves /api, so
- * nothing about the person's pipeline leaves the machine.
+ * app.js - the router, the header and the helpers every screen shares.
  *
- * The shape of the thing: a plain job board for an autonomous job applicant.
- * Applications is a list of cards with a filter column beside it, and a row is a
- * detail page whose first line of numbers says whether the letter may go out:
- * the score, the critic verdict, the gate.
+ * No framework, no build step, no CDN. The screens live in their own modules
+ * beside this one (home.js, applications.js, row.js, keywords.js, resumes.js,
+ * today.js, digest.js, settings.js) and import what they need from here, so no
+ * single file has to be read end to end to change one screen.
+ *
+ * The import graph is a cycle on purpose: this module imports each view, each
+ * view imports these helpers back. That is safe only because nothing here or
+ * there touches an imported binding at module scope; every use is inside a
+ * function that runs after both modules have finished evaluating.
  *
  * AGENTS.md rules encoded here, marked again where they bite: section 2, this
- * UI never submits, and the kill switch is always on screen; section 9,
- * keyword confirmations use four fixed answers in bundles of at most four;
- * section 3, no em or en dashes, and Australian English throughout.
+ * UI never submits, and autopilot can be switched off from the header while the
+ * kill switch sits on Settings behind an armed press; section 9, keyword
+ * confirmations use four fixed answers; section 3, no em or en dashes, and
+ * Australian English throughout.
  */
 
+import { viewHome } from "./home.js";
+import { viewApplications } from "./applications.js";
+import { viewRow } from "./row.js";
 import { viewResumes } from "./resumes.js";
+import { viewKeywords } from "./keywords.js";
+import { viewToday } from "./today.js";
+import { viewDigest } from "./digest.js";
+import { viewSettings } from "./settings.js";
 
 // --- Constants ---
 
 /** Hash routes, in nav order. #/queue is the old address for #/applications. */
-const ROUTES = ["applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"];
-
-/** Application tabs, in the order the person works them. Sent is capped at 30 rows.
- * `label` is the short name, `long` is how the filter column says it. */
-const TABS = [
-  { key: "needs", label: "Needs you", long: "Needs you", status: "manual_action_needed", action: "retry" },
-  { key: "waiting", label: "Waiting", long: "Waiting for you", status: "awaiting_approval", action: "approve" },
-  { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted", action: "approve" },
-  { key: "parked", label: "Parked", long: "Parked", status: "parked", action: "retry" },
-  { key: "sent", label: "Sent", long: "Sent", status: "submitted", limit: 30 },
-];
-
-/** What each tab says when it is empty: direction, not a shrug. */
-const EMPTY = {
-  needs: "Nothing needs you. The morning run adds rows here when a letter is blocked or a question is unanswered.",
-  waiting: "Nothing is waiting on a decision. Prepared packages land here before they go out.",
-  shortlisted: "Nothing is shortlisted. The hunt adds roles here once they fit and nothing blocks them.",
-  parked: "Nothing is parked. Roles that do not fit, or cannot be done from Sydney, end up here.",
-  sent: "Nothing has been sent yet. Submitted applications appear here, most recent first.",
-};
-
-/** The person's five decisions on a row. The server maps each to a transition. */
-const ACTIONS = [
-  { key: "approve", label: "Approve", primary: true }, { key: "retry", label: "Retry" },
-  { key: "hold", label: "Hold" }, { key: "reject", label: "Reject", danger: true },
-  { key: "withdraw", label: "Withdraw", danger: true },
-];
-
-/* AGENTS.md section 9: four fixed answers and no others, recommended first.
- * The labels are verbatim; the values are what POST /api/keywords/record wants. */
-const KEYWORD_OPTIONS = [
-  { value: "confirm", label: "Confirm and update source (Recommended)" },
-  { value: "na", label: "Not applicable" },
-  { value: "familiarity", label: "Bring in as familiarity" },
-  { value: "pending", label: "Unsure / keep pending" },
-];
-
-/** AGENTS.md section 9: never ask more than four at a time. */
-const KEYWORD_BUNDLE = 4;
+export const ROUTES = ["home", "applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"];
 
 /** Pipeline status in plain words. The raw keys are machinery: nobody reads
  * "manual_action_needed to manual_action_needed" and learns anything. */
@@ -70,13 +43,13 @@ const STATUS_LABELS = {
 };
 
 /** A status the map has not met yet still reads as words, not as a key. */
-function statusLabel(status) {
+export function statusLabel(status) {
   if (!status) return "";
   return STATUS_LABELS[status] || String(status).replace(/_/g, " ");
 }
 
 /** Apply method in plain words, the way the person would say it out loud. */
-const APPLY_METHODS = {
+export const APPLY_METHODS = {
   quick_apply: "quick apply",
   easy_apply: "easy apply",
   external: "external",
@@ -84,7 +57,7 @@ const APPLY_METHODS = {
 
 // --- Tiny DOM helpers. Nodes only, never an HTML string, so a company name
 // --- or a JD can never become markup.
-function h(tag, props, ...children) {
+export function h(tag, props, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
     if (value === null || value === undefined || value === false) continue;
@@ -102,25 +75,38 @@ function h(tag, props, ...children) {
   return node;
 }
 
-const $ = (sel) => document.querySelector(sel);
+export const $ = (sel) => document.querySelector(sel);
 
-function clear(node) {
+export function clear(node) {
   while (node.firstChild) node.firstChild.remove();
 }
 
 /** A small uppercase section label, as the reference board uses. */
-const eyebrow = (text) => h("p", { class: "eyebrow", text });
+export const eyebrow = (text) => h("p", { class: "eyebrow", text });
+
+/** A titled card. Every screen builds its sections out of this one shape. */
+export function panel(title, body) {
+  const card = h("section", { class: "card" });
+  card.append(h("h2", { text: title }), body);
+  return card;
+}
 
 /** Local time, short. Falls back to the raw string when it is not a date. */
-function when(iso) {
+export function when(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
   return d.toLocaleString("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+/** The person's own day as YYYY-MM-DD, so "sent today" means what they mean. */
+export const localDay = (value) => {
+  const d = value ? new Date(value) : new Date();
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-CA");
+};
+
 let toastTimer = 0;
-function toast(message, tone) {
+export function toast(message, tone) {
   const box = $("#toast");
   box.className = tone === "bad" ? "toast bad" : "toast";
   box.textContent = message;
@@ -133,18 +119,18 @@ function toast(message, tone) {
 
 const TOKEN_KEY = "harnessUiToken";
 
-function readToken() {
+export function readToken() {
   // Private mode, or storage disabled: carry on without a token.
   try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 }
 
-function writeToken(value) {
+export function writeToken(value) {
   try {
     if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY);
   } catch { toast("This browser will not let the page store the token.", "bad"); }
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(status, message, body) {
     super(message);
     this.status = status;
@@ -154,7 +140,7 @@ class ApiError extends Error {
 
 /** Fetch /api/... relative to the page, so the UI works on whatever host and
  * port the local server picked. A pasted token goes out as a bearer header. */
-async function api(path, options) {
+export async function api(path, options) {
   const opts = options || {};
   const headers = { Accept: "application/json" };
   const token = readToken();
@@ -185,7 +171,7 @@ async function api(path, options) {
 
 // --- Minimal markdown: paragraphs for letters, plus headings, lists and
 // --- preformatted tables for the journal. Text nodes only.
-function paragraphs(source) {
+export function paragraphs(source) {
   const out = [];
   for (const block of String(source).replace(/\r\n/g, "\n").split(/\n{2,}/)) {
     const lines = block.split("\n").filter((line) => line.trim() !== "");
@@ -197,7 +183,7 @@ function paragraphs(source) {
   return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
 }
 
-function richMarkdown(source) {
+export function richMarkdown(source) {
   const lines = String(source).replace(/\r\n/g, "\n").split("\n");
   const out = [];
   let list = null, table = null, para = [];
@@ -233,45 +219,36 @@ function richMarkdown(source) {
 }
 
 /** Package fields arrive as strings or as objects; show something either way. */
-function asText(value) {
+export function asText(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
 }
 
-// --- Header ---
+// --- Errors ---
 
-let summary = null;
-
-async function loadSummary() {
-  try { summary = await api("summary"); } catch { summary = null; }
-  renderHeader();
+/** Errors say what happened and what to do about it. */
+export function errorBox(error, what, retry) {
+  const box = h("div", { class: "error" });
+  const unauthorised = error instanceof ApiError && (error.status === 401 || error.status === 403);
+  box.append(h("p", { text: unauthorised
+    ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
+    : `${what} ${error.message}` }));
+  if (retry) box.append(h("button", { type: "button", class: "btn", text: "Try again", onClick: retry }));
+  return box;
 }
 
-/** One sentence of counts: what needs the person, what is in flight, and which
- * lane is live. AGENTS.md section 2: the kill switch is never a click away. */
-function renderHeader() {
-  const standing = $("#standing");
-  clear(standing);
-  if (!summary) {
-    standing.append(h("span", { class: "alarm", text: "Counts unavailable. Refresh to try again." }));
-    return;
-  }
-  const c = summary.counts || {};
-  const n = (key) => c[key] ?? 0;
-  standing.append(
-    `${n("manual_action_needed")} need you, ${n("awaiting_approval")} waiting, `
-    + `${n("submitted")} sent, ${n("parked")} parked, `,
-    summary.kill_switch
-      ? h("span", { class: "alarm", text: "kill switch on" })
-      : `autopilot ${summary.autopilot_enabled ? "on" : "off"}`,
-  );
-}
-
-function markNav(route) {
-  for (const link of document.querySelectorAll("[data-nav]")) {
-    if (link.dataset.nav === route) link.setAttribute("aria-current", "page");
-    else link.removeAttribute("aria-current");
+/** Fetch for a view: on failure the host says what happened and offers a retry,
+ * and null tells the caller to stop. The host is cleared either way. */
+export async function fetchInto(host, path, what) {
+  try {
+    const data = await api(path);
+    clear(host);
+    return data;
+  } catch (error) {
+    clear(host);
+    host.append(errorBox(error, what, () => render()));
+    return null;
   }
 }
 
@@ -281,18 +258,23 @@ function markNav(route) {
 const ARM_WINDOW_MS = 6000;
 let armed = null;
 
-function disarm() {
+export function disarm() {
   if (!armed) return;
   clearTimeout(armed.timer);
   armed.button.classList.remove("armed");
-  armed.button.textContent = armed.label;
-  armed.button.setAttribute("aria-label", armed.label);
+  armed.button.textContent = armed.restore;
+  armed.button.setAttribute("aria-label", armed.restore);
   armed = null;
 }
 
-/** Wire a button so the first press arms it and the second runs `run`, which
- * is only ever reached from a second, deliberate press. */
-function guarded(button, label, run) {
+/**
+ * Wire a button so the first press arms it and the second runs `run`, which is
+ * only ever reached from a second, deliberate press. `label` is the verb the
+ * armed state confirms ("Confirm turn off"); `restore` is what the button says
+ * when it is not armed, which for a switch is not the same string.
+ */
+export function guarded(button, label, run, restore) {
+  const resting = restore === undefined ? label : restore;
   button.addEventListener("click", () => {
     if (armed && armed.button === button) {
       disarm();
@@ -300,7 +282,7 @@ function guarded(button, label, run) {
       return;
     }
     disarm();
-    armed = { button, label, timer: setTimeout(() => { disarm(); }, ARM_WINDOW_MS) };
+    armed = { button, restore: resting, timer: setTimeout(() => { disarm(); }, ARM_WINDOW_MS) };
     button.classList.add("armed");
     button.textContent = `Confirm ${label.toLowerCase()}`;
     button.setAttribute("aria-label", `Confirm ${label.toLowerCase()}. Press again to apply.`);
@@ -313,626 +295,126 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") disarm();
 });
 
-/** A decision button: armed on the first press, committed on the second, and
- * posted to the local pipeline. It never submits to a channel (AGENTS.md
- * section 2); the worst it can do is move a row. */
-function actionButton(row, action, fields, done) {
-  const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : ""];
-  const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: action.label });
-  guarded(button, action.label, async () => {
-    button.disabled = true;
-    const body = { action: action.key, ...(fields ? fields() : {}) };
-    try {
-      const result = await api(`rows/${encodeURIComponent(row.id)}/action`, { method: "POST", body });
-      toast(`${action.label}: the row is now ${statusLabel(result.status_after)}.`);
-      done();
-    } catch (error) {
-      // 409 means the state machine refused the move. Show the server's reason.
-      toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
-      button.disabled = false;
-    }
-  });
-  return button;
+// --- Summary and policy: read once per render, shared by every screen ---
+
+let summary = null;
+let policy = null;
+/** False once GET /api/policy has answered 404: the API is not there yet. */
+let policyAvailable = true;
+
+export const getSummary = () => summary;
+export const getPolicy = () => policy;
+export const isPolicyAvailable = () => policyAvailable;
+
+export async function loadSummary() {
+  try { summary = await api("summary"); } catch { summary = null; }
 }
 
-// --- View: applications ---
-
-const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
-
-/** One job card: title and score, who and where, the tags, why it is here,
- * and the two things the person can do about it. */
-function jobCard(row, tab, refresh) {
-  const card = h("article", { class: "card job" });
-  const head = h("div", { class: "job-head" });
-  head.append(h("a", { class: "job-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
-  if (typeof row.score === "number") head.append(h("span", { class: "score", text: `${Math.round(row.score)} score` }));
-  card.append(head);
-  const meta = [row.company, row.location].filter(Boolean).join(", ");
-  if (meta) card.append(h("p", { class: "job-meta", text: meta }));
-  const pills = h("div", { class: "pills" });
-  // A job the person saved on the channel is an order to apply (AGENTS.md
-  // section 2), so it is said on the card rather than buried in the detail.
-  for (const tag of [row.channel, APPLY_METHODS[row.applyMethod] || row.applyMethod, row.userSaved ? "saved by you" : null]) {
-    if (tag) pills.append(h("span", { class: "pill", text: tag }));
-  }
-  if (pills.childElementCount) card.append(pills);
-  card.append(h("hr", { class: "rule" }), eyebrow("Why it is here"),
-    h("p", { class: "why", text: row.reason || "No reason recorded. Open the row to read its history." }));
-  const buttons = h("div", { class: "foot-actions" },
-    h("a", { class: "btn", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
-  const contextual = ACTIONS.find((a) => a.key === tab.action);
-  if (contextual) buttons.append(actionButton(row, { ...contextual, primary: true, danger: false }, null, refresh));
-  card.append(h("div", { class: "job-foot" },
-    h("span", { class: "when", text: row.updated_at ? `Updated ${when(row.updated_at)}` : "Never updated" }), buttons));
-  return card;
-}
-
-/** The filter column: the five statuses with their counts, the channels the
- * loaded rows actually use, and a floor on the score. */
-function filterCard(rows, repaint) {
-  const card = h("aside", { class: "card filter-card", id: "filter-card" });
-  card.hidden = !appState.filtersOpen && window.innerWidth < 900;
-  const body = h("div", { class: "filters" });
-  card.append(h("h2", { text: "Filters" }), body);
-  const counts = (summary && summary.counts) || {};
-  const statuses = h("div", { class: "filter-group" });
-  statuses.append(eyebrow("Status"));
-  for (const tab of TABS) {
-    const input = h("input", { type: "radio", name: "status-tab", checked: tab.key === appState.tab });
-    input.addEventListener("change", () => { appState.tab = tab.key; render(); });
-    statuses.append(h("label", { class: "choice" }, input, h("span", { text: tab.long }),
-      h("span", { class: "tally", text: String(counts[tab.status] ?? 0) })));
-  }
-  body.append(statuses);
-  const channels = [...new Set(rows.map((r) => r.channel).filter(Boolean))].sort();
-  if (channels.length > 1) {
-    const group = h("div", { class: "filter-group" });
-    group.append(eyebrow("Channel"));
-    for (const channel of channels) {
-      const input = h("input", { type: "checkbox", checked: appState.channels.has(channel) });
-      input.addEventListener("change", () => {
-        if (input.checked) appState.channels.add(channel); else appState.channels.delete(channel);
-        repaint();
-      });
-      group.append(h("label", { class: "choice" }, input, h("span", { text: channel }),
-        h("span", { class: "tally", text: String(rows.filter((r) => r.channel === channel).length) })));
-    }
-    body.append(group);
-  }
-  const score = h("div", { class: "filter-group" });
-  score.append(eyebrow("Minimum score"));
-  const input = h("input", { type: "number", min: "0", max: "100", step: "1", value: appState.minScore, placeholder: "Any" });
-  input.addEventListener("input", () => { appState.minScore = input.value; repaint(); });
-  body.append(score);
-  score.append(input);
-  return card;
-}
-
-/** Sort and floor the fetched rows the way the filter column says. */
-function visibleRows(rows) {
-  const floor = Number(appState.minScore);
-  const out = rows.filter((row) => {
-    if (appState.channels.size && !appState.channels.has(row.channel)) return false;
-    if (appState.minScore !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
-    return true;
-  });
-  return appState.sort === "updated"
-    ? out.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
-    : out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-}
-
-async function viewApplications(view) {
-  const tab = TABS.find((t) => t.key === appState.tab) || TABS[0];
-  view.append(h("p", { class: "lede",
-    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." }));
-  const head = h("div", { class: "page-head" }, h("div", {},
-    h("h1", { text: tab.long }), h("p", { class: "page-count", id: "row-count", text: "Loading rows." })));
-  const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
-  toggle.addEventListener("click", () => {
-    appState.filtersOpen = !appState.filtersOpen;
-    if ($("#filter-card")) $("#filter-card").hidden = !appState.filtersOpen;
-  });
-  const sort = h("select", { "aria-label": "Sort rows" });
-  for (const [value, label] of [["score", "Score"], ["updated", "Updated"]]) {
-    sort.append(h("option", { value, selected: appState.sort === value, text: label }));
-  }
-  sort.addEventListener("change", () => { appState.sort = sort.value; render(); });
-  head.append(h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort));
-  const layout = h("div", { class: "layout" });
-  const list = h("div", { class: "cards" });
-  list.append(h("p", { class: "empty", text: "Loading rows." }));
-  layout.append(list);
-  view.append(head, layout);
-
-  const params = new URLSearchParams({ status: tab.status });
-  if (tab.limit) params.set("limit", String(tab.limit));
-  const data = await fetchInto(list, `rows?${params.toString()}`, "Could not load rows.");
-  if (!data) return;
-  const rows = data.rows || [];
-  const paint = () => {
-    clear(list);
-    const shown = visibleRows(rows);
-    $("#row-count").textContent = shown.length === 1 ? "1 row" : `${shown.length} rows`;
-    if (!shown.length) {
-      list.append(h("p", { class: "empty", text: rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[tab.key] }));
-      return;
-    }
-    for (const row of shown) list.append(jobCard(row, tab, () => render()));
-  };
-  layout.prepend(filterCard(rows, paint));
-  paint();
-}
-
-/** Errors say what happened and what to do about it. */
-function errorBox(error, what, retry) {
-  const box = h("div", { class: "error" });
-  const unauthorised = error instanceof ApiError && (error.status === 401 || error.status === 403);
-  box.append(h("p", { text: unauthorised
-    ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
-    : `${what} ${error.message}` }));
-  if (retry) box.append(h("button", { type: "button", class: "btn", text: "Try again", onClick: retry }));
-  return box;
-}
-
-/** Fetch for a view: on failure the host says what happened and offers a retry,
- * and null tells the caller to stop. The host is cleared either way. */
-async function fetchInto(host, path, what) {
+/**
+ * The submission policy. A 404 is not an error here: the policy API may not be
+ * running yet, and the header then shows a disabled switch rather than a lie
+ * about which lane is live.
+ */
+export async function loadPolicy() {
   try {
-    const data = await api(path);
-    clear(host);
-    return data;
+    policy = await api("policy");
+    policyAvailable = true;
   } catch (error) {
-    clear(host);
-    host.append(errorBox(error, what, () => render()));
-    return null;
+    policy = null;
+    if (error instanceof ApiError && error.status === 404) policyAvailable = false;
   }
+  return policy;
 }
 
-// --- View: row detail ---
-
-/** One small card in the stats row: a label, a verdict, and a quiet note. */
-function stat(label, value, tone, note) {
-  const card = h("div", { class: tone ? `card stat ${tone}` : "card stat" });
-  card.append(eyebrow(label), h("p", { class: "value", text: value }));
-  if (note) card.append(h("p", { class: "note", text: note }));
-  return card;
+/** POST a policy change, then re-read the policy so the header shows the truth
+ * the file holds rather than the truth the click intended. */
+async function postPolicy(path, enabled) {
+  await api(path, { method: "POST", body: { enabled, reason: "ui toggle" } });
+  await loadPolicy();
 }
 
-/** The stats row: the machine verdicts that decide whether a letter may go out.
- * A missing verdict says so; it is never read as a pass (AGENTS.md section 8). */
-function statsRow(row, pkg) {
-  const stats = h("div", { class: "stats", "aria-label": "Gates" });
-  stats.append(typeof row.score === "number" ? stat("Score", String(Math.round(row.score)), "good") : stat("Score", "Not scored", ""));
-  const critic = pkg.letter_critic;
-  if (!critic) stats.append(stat("Critic", "Critic not run", "", "No letter has been critiqued on this row."));
-  else {
-    const findings = Array.isArray(critic.findings) ? critic.findings : [];
-    const count = (severity) => findings.filter((f) => f && f.severity === severity).length;
-    stats.append(String(critic.verdict || "").toLowerCase() !== "pass"
-      ? stat("Critic", `Critic blocked, ${count("fail")} fail`, "bad")
-      : stat("Critic", `Critic pass, ${count("warn")} warn`, "good"));
-  }
-  const quality = (pkg.metadata && typeof pkg.metadata === "object" && pkg.metadata.quality) || {};
-  const notes = [];
-  for (const [label, keys] of [["Slop", ["slop", "slopKiller", "slop_killer"]], ["Voice", ["voice", "voiceCheck", "voice_check"]]]) {
-    const raw = keys.map((k) => quality[k]).find((v) => v !== undefined && v !== null);
-    if (raw === undefined) notes.push(`${label} not recorded`);
-    else notes.push(`${label} ${raw === true || String(raw).toLowerCase() === "pass" ? "pass" : "fail"}`);
-  }
-  const sent = row.status === "submitted";
-  stats.append(stat("Gate", sent ? "Gate passed" : `Gate waiting, ${statusLabel(row.status)}`, sent ? "good" : "", notes.join(". ") + "."));
-  return stats;
-}
-
-function panel(title, body) {
-  const card = h("section", { class: "card" });
-  card.append(h("h2", { text: title }), body);
-  return card;
-}
-
-function findingsBlock(critic) {
-  const findings = critic && Array.isArray(critic.findings) ? critic.findings : [];
-  if (!findings.length) return null;
-  const ul = h("ul", { class: "findings" });
-  for (const finding of findings) {
-    const text = typeof finding === "string" ? finding : [
-      finding.severity === "fail" ? "Fail" : finding.severity === "warn" ? "Warn" : finding.severity,
-      finding.issue || finding.message, finding.fix,
-    ].filter(Boolean).map((part) => String(part).trim().replace(/\.+$/, "")).join(". ") + ".";
-    ul.append(h("li", { text: text || asText(finding) }));
-  }
-  return panel("Critic findings", ul);
-}
-
-function historyBlock(history) {
-  const entries = Array.isArray(history) ? history : [];
-  if (!entries.length) return panel("History", h("p", { class: "grey", text: "No transitions recorded on this row yet." }));
-  const ul = h("ul", { class: "history" });
-  for (const item of [...entries].reverse()) {
-    const li = h("li", {});
-    const from = item.from ? statusLabel(item.from) : "new";
-    li.append(h("span", { class: "at", text: `${when(item.at)}  ` }), `${from} to ${statusLabel(item.to) || "unknown"}`);
-    // A field_update entry is an enrichment pass, not a decision: say which
-    // fields moved and keep the raw machinery off the page.
-    const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
-    if (fields) li.append(h("div", { class: "grey small", text: `updated ${fields[1].trim() || "some fields"}` }));
-    else if (item.reason) li.append(h("div", { class: "grey small", text: item.reason }));
-    ul.append(li);
-  }
-  return panel("History", ul);
-}
-
-function actionBar(row, onDone) {
-  const buttons = h("div", { class: "action-buttons" });
-  const reason = h("input", { type: "text", "aria-label": "Reason, optional", placeholder: "Reason, optional" });
-  const edits = h("textarea", { "aria-label": "Edits, optional", placeholder: "Edits to the letter or package, optional" });
-  const fields = () => ({
-    ...(reason.value.trim() ? { reason: reason.value.trim() } : {}),
-    ...(edits.value.trim() ? { edits: edits.value.trim() } : {}),
-  });
-  for (const action of ACTIONS) buttons.append(actionButton(row, action, fields, onDone));
-  return panel("Your decision", h("div", {}, buttons, h("div", { class: "action-fields" }, reason, edits),
-    h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." })));
-}
-
-async function viewRow(view, id) {
-  view.append(h("p", { class: "empty", text: "Loading the row." }));
-  const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
-  if (!data) return view.prepend(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })));
-  const row = data.row || {};
-  const pkg = data.package || {};
-  view.append(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })),
-    h("h1", { text: row.title || "Untitled role" }));
-  const facts = [
-    row.company, row.location, row.classification?.work_arrangement || row.workArrangement,
-    APPLY_METHODS[row.applyMethod] || row.applyMethod,
-    row.userSaved ? "saved by you" : null, statusLabel(row.status) || null,
-  ].filter(Boolean);
-  const line = h("p", { class: "detail-meta", text: `${facts.join(", ")}. ` });
-  if (row.url) line.append(h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
-  view.append(line);
-  const reasonLine = data.reason || row.reason;
-  if (reasonLine) view.append(h("p", { class: "detail-reason", text: reasonLine }));
-
-  view.append(statsRow(row, pkg));
-
-  // Letter left at reading measure, JD right and quieter. Stacked on a phone,
-  // letter first, because the letter is what the decision is about.
-  const columns = h("div", { class: "columns" });
-  const letterText = asText(pkg.cover_letter);
-  columns.append(panel("Cover letter", letterText.trim()
-    ? h("div", { class: "letter" }, paragraphs(letterText))
-    : h("p", { class: "grey", text: "No cover letter in this package. Retry to have the harness draft one." })));
-  const jdText = asText(row.description || pkg.jd);
-  columns.append(panel("Job description", jdText.trim()
-    ? h("div", { class: "jd" }, h("pre", { text: jdText }))
-    : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." })));
-  view.append(columns);
-
-  const rest = h("div", { class: "stack" });
-  const findings = findingsBlock(pkg.letter_critic);
-  if (findings) rest.append(findings);
-  rest.append(historyBlock(row.history), actionBar(row, () => { location.hash = "#/applications"; render(); }));
-  view.append(rest);
-}
-
-// --- View: keywords ---
-
-/* The drain flow. Hundreds of terms sit pending, so the view keeps its own pass:
- * the order to work through, where the person is in it, what they settled and
- * what they put off. It lives in sessionStorage, so a refresh does not lose the
- * place. AGENTS.md section 9: four at a time, four fixed answers, no default. */
-const KEYWORD_SESSION = "harnessKeywordSession";
-const blankPass = () => ({ pass: [], cursor: 0, decided: [], skipped: [], requeued: [] });
-
-function readKeywordSession() {
-  try {
-    const raw = JSON.parse(sessionStorage.getItem(KEYWORD_SESSION) || "null");
-    if (raw && Array.isArray(raw.pass)) return { ...blankPass(), ...raw };
-  } catch { /* blocked or corrupt storage just starts a fresh pass */ }
-  return blankPass();
-}
-
-const saveKeywordSession = (state) => {
-  try { sessionStorage.setItem(KEYWORD_SESSION, JSON.stringify(state)); } catch { /* private mode: memory only */ }
-};
-
-/** One question: the term, what it was asked against, and the four answers.
- * 1 to 4 pick an answer while the focus is inside the card. */
-function termCard(item) {
-  const set = h("fieldset", { class: "term" }, h("legend", { text: item.term }));
-  const facts = [item.count === 1 ? "seen once" : `seen ${item.count} times`,
-    (item.resumes || []).join(", "), item.context].filter(Boolean);
-  set.append(h("p", { class: "context", text: facts.join(". ") }));
-  const options = h("div", { class: "options" });
-  for (const option of KEYWORD_OPTIONS) {
-    options.append(h("label", {}, h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
-      h("span", { text: option.label })));
-  }
-  set.addEventListener("keydown", (event) => {
-    const n = Number(event.key);
-    if (!(n >= 1 && n <= KEYWORD_OPTIONS.length) || event.metaKey || event.ctrlKey) return;
-    options.querySelectorAll("input")[n - 1].checked = true;
-    event.preventDefault(); // 1 to 4 answer the term the focus is in
-  });
-  set.append(options);
-  return set;
-}
-
-async function viewKeywords(view) {
-  view.append(h("h1", { text: "Keywords" }));
-  const count = h("p", { class: "page-count", text: "Loading pending terms." });
-  const layout = h("div", { class: "layout kw-layout" });
-  const left = h("aside", { class: "card kw-list", id: "kw-list" });
-  const right = h("div", { class: "stack" });
-  view.append(count, layout);
-  let terms = [];
-  const load = async () => {
-    const data = await api("keywords/pending?all=1");
-    terms = data.terms || [];
-    count.textContent = `${data.term_total ?? terms.length} terms pending, ${data.pending_total ?? 0} questions behind them.`;
-  };
-  try { await load(); } catch (error) { return layout.append(errorBox(error, "Could not load the pending terms.", () => render())); }
-  layout.append(left, right);
-
-  const state = readKeywordSession();
-  const decided = new Set(state.decided), skipped = new Set(state.skipped), requeued = new Set(state.requeued);
-  let listOpen = false;
-  /** Keep the session order, drop what has since been answered, append what is new. */
-  const reconcile = () => {
-    const live = new Set(terms.map((t) => t.term));
-    state.pass = state.pass.filter((t) => live.has(t));
-    const seen = new Set(state.pass);
-    for (const item of terms) if (!seen.has(item.term)) state.pass.push(item.term);
-    for (const term of [...skipped]) if (!live.has(term)) skipped.delete(term);
-    state.cursor = Math.max(0, Math.min(state.cursor, state.pass.length));
-  };
-
-  const repaint = () => {
-    Object.assign(state, { decided: [...decided], skipped: [...skipped], requeued: [...requeued] });
-    saveKeywordSession(state);
-    paintBundle();
-    paintList();
-  };
-  reconcile();
-
-  const toggle = h("button", { type: "button", class: "btn terms-toggle", text: "All terms" });
-  toggle.addEventListener("click", () => { listOpen = !listOpen; left.hidden = !listOpen; });
-  const heading = h("h2", {});
-  const search = h("input", { type: "search", placeholder: "Search terms", "aria-label": "Search terms" });
-  const list = h("ul", { class: "kw-terms" });
-  search.addEventListener("input", () => paintList());
-  left.append(heading, search, list);
-
-  function paintList() {
-    heading.textContent = toggle.textContent = `All terms (${terms.length})`;
-    left.hidden = !listOpen && window.innerWidth < 900;
-    clear(list);
-    const needle = search.value.trim().toLowerCase();
-    const shown = needle ? terms.filter((t) => t.term.toLowerCase().includes(needle)) : terms;
-    if (!shown.length) return list.append(h("li", { class: "grey small", text: needle ? "No term matches that search." : "Nothing pending." }));
-    for (const item of shown) {
-      const done = decided.has(item.term), put = skipped.has(item.term);
-      const button = h("button", { type: "button", class: "kw-term", title: done ? "Decided this session" : put ? "Skipped this session" : item.term },
-        h("span", { class: done ? "mark done" : put ? "mark put" : "mark", text: done ? "✓" : put ? "•" : "" }),
-        h("span", { class: "name", text: item.term }), h("span", { class: "tally", text: String(item.count) }));
-      // Jumping moves the bundle to start at that term, wherever the pass had it.
-      button.addEventListener("click", () => {
-        const at = state.pass.indexOf(item.term);
-        if (at < 0) return;
-        state.cursor = at; listOpen = false; repaint();
-      });
-      list.append(h("li", {}, button));
-    }
-  }
-
-  /** Put the bundle's undecided terms off: each goes to the back of the pass once,
-   * so the pass ends, and the skipped ones are offered again as a fresh pass. */
-  const defer = (put, step) => {
-    for (const term of put) {
-      skipped.add(term);
-      if (!requeued.has(term)) { requeued.add(term); state.pass.push(term); }
-    }
-    state.cursor = Math.min(state.pass.length, state.cursor + step);
-    repaint();
-  };
-
-  function paintBundle() {
-    clear(right);
-    const settled = decided.size + skipped.size;
-    const togo = Math.max(0, terms.length - skipped.size);
-    const pct = Math.round((settled * 100) / (decided.size + terms.length || 1));
-    right.append(h("p", { class: "progress-line", text: `Decided ${decided.size}, skipped ${skipped.size}, ${togo} to go.` }),
-      h("div", { class: "bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct) },
-        h("span", { style: `width: ${pct}%` })), toggle);
-    const bundle = state.pass.slice(state.cursor, state.cursor + KEYWORD_BUNDLE)
-      .map((term) => terms.find((item) => item.term === term)).filter(Boolean);
-    if (!terms.length) return right.append(h("p", { class: "empty", text: "Nothing pending. Every mined term has an answer. The next hunt will add more." }));
-    if (!bundle.length) {
-      const again = h("button", { type: "button", class: "btn primary", text: "Start again with the skipped ones" });
-      again.addEventListener("click", () => { state.pass = [...skipped]; state.cursor = 0; requeued.clear(); repaint(); });
-      return right.append(panel("This pass is done", h("div", {},
-        h("p", { text: `Every pending term has been seen this pass. ${skipped.size} skipped.` }),
-        skipped.size ? again : h("p", { class: "grey small", text: "Nothing was put off. The next hunt mines more terms." }))));
-    }
-    const form = h("form", {});
-    form.addEventListener("submit", (event) => event.preventDefault());
-    for (const item of bundle) form.append(termCard(item));
-    const problem = h("div", {});
-    const record = h("button", { type: "button", class: "btn primary", text: "Record and next" });
-    const skip = h("button", { type: "button", class: "btn", text: "Skip these" });
-    const back = h("button", { type: "button", class: "btn", text: "Back", disabled: state.cursor === 0 });
-    back.addEventListener("click", () => { state.cursor = Math.max(0, state.cursor - KEYWORD_BUNDLE); repaint(); });
-    skip.addEventListener("click", () => defer(bundle.map((item) => item.term), bundle.length));
-    record.addEventListener("click", async () => {
-      const answers = {};
-      // "Unsure / keep pending" sends nothing: that term simply goes to the back.
-      for (const input of form.querySelectorAll("input[type=radio]:checked")) if (input.value !== "pending") answers[input.dataset.term] = input.value;
-      const put = bundle.map((item) => item.term).filter((term) => !(term in answers));
-      if (!Object.keys(answers).length) return defer(put, bundle.length);
-      record.disabled = true;
-      clear(problem);
-      try {
-        const result = await api("keywords/record", { method: "POST", body: { answers } });
-        const n = (value) => (Array.isArray(value) ? value.length : value ?? 0);
-        toast([`Recorded ${n(result.recorded)}.`, n(result.skipped_already_answered) ? `${n(result.skipped_already_answered)} already answered.` : "",
-          n(result.unmatched) ? `${n(result.unmatched)} unmatched.` : ""].filter(Boolean).join(" "));
-        for (const term of Object.keys(answers)) { decided.add(term); skipped.delete(term); }
-        await load(); // the recorded terms leave the left list
-        reconcile();
-        defer(put, put.length);
-      } catch (error) {
-        // The answers stay on screen: nobody should have to pick them twice.
-        record.disabled = false;
-        problem.append(errorBox(error, "Could not record these answers. Nothing was written.", null));
-      }
-    });
-    form.append(h("div", { class: "action-buttons" }, record, skip, back), problem,
-      h("p", { class: "grey small measure",
-        text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source." }));
-    right.append(form);
-  }
-
-  paintBundle();
-  paintList();
-}
-
-// --- View: today ---
-
-async function viewToday(view) {
-  view.append(h("h1", { text: "Today" }));
-  const host = h("div", {});
-  host.append(h("p", { class: "empty", text: "Loading the journal." }));
-  view.append(host);
-  const data = await fetchInto(host, "journal/today", "Could not load today's summary.");
-  if (!data) return;
-  const markdown = String(data.markdown || "").trim();
-  if (!markdown) {
-    host.append(h("p", { class: "empty", text: "No entry for today yet. The morning run writes one when it finishes." }));
+/**
+ * The header switch. AGENTS.md section 2: autopilot is the lane that sends
+ * without the person, so turning it on or off is an armed, two-press action,
+ * and the state on the button is re-read from the server after every change.
+ */
+function autopilotSwitch(onChange) {
+  const slot = $("#autopilot-slot");
+  if (!slot) return;
+  clear(slot);
+  if (!policyAvailable || !policy) {
+    slot.append(h("button", {
+      type: "button", class: "switch off", disabled: true,
+      title: "policy API unavailable", "aria-label": "Autopilot, policy API unavailable",
+      text: "Autopilot unavailable",
+    }));
     return;
   }
-  if (data.date) view.insertBefore(h("p", { class: "page-count", text: data.date }), host);
-  host.append(panel("Journal", h("div", { class: "prose" }, richMarkdown(markdown))));
-}
-
-// --- View: digest ---
-
-function copyButton(text) {
-  const button = h("button", { type: "button", class: "btn", text: "Copy rule" });
-  button.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(text); toast("Rule copied."); }
-    catch { toast("This browser blocked the clipboard. Select the rule and copy it.", "bad"); }
+  const on = policy.autopilot_enabled === true;
+  const resting = `Autopilot ${on ? "on" : "off"}`;
+  const button = h("button", {
+    type: "button", class: on ? "switch on" : "switch off", "aria-pressed": on ? "true" : "false",
+    "aria-label": resting, title: on ? "Turn autopilot off" : "Turn autopilot on", text: resting,
   });
-  return button;
-}
-
-async function viewDigest(view) {
-  view.append(h("h1", { text: "Digest" }));
-  const host = h("div", { class: "cards" });
-  host.append(h("p", { class: "empty", text: "Loading the digest." }));
-  view.append(host);
-  const data = await fetchInto(host, "critic/digest?since=14d", "Could not load the critic digest.");
-  if (!data) return;
-  const themes = data.themes || [];
-  view.insertBefore(h("p", { class: "page-count",
-    text: `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.` }), host);
-  if (!themes.length) {
-    host.append(h("p", { class: "empty", text: "No recurring themes in this window. Nothing to promote into the editorial rules." }));
-    return;
-  }
-  for (const theme of themes) {
-    const card = h("article", { class: "card" });
-    card.append(h("h3", {}, h("span", { class: "digest-count", text: String(theme.count ?? 0) }),
-      h("span", { text: theme.key || "unnamed theme" })));
-    if (theme.sample) card.append(h("p", { class: "sample", text: theme.sample }));
-    if (theme.proposed_rule) {
-      card.append(h("div", { class: "proposed" }, h("div", { text: theme.proposed_rule }), copyButton(theme.proposed_rule)));
+  const note = h("span", { class: "switch-note grey small" });
+  guarded(button, on ? "Turn off" : "Turn on", async () => {
+    button.disabled = true;
+    clear(note);
+    try {
+      await postPolicy("policy/autopilot", !on);
+      toast(`Autopilot is ${policy && policy.autopilot_enabled ? "on" : "off"}.`);
+      onChange();
+    } catch (error) {
+      button.disabled = false;
+      note.textContent = error.message;
     }
-    host.append(card);
-  }
-  // AGENTS.md section 5: recurring findings become editorial rules, but the
-  // person promotes them in an attended session. This view copies, never writes.
-  host.append(h("p", { class: "grey small",
-    text: "Nothing here is written to the editorial rules. Copy a rule and promote it in an attended session." }));
+  }, resting);
+  slot.append(button, note);
 }
 
-// --- View: settings ---
-
-/** The commands the README gives for running this UI. */
-const COMMANDS = [
-  "npm run ui -- --open",
-  "bash scripts/install-ui-launchd.sh",
-  "npm run ui -- --host 100.x.y.z   # a Tailscale address, with HARNESS_UI_TOKEN set",
-  "sheet:\n  enabled: false   # the local UI is the approval surface",
-];
-
-function viewSettings(view) {
-  view.append(h("h1", { text: "Settings" }));
-  const stack = h("div", { class: "stack" });
-  const input = h("input", { type: "password", id: "token-input", autocomplete: "off",
-    spellcheck: "false", placeholder: "Paste once", "aria-label": "API token" });
-  input.value = readToken();
-  const state = h("p", { class: "grey small", id: "token-state" });
-  const paint = () => { state.textContent = readToken() ? "A token is set in this browser." : "No token is set in this browser."; };
-  paint();
-  const show = h("button", { type: "button", class: "btn", text: "Show" });
-  show.addEventListener("click", () => {
-    const hidden = input.type === "password";
-    input.type = hidden ? "text" : "password";
-    show.textContent = hidden ? "Hide" : "Show";
-  });
-  const save = h("button", { type: "button", class: "btn primary", text: "Save" });
-  save.addEventListener("click", () => {
-    writeToken(input.value.trim()); paint();
-    toast(input.value.trim() ? "Token saved." : "Token cleared.");
-  });
-  const wipe = h("button", { type: "button", class: "btn", text: "Clear" });
-  wipe.addEventListener("click", () => { writeToken(""); input.value = ""; paint(); toast("Token cleared."); });
-  input.addEventListener("keydown", (event) => { if (event.key === "Enter") save.click(); });
-  const token = h("div", {},
-    h("p", { class: "grey small measure", text: "Stored in this browser only and sent as a bearer header on every call. It is needed only when the server is reached from another device, such as a phone over Tailscale." }),
-    h("div", { class: "token-fields" }, input, h("div", { class: "action-buttons" }, save, wipe, show)),
-    state);
-  stack.append(panel("API token", token));
-  stack.append(panel("This browser", h("ul", { class: "history" },
-    h("li", { text: `Serving from ${location.origin}` }),
-    h("li", { text: readToken() ? "This browser holds a token." : "This browser holds no token." }))));
-  stack.append(panel("About", h("pre", { class: "commands", text: COMMANDS.join("\n\n") })));
-  view.append(stack);
+function markNav(route) {
+  for (const link of document.querySelectorAll("[data-nav]")) {
+    if (link.dataset.nav === route) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
 }
 
 // --- Router ---
 
-function parseHash() {
-  const raw = (location.hash || "#/applications").replace(/^#\/?/, "");
+export function parseHash() {
+  const raw = (location.hash || "#/home").replace(/^#\/?/, "");
   const [name, ...rest] = raw.split("/");
-  // #/queue is where this screen used to live. Quietly move the address on.
+  // #/queue is where the applications screen used to live. Move the address on.
   if (name === "queue") history.replaceState(null, "", "#/applications");
-  const route = !name || name === "queue" || !ROUTES.includes(name) ? "applications" : name;
+  if (name === "queue") return { route: "applications", id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
+  const route = !name || !ROUTES.includes(name) ? "home" : name;
   return { route, id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
 }
 
 let renderToken = 0;
 
-async function render() {
+export async function render() {
   disarm();
   const mine = ++renderToken;
   const { route, id } = parseHash();
   markNav(route === "row" ? "applications" : route);
   const view = $("#view");
   clear(view);
-  await loadSummary();
+  await Promise.all([loadSummary(), loadPolicy()]);
   if (mine !== renderToken) return;
+  autopilotSwitch(() => render());
+  const ui = { h, panel, fetchInto };
   try {
     if (route === "row") {
       if (id) await viewRow(view, id);
       else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the applications list." }));
-    } else if (route === "resumes") await viewResumes(view, { h, panel, fetchInto });
+    } else if (route === "applications") await viewApplications(view, id);
+    else if (route === "resumes") await viewResumes(view, ui);
     else if (route === "keywords") await viewKeywords(view);
     else if (route === "today") await viewToday(view);
     else if (route === "digest") await viewDigest(view);
     else if (route === "settings") viewSettings(view);
-    else await viewApplications(view);
+    else await viewHome(view);
   } catch (error) {
     if (mine !== renderToken) return;
     clear(view);
@@ -945,5 +427,5 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-if (!location.hash) location.hash = "#/applications";
+if (!location.hash) location.hash = "#/home";
 render();

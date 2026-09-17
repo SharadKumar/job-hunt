@@ -17,13 +17,17 @@
     -->
     <header class="top">
       <div class="wrap top-inner">
-        <a class="brand" href="#/applications">Job Hunt</a>
+        <a class="brand" href="#/home">Job Hunt</a>
         <nav class="nav" aria-label="Views">
+          <a href="#/home" data-nav="home">Home</a>
           <a href="#/applications" data-nav="applications">Applications</a>
           <a href="#/resumes" data-nav="resumes">Resumes</a>
           <a href="#/keywords" data-nav="keywords">Keywords</a>
           <a href="#/today" data-nav="today">Today</a>
           <a href="#/digest" data-nav="digest">Digest</a>
+          <!-- The autopilot switch is drawn by app.js once GET /api/policy has
+               answered, so the header never claims a lane it has not read. -->
+          <span class="switch-slot" id="autopilot-slot"></span>
           <a class="cog" href="#/settings" data-nav="settings" aria-label="Settings" title="Settings">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="3"></circle>
@@ -33,10 +37,6 @@
         </nav>
       </div>
     </header>
-
-    <div class="wrap">
-      <p class="standing" id="standing" aria-live="polite"></p>
-    </div>
 
     <main id="view" class="wrap view" tabindex="-1">
       <p class="empty">Loading.</p>

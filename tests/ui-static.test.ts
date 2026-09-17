@@ -1,20 +1,25 @@
 #!/usr/bin/env tsx
 /**
- * ui-static.test.ts - the local Job Hunt UI is three static files with no build
- * step, so nothing else checks them. This test pins the properties that make
- * them safe to serve and load:
+ * ui-static.test.ts - the local Job Hunt UI is a set of static files with no
+ * build step, so nothing else checks them. This test pins the properties that
+ * make them safe to serve and load:
  *
  *   - index.html loads app.js and app.css and nothing from the network. A CDN
  *     reference would send the person's browsing to a third party and break the
  *     page offline.
- *   - app.js never uses a browser modal (alert / confirm / prompt). Every
- *     action confirms inline, with a second deliberate press.
- *   - the four fixed keyword answers appear verbatim (AGENTS.md section 9).
- *   - every hash route the work package specifies is present, settings included.
+ *   - the front end is split into one module per screen, each parses, and none
+ *     of them grows past 500 lines.
+ *   - no module uses a browser modal (alert / confirm / prompt). Every action
+ *     confirms inline, with a second deliberate press.
+ *   - the four fixed keyword answers appear verbatim (AGENTS.md section 9) and
+ *     each term is recorded on its own.
+ *   - every hash route the work package specifies is present, Home is the
+ *     default, and the nav is in the agreed order.
+ *   - autopilot is switched from the header and the kill switch from Settings,
+ *     both against the policy API (AGENTS.md section 2).
  *   - the visual contract of the board design: system sans, the fixed palette,
  *     flat cards, one uppercase label, and the three button weights.
  *   - no em dash and no en dash anywhere (AGENTS.md section 3.2).
- *   - app.js actually parses.
  *
  * Run: npx tsx tests/ui-static.test.ts   (exit 0 = all pass)
  */
@@ -29,9 +34,18 @@ import { repoRoot } from "../tools/repo-root.ts";
 const ROOT = repoRoot();
 const STATIC_DIR = path.join(ROOT, "tools/ui/static");
 const HTML_PATH = path.join(STATIC_DIR, "index.html");
-const JS_PATH = path.join(STATIC_DIR, "app.js");
 const CSS_PATH = path.join(STATIC_DIR, "app.css");
-const RESUMES_PATH = path.join(STATIC_DIR, "resumes.js");
+
+/** Every module of the front end. app.js is the router and the shared helpers;
+ * the rest are one screen each. The list is the contract: a new screen is a new
+ * module here, not another thousand lines in app.js. */
+const MODULES = [
+  "app.js", "applications.js", "row.js", "keywords.js",
+  "home.js", "settings.js", "today.js", "digest.js", "resumes.js",
+];
+
+/** No module may pass this. It is the whole reason the front end is split. */
+const MAX_MODULE_LINES = 500;
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -53,9 +67,20 @@ function read(file: string): string {
 console.log("ui static front end");
 
 const html = read(HTML_PATH);
-const js = read(JS_PATH);
 const css = read(CSS_PATH);
-const resumesJs = read(RESUMES_PATH);
+
+/** Each module by name, plus one concatenation for "somewhere in the UI" checks. */
+const src: Record<string, string> = {};
+for (const name of MODULES) src[name] = read(path.join(STATIC_DIR, name));
+const front = MODULES.map((name) => src[name]).join("\n");
+
+const app = src["app.js"];
+const applications = src["applications.js"];
+const rowJs = src["row.js"];
+const keywords = src["keywords.js"];
+const home = src["home.js"];
+const settings = src["settings.js"];
+const resumesJs = src["resumes.js"];
 
 test("index.html loads app.js and app.css", () => {
   assert.match(html, /<script[^>]+type="module"[^>]+src="app\.js"/, "index.html must load app.js as a module");
@@ -75,28 +100,75 @@ test("index.html pulls nothing off the network", () => {
   assert.ok(!/https?:\/\//i.test(html), "index.html must not contain an http(s) URL at all");
 });
 
-test("app.js and app.css pull nothing off the network", () => {
-  // The only absolute URLs allowed in the front end are the ones the person's
-  // own pipeline rows carry (row.url), which are data, not assets.
+test("the modules and app.css pull nothing off the network", () => {
   assert.ok(!/@import\s+url\(/i.test(css), "app.css must not @import a remote stylesheet");
   assert.ok(!/https?:\/\//i.test(css), "app.css must not contain an http(s) URL");
-  assert.ok(!/\bimport\s+[^\n]*["']https?:/i.test(js), "app.js must not import from a URL");
-});
-
-test("app.js uses no browser modal", () => {
-  for (const banned of ["alert(", "confirm(", "prompt("]) {
-    assert.ok(!js.includes(banned), `app.js must not call ${banned.slice(0, -1)}(): confirmation is inline`);
+  for (const name of MODULES) {
+    assert.ok(!/\bimport\s+[^\n]*["']https?:/i.test(src[name]), `${name} must not import from a URL`);
+    assert.ok(!/\bfrom\s+["']https?:/i.test(src[name]), `${name} must not import from a URL`);
+    for (const value of [...src[name].matchAll(/src:\s*([^,\n]+)/g)].map((m) => m[1].trim())) {
+      assert.ok(!/^["']https?:/i.test(value), `${name} sets an external src: ${value}`);
+    }
   }
 });
 
-test("app.js confirms inline, with a second press", () => {
-  assert.match(js, /Confirm/, "app.js must label the armed state");
-  assert.match(js, /guarded\s*\(/, "app.js must route action buttons through the inline confirm helper");
+test("the front end is one module per screen, and each one parses", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-static-test-"));
+  try {
+    for (const name of MODULES) {
+      // node --check reads a bare .js file as a script, so drop the module
+      // syntax first: whole import statements, and the export keyword.
+      const stripped = src[name]
+        .replace(/import\s*\{[\s\S]*?\}\s*from\s*["'][^"']+["'];?/g, "")
+        .replace(/import\s+[\w$]+\s+from\s*["'][^"']+["'];?/g, "")
+        .replace(/^export\s+/gm, "");
+      const copy = path.join(dir, `${name}.check.js`);
+      fs.writeFileSync(copy, stripped);
+      try {
+        execFileSync(process.execPath, ["--check", copy], { stdio: "pipe" });
+      } catch (error) {
+        const stderr = String((error as { stderr?: Buffer }).stderr ?? error);
+        assert.fail(`${name} does not parse:\n${stderr}`);
+      }
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test("app.js never builds markup from a string", () => {
-  assert.ok(!/\.innerHTML\s*=/.test(js), "app.js must not assign innerHTML");
-  assert.ok(!/\bdocument\.write\b/.test(js), "app.js must not use document.write");
+test("no module is longer than 500 lines", () => {
+  for (const name of MODULES) {
+    const lines = src[name].split("\n").length;
+    assert.ok(lines <= MAX_MODULE_LINES, `${name} is ${lines} lines; the budget is ${MAX_MODULE_LINES}`);
+  }
+});
+
+test("app.js imports every screen module", () => {
+  for (const name of MODULES.filter((m) => m !== "app.js")) {
+    assert.ok(app.includes(`from "./${name}"`), `app.js does not import ./${name}`);
+  }
+  assert.match(app, /import \{ viewResumes \} from "\.\/resumes\.js"/, "app.js must import the resumes view");
+});
+
+test("no module uses a browser modal", () => {
+  for (const name of MODULES) {
+    for (const banned of ["alert(", "confirm(", "prompt("]) {
+      assert.ok(!src[name].includes(banned), `${name} must not call ${banned.slice(0, -1)}(): confirmation is inline`);
+    }
+  }
+});
+
+test("the front end confirms inline, with a second press", () => {
+  assert.match(app, /Confirm/, "app.js must label the armed state");
+  assert.match(app, /export function guarded\s*\(/, "app.js must export the inline confirm helper");
+  assert.match(applications, /guarded\s*\(/, "a row decision must go through the inline confirm helper");
+});
+
+test("no module builds markup from a string", () => {
+  for (const name of MODULES) {
+    assert.ok(!/\.innerHTML\s*=/.test(src[name]), `${name} must not assign innerHTML`);
+    assert.ok(!/\bdocument\.write\b/.test(src[name]), `${name} must not use document.write`);
+  }
 });
 
 test("the four fixed keyword answers appear verbatim", () => {
@@ -108,63 +180,176 @@ test("the four fixed keyword answers appear verbatim", () => {
     "Unsure / keep pending",
   ];
   for (const option of options) {
-    assert.ok(js.includes(option), `app.js is missing the fixed answer: ${option}`);
+    assert.ok(keywords.includes(option), `keywords.js is missing the fixed answer: ${option}`);
   }
-  const first = js.indexOf(options[0]);
+  const first = keywords.indexOf(options[0]);
   for (const option of options.slice(1)) {
-    assert.ok(first < js.indexOf(option), `"${options[0]}" must be offered first, before "${option}"`);
+    assert.ok(first < keywords.indexOf(option), `"${options[0]}" must be offered first, before "${option}"`);
   }
-  assert.match(js, /\(Recommended\)/, "the recommended answer must be marked");
+  assert.match(keywords, /\(Recommended\)/, "the recommended answer must be marked");
 });
 
 test("keyword bundles are capped at four", () => {
-  assert.match(js, /KEYWORD_BUNDLE\s*=\s*4/, "app.js must cap a keyword bundle at four terms");
+  assert.match(keywords, /KEYWORD_BUNDLE\s*=\s*4/, "keywords.js must cap a keyword bundle at four terms");
+});
+
+test("a keyword term is recorded on its own, and the batch controls are gone", () => {
+  for (const control of ["Record", "Skip"]) {
+    assert.ok(keywords.includes(`text: "${control}"`), `the term card has no ${control} button`);
+  }
+  assert.match(keywords, /class: "btn primary", text: "Record"/, "Record must be the black primary button");
+  assert.match(keywords, /body: \{ answers: \{ \[term\]: answer \} \}/, "Record must post one term at a time");
+  assert.match(keywords, /disabled: true/, "Record must start disabled until an answer is picked");
+  assert.match(keywords, /record\.disabled = !answer \|\| answer === "pending"/,
+    "Record must stay disabled while the answer is unsure");
+  for (const gone of ["Record and next", "Skip these", 'text: "Back"']) {
+    assert.ok(!keywords.includes(gone), `the batch control must be gone: ${gone}`);
+  }
+});
+
+test("an unsure answer skips the term after a short window", () => {
+  assert.match(keywords, /PENDING_SKIP_MS\s*=\s*400/, "the mis-click window must be 400 ms");
+  assert.match(keywords, /setTimeout\(\(\) => handlers\.onSkip\(item\.term\), PENDING_SKIP_MS\)/,
+    "picking unsure must skip the term after the window");
+  assert.match(keywords, /clearTimeout\(pendingTimer\)/, "another answer inside the window must cancel the skip");
+  assert.match(keywords, /mis-click/, "the window must be documented in the module");
 });
 
 test("the keyword view can drain a list of hundreds", () => {
   // The bug this replaced: the first four terms came back for ever, because
   // "Unsure / keep pending" left them pending. The view now holds its own pass.
-  for (const control of ["Record and next", "Skip these", "Back", "Start again with the skipped ones"]) {
-    assert.ok(js.includes(control), `the keyword view has no control: ${control}`);
-  }
-  assert.ok(js.includes("keywords/pending?all=1"), "the left list must fetch every pending term, not the first page");
-  assert.match(js, /All terms \(\$\{terms\.length\}\)/, "the list must be headed with the term count");
-  assert.match(js, /Search terms/, "the list must carry a search box");
-  assert.match(js, /Decided \$\{decided\.size\}, skipped \$\{skipped\.size\}, \$\{togo\} to go/,
-    "the bundle must show the progress line");
-  assert.match(js, /class: "bar", role: "progressbar"/, "the bundle must show a progress bar");
-  assert.match(js, /Every pending term has been seen this pass/, "the end of a pass must say so");
-  assert.match(js, /sessionStorage\.getItem\(KEYWORD_SESSION\)/, "the pass order must survive a refresh");
-  assert.match(js, /sessionStorage\.setItem\(KEYWORD_SESSION/, "the pass order must be written to sessionStorage");
-  assert.match(js, /input\.value !== "pending"/, "an unsure answer must send nothing and go to the back");
+  assert.ok(keywords.includes("Start again with the skipped ones"), "the keyword view has no restart control");
+  assert.ok(keywords.includes("keywords/pending?all=1"), "the left list must fetch every pending term, not the first page");
+  assert.match(keywords, /All terms \(\$\{terms\.length\}\)/, "the list must be headed with the term count");
+  assert.match(keywords, /Search terms/, "the list must carry a search box");
+  assert.match(keywords, /Decided \$\{decided\.size\}, skipped \$\{skipped\.size\}, \$\{togo\} to go/,
+    "the view must show the progress line");
+  assert.match(keywords, /class: "bar", role: "progressbar"/, "the view must show a progress bar");
+  assert.match(keywords, /Every pending term has been seen this pass/, "the end of a pass must say so");
+  assert.match(keywords, /sessionStorage\.getItem\(KEYWORD_SESSION\)/, "the pass order must survive a refresh");
+  assert.match(keywords, /sessionStorage\.setItem\(KEYWORD_SESSION/, "the pass order must be written to sessionStorage");
+  assert.match(keywords, /n >= 1 && n <= KEYWORD_OPTIONS\.length/, "1 to 4 must still pick an answer");
 });
 
-test("every route is present", () => {
-  for (const route of ["applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"]) {
-    assert.ok(js.includes(`"${route}"`), `app.js does not name the route: ${route}`);
+test("every route is present, and Home is the default", () => {
+  for (const route of ["home", "applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"]) {
+    assert.ok(app.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  for (const hash of ["#/applications", "#/resumes", "#/keywords", "#/today", "#/digest", "#/settings"]) {
+  for (const hash of ["#/home", "#/applications", "#/resumes", "#/keywords", "#/today", "#/digest", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
-  assert.ok(js.includes("#/row/"), "app.js must link an application card to #/row/<id>");
+  assert.ok(applications.includes("#/row/"), "app.js must link an application card to #/row/<id>");
+  assert.match(app, /location\.hash \|\| "#\/home"/, "an empty hash must resolve to Home");
+  assert.match(app, /if \(!location\.hash\) location\.hash = "#\/home"/, "a first load must land on Home");
+  assert.match(app, /!ROUTES\.includes\(name\) \? "home"/, "an unknown hash must fall back to Home");
+});
+
+test("the nav is in the agreed order, with the switch then the cog last", () => {
+  const order = ["#/home", "#/applications", "#/resumes", "#/keywords", "#/today", "#/digest"];
+  let at = -1;
+  for (const hash of order) {
+    const found = html.indexOf(`href="${hash}"`);
+    assert.ok(found > at, `the nav link ${hash} is out of order`);
+    at = found;
+  }
+  const slot = html.indexOf('id="autopilot-slot"');
+  assert.ok(slot > at, "the autopilot switch must follow the nav links");
+  assert.ok(html.indexOf('class="cog"') > slot, "the settings cog must be last");
 });
 
 test("the screen is called Applications, and the old address still works", () => {
   assert.match(html, /<a href="#\/applications" data-nav="applications">Applications<\/a>/, "the nav link must read Applications");
   assert.ok(!/>Queue</.test(html), "index.html must not still call the screen Queue");
-  assert.ok(!js.includes('"#/queue"'), "app.js must link to #/applications, not #/queue");
-  assert.match(js, /name === "queue"/, "app.js must still accept the old #/queue address");
-  assert.match(js, /history\.replaceState\(null, "", "#\/applications"\)/, "#/queue must redirect to the canonical address");
+  assert.ok(!front.includes('"#/queue"'), "the front end must link to #/applications, not #/queue");
+  assert.match(app, /name === "queue"/, "app.js must still accept the old #/queue address");
+  assert.match(app, /history\.replaceState\(null, "", "#\/applications"\)/, "#/queue must redirect to the canonical address");
+});
+
+test("the header carries an autopilot switch against the policy API", () => {
+  assert.match(html, /id="autopilot-slot"/, "index.html must hold a slot for the switch");
+  assert.match(app, /function autopilotSwitch\s*\(/, "app.js must draw the switch");
+  assert.ok(app.includes(`"policy"`), "app.js must read GET /api/policy");
+  assert.ok(app.includes("policy/autopilot"), "the switch must post to /api/policy/autopilot");
+  assert.match(app, /reason: "ui toggle"/, "a policy change must carry the reason");
+  assert.match(app, /guarded\(button, on \? "Turn off" : "Turn on"/, "the switch must arm before it posts");
+  assert.match(app, /Autopilot \$\{on \? "on" : "off"\}/, "the switch must say whether autopilot is on");
+  assert.match(css, /\.switch\.on::before \{ background: var\(--green\)/, "the on state must be green");
+});
+
+test("a missing policy API degrades to a disabled switch", () => {
+  assert.ok(app.includes("policy API unavailable"), "app.js must say when the policy API is not there");
+  assert.match(app, /error\.status === 404\) policyAvailable = false/, "a 404 must mark the policy API unavailable");
+  assert.match(app, /class: "switch off", disabled: true/, "the fallback switch must be disabled");
+  assert.ok(home.includes("policy API"), "Home must say so too rather than guess the lane");
+});
+
+test("the kill switch lives on Settings, armed and in red", () => {
+  assert.ok(!app.includes("kill-switch"), "the kill switch must not be in the header");
+  assert.ok(settings.includes("policy/kill-switch"), "settings.js must post to /api/policy/kill-switch");
+  assert.match(settings, /panel\("Safety"/, "the kill switch must sit in a Safety card");
+  assert.match(settings, /guarded\(button, on \? "Turn off" : "Turn on"/, "the kill switch must arm before it posts");
+  assert.match(settings, /class: "btn danger kill"/, "the kill switch must be the red control");
+  assert.ok(
+    settings.includes("The kill switch halts every unattended send."),
+    "the Safety card must explain what the kill switch does",
+  );
+  assert.match(css, /\.safety \{ border-left: 2px solid var\(--red\)/, "the Safety card must be outlined in red");
+});
+
+test("the counts sentence under the header is gone", () => {
+  assert.ok(!/id="standing"/.test(html), "index.html must not still carry the standing counts line");
+  assert.ok(!/class="standing"/.test(html), "the standing counts line must be gone from the markup");
+  assert.ok(!front.includes("need you, "), "no screen may print the old counts sentence");
+  assert.ok(!front.includes("renderHeader"), "the counts header renderer must be gone");
+  assert.ok(!/\.standing\s*\{/.test(css), "app.css must not still style the counts line");
+});
+
+test("Home is a dashboard of cards, each linking to its screen", () => {
+  for (const title of [
+    "Needs you", "Sent today", "Waiting for you", "Resumes", "Keywords",
+    "Recurring critic themes", "Today's run",
+  ]) {
+    assert.ok(home.includes(`"${title}"`), `Home is missing the card: ${title}`);
+  }
+  for (const href of ["#/applications/needs", "#/applications/sent", "#/applications/waiting",
+    "#/resumes", "#/keywords", "#/digest", "#/today"]) {
+    assert.ok(home.includes(href), `a Home card does not link to ${href}`);
+  }
+  assert.ok(home.includes("Start deciding"), "the keywords card must carry the primary Start deciding button");
+  assert.match(home, /See all \$\{rows\.length\}/, "the needs card must offer to see all of them");
+  assert.match(home, /rows\.slice\(0, 5\)/, "the needs card must show the top five rows");
+  assert.match(home, /slice\(0, 3\)/, "the digest card must show the top three themes");
+  assert.match(home, /slice\(0, 12\)/, "the run card must show the first twelve lines of the summary");
+  assert.match(home, /Read today/, "the run card must link to Today");
+  assert.match(applications, /TABS\.some\(\(t\) => t\.key === which\)/, "a Home link must open the right applications tab");
+});
+
+test("Home says which lane is in force, once, at the top", () => {
+  assert.match(home, /Autopilot \$\{policy\.autopilot_enabled \? "on" : "off"\}/, "Home must name the autopilot state");
+  assert.match(home, /Kill switch \$\{policy\.kill_switch \? "on" : "off"\}/, "Home must name the kill switch state");
+  assert.match(home, /of \$\{policy\.max_per_day\}/, "Home must show the daily cap against what has gone out");
+  assert.match(home, /RUN_SCHEDULE\s*=\s*"The daily run is at 07:00\."/, "Home must say when the run happens");
 });
 
 test("settings opens from a cog in the header, drawn in the page itself", () => {
   assert.match(html, /aria-label="Settings"/, "the header must carry a cog labelled Settings");
   assert.match(html, /<svg[^>]*width="20"/, "the cog must be an inline 20 px svg");
   assert.ok(!/<img/i.test(html), "the cog must not be an external image");
-  assert.match(js, /function viewSettings\s*\(/, "app.js must draw the settings view");
-  for (const command of ["npm run ui -- --open", "bash scripts/install-ui-launchd.sh", "Tailscale", "enabled: false"]) {
-    assert.ok(js.includes(command), `the settings About card never says: ${command}`);
+  assert.match(settings, /export function viewSettings\s*\(/, "settings.js must draw the settings view");
+});
+
+test("the About card gives the portless way first", () => {
+  const order = ["npm run ui:portless", "npm run ui -- --open", "bash scripts/install-ui-launchd.sh", "Tailscale", "enabled: false"];
+  let at = -1;
+  for (const command of order) {
+    const found = settings.indexOf(command);
+    assert.ok(found > -1, `the settings About card never says: ${command}`);
+    assert.ok(found > at, `the About card lists ${command} out of order`);
+    at = found;
   }
+  assert.ok(settings.includes("job-hunt.localhost"), "the portless way must name the host it gives");
+  assert.match(settings, /This browser is using \$\{location\.origin\}/,
+    "the origin must be read from the browser, not hard-coded");
 });
 
 test("every API endpoint in the contract is called", () => {
@@ -176,21 +361,26 @@ test("every API endpoint in the contract is called", () => {
     "keywords/record",
     "journal/today",
     "critic/digest",
+    "policy",
+    "policy/autopilot",
+    "policy/kill-switch",
   ]) {
-    assert.ok(js.includes(endpoint), `app.js never calls the API endpoint: ${endpoint}`);
+    assert.ok(front.includes(endpoint), `the front end never calls the API endpoint: ${endpoint}`);
   }
 });
 
 test("the token is read from localStorage and sent as a bearer header", () => {
-  assert.match(js, /harnessUiToken/, "app.js must use the localStorage key harnessUiToken");
-  assert.match(js, /Authorization/, "app.js must set an Authorization header");
-  assert.match(js, /Bearer \$\{token\}|Bearer " \+ token|Bearer \$\{/, "the token must go out as Bearer");
-  assert.match(js, /id: "token-input"/, "app.js must draw the token field on the settings view");
+  assert.match(app, /harnessUiToken/, "app.js must use the localStorage key harnessUiToken");
+  assert.match(app, /Authorization/, "app.js must set an Authorization header");
+  assert.match(app, /Bearer \$\{token\}|Bearer " \+ token|Bearer \$\{/, "the token must go out as Bearer");
+  assert.match(settings, /id: "token-input"/, "settings.js must draw the token field");
 });
 
-test("no em dash and no en dash in any of the four files", () => {
-  for (const [file, body] of [[HTML_PATH, html], [JS_PATH, js], [CSS_PATH, css], [RESUMES_PATH, resumesJs]] as const) {
-    const hit = /[\u2013\u2014]/.exec(body);
+test("no em dash and no en dash in the html, the css or any module", () => {
+  const files: [string, string][] = [[HTML_PATH, html], [CSS_PATH, css]];
+  for (const name of MODULES) files.push([path.join(STATIC_DIR, name), src[name]]);
+  for (const [file, body] of files) {
+    const hit = /[–—]/.exec(body);
     if (hit) {
       const line = body.slice(0, hit.index).split("\n").length;
       assert.fail(`${path.relative(ROOT, file)}:${line} contains a dash character that is banned`);
@@ -201,7 +391,7 @@ test("no em dash and no en dash in any of the four files", () => {
 test("the product is named Job Hunt", () => {
   assert.match(html, /<title>Job Hunt<\/title>/, "the document title must be Job Hunt");
   assert.match(html, /class="brand"[^>]*>Job Hunt</, "the wordmark must read Job Hunt");
-  assert.ok(js.includes("Job Hunt drafts and sends applications overnight."), "the queue lede must name Job Hunt");
+  assert.ok(applications.includes("Job Hunt drafts and sends applications overnight."), "the applications lede must name Job Hunt");
   assert.ok(!/\bHarness\b/.test(html), "index.html must not still call the product Harness");
 });
 
@@ -210,27 +400,7 @@ test("the stylesheet handles dark mode and phone width", () => {
   assert.match(css, /@media\s*\(min-width/, "app.css must have at least one responsive breakpoint");
   assert.match(css, /:focus-visible/, "app.css must keep a visible focus ring for keyboard use");
   assert.match(html, /name="viewport"/, "index.html must set a viewport for phone width");
-});
-
-test("app.js parses", () => {
-  // node --check treats a bare .js file as a script, so strip the module
-  // syntax first. app.js has none today, and this keeps the check honest if
-  // that changes.
-  const stripped = js
-    .split("\n")
-    .map((line) => (/^\s*(import|export)\b/.test(line) ? "" : line))
-    .join("\n");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-static-test-"));
-  const copy = path.join(dir, "app.check.js");
-  try {
-    fs.writeFileSync(copy, stripped);
-    execFileSync(process.execPath, ["--check", copy], { stdio: "pipe" });
-  } catch (error) {
-    const stderr = String((error as { stderr?: Buffer }).stderr ?? error);
-    assert.fail(`app.js does not parse:\n${stderr}`);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  assert.match(css, /\.home-grid \{ grid-template-columns: repeat\(2/, "Home must go to two columns on a desktop");
 });
 
 test("the type is the system sans stack the board design asks for", () => {
@@ -254,34 +424,34 @@ test("the palette is the one the brief fixes", () => {
   assert.match(rules, /--gutter:\s*24px/, "the gutters must be 24 px");
 });
 
-test("the five queue tabs are named as the person names them", () => {
+test("the five application tabs are named as the person names them", () => {
   const labels = ["Needs you", "Waiting", "Shortlisted", "Parked", "Sent"];
   let at = -1;
   for (const label of labels) {
-    const found = js.indexOf(`"${label}"`);
-    assert.ok(found > -1, `app.js is missing the queue tab label: ${label}`);
-    assert.ok(found > at, `queue tab "${label}" is out of order`);
+    const found = applications.indexOf(`"${label}"`);
+    assert.ok(found > -1, `applications.js is missing the tab label: ${label}`);
+    assert.ok(found > at, `tab "${label}" is out of order`);
     at = found;
   }
   // The labels must still map onto the pipeline statuses the API filters by.
   for (const status of ["manual_action_needed", "awaiting_approval", "shortlisted", "parked", "submitted"]) {
-    assert.ok(js.includes(status), `app.js does not map a tab onto the status: ${status}`);
+    assert.ok(applications.includes(status), `applications.js does not map a tab onto the status: ${status}`);
   }
 });
 
 test("the row detail carries the three stat cards", () => {
-  assert.match(js, /function statsRow\s*\(/, "app.js must build the stats row on the row detail");
+  assert.match(rowJs, /export function statsRow\s*\(/, "row.js must build the stats row on the row detail");
   assert.match(css, /\.stats\s*\{/, "app.css must style the stats row");
   assert.match(css, /\.stat\.good \.value\s*\{\s*color:\s*var\(--green\)/, "a passing verdict must be green");
   assert.match(css, /\.stat\.bad \.value\s*\{\s*color:\s*var\(--red\)/, "a failed verdict must be red");
   for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed", "Score"]) {
-    assert.ok(js.includes(stamp), `the stats row never says: ${stamp}`);
+    assert.ok(rowJs.includes(stamp), `the stats row never says: ${stamp}`);
   }
 });
 
 test("the applications screen reads as cards with a filter column", () => {
   for (const piece of ["Why it is here", "Filters", "Minimum score", "Details", "saved by you"]) {
-    assert.ok(js.includes(piece), `the queue card or filter column never says: ${piece}`);
+    assert.ok(applications.includes(piece), `the job card or filter column never says: ${piece}`);
   }
   assert.match(css, /\.layout \{ grid-template-columns: 280px/, "the filter column must be 280 px on the desktop layout");
   assert.match(css, /\.job:hover \{ background: var\(--hover\)/, "a card must take a very light hover");
@@ -296,19 +466,19 @@ test("the buttons carry the three weights and the armed states", () => {
 });
 
 test("a status reaches the page as words, not as a key", () => {
-  assert.match(js, /function statusLabel\s*\(/, "app.js must have one statusLabel helper");
-  assert.match(js, /manual_action_needed:\s*"needs you"/, "manual_action_needed must read as needs you");
-  assert.match(js, /awaiting_approval:\s*"waiting for you"/, "awaiting_approval must read as waiting for you");
-  assert.match(js, /replace\(\/_\/g, " "\)/, "an unmapped status must fall back to the key with spaces");
+  assert.match(app, /export function statusLabel\s*\(/, "app.js must have one statusLabel helper");
+  assert.match(app, /manual_action_needed:\s*"needs you"/, "manual_action_needed must read as needs you");
+  assert.match(app, /awaiting_approval:\s*"waiting for you"/, "awaiting_approval must read as waiting for you");
+  assert.match(app, /replace\(\/_\/g, " "\)/, "an unmapped status must fall back to the key with spaces");
   assert.ok(
-    !/\$\{item\.from \|\| "new"\}/.test(js),
+    !/\$\{item\.from \|\| "new"\}/.test(rowJs),
     "the history must not print a raw status key",
   );
 });
 
 test("the stylesheet keeps to the flat card house style", () => {
   // Prose in a comment must not satisfy or break the check, so read the rules only.
-  const rules = read(CSS_PATH).replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
   assert.ok(!/box-shadow/i.test(rules), "app.css must not use box-shadow: surfaces are flat");
   // Uppercase and tracking are allowed now, but only on the 12 px section label.
   const shouted = [...rules.matchAll(/text-transform:\s*uppercase/gi)];
@@ -332,21 +502,10 @@ test("the Resumes screen sits between Applications and Keywords", () => {
   }
 });
 
-test("the Resumes screen lives in its own module that app.js imports", () => {
-  assert.match(js, /import \{ viewResumes \} from "\.\/resumes\.js"/, "app.js must import the resumes view");
-  assert.match(js, /route === "resumes"/, "app.js must route #/resumes to the resumes view");
+test("the Resumes screen lives in its own module that app.js routes to", () => {
+  assert.match(app, /route === "resumes"/, "app.js must route #/resumes to the resumes view");
   assert.match(resumesJs, /export async function viewResumes\s*\(/, "resumes.js must export the view");
   assert.ok(resumesJs.includes('"resumes"'), "resumes.js must call GET /api/resumes");
-});
-
-test("resumes.js pulls nothing off the network and builds no markup from a string", () => {
-  assert.ok(!/https?:\/\//i.test(resumesJs), "resumes.js must not contain an http(s) URL");
-  assert.ok(!/\.innerHTML\s*=/.test(resumesJs), "resumes.js must not assign innerHTML");
-  // Every image and link on the screen goes through the local file route.
-  for (const src of [...resumesJs.matchAll(/src:\s*([^,\n]+)/g)].map((m) => m[1].trim())) {
-    assert.ok(!/^["']https?:/i.test(src), `resumes.js sets an external image src: ${src}`);
-  }
-  assert.ok(resumesJs.includes("page.src"), "a thumbnail must take its src from the API's file url");
 });
 
 test("the Resumes screen renders nothing and approves nothing", () => {
@@ -369,6 +528,7 @@ test("the Resumes screen renders nothing and approves nothing", () => {
   }
   assert.match(resumesJs, /Critic \$\{verdict\}/, "the card must carry a critic line");
   assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
+  assert.ok(home.includes("stamp"), "the Home resumes card must carry the approval stamp");
 });
 
 test("the resume card is styled as the board asks", () => {
@@ -378,29 +538,6 @@ test("the resume card is styled as the board asks", () => {
   assert.match(rules, /\.page-img \{[^}]*height:\s*120px/, "a page thumbnail must be 120 px tall");
   assert.match(rules, /\.page\.low \{ border-color: var\(--red\)/, "a low-fill page must be outlined red");
   assert.match(rules, /\.chip\.good \.dot \{ background: var\(--green\)/, "a passing gate chip must carry a green dot");
-});
-
-test("resumes.js parses", () => {
-  const stripped = resumesJs
-    .split("\n")
-    .map((line) => (/^\s*(import|export)\b/.test(line) ? line.replace(/^\s*export\s+/, "") : line))
-    .join("\n");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-static-test-"));
-  const copy = path.join(dir, "resumes.check.js");
-  try {
-    fs.writeFileSync(copy, stripped);
-    execFileSync(process.execPath, ["--check", copy], { stdio: "pipe" });
-  } catch (error) {
-    const stderr = String((error as { stderr?: Buffer }).stderr ?? error);
-    assert.fail(`resumes.js does not parse:\n${stderr}`);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("app.js stays small enough to read in one sitting", () => {
-  const lines = js.split("\n").length;
-  assert.ok(lines <= 950, `app.js is ${lines} lines; the budget is 950`);
 });
 
 if (process.exitCode) {
