@@ -25,44 +25,43 @@
 
 /* --- The screening card -------------------------------------------------- */
 
+/* One question: what was asked, who asked it, the field, then the two buttons
+   under the field and left aligned with it. Nothing sets its own width. */
+.screening { display: grid; gap: 16px; }
+
 .screening-ask {
+  display: grid;
+  gap: 8px;
   border-top: 1px solid var(--line);
-  padding-top: 12px;
-  margin-bottom: 16px;
+  padding-top: 16px;
 }
 
 .screening-ask:first-of-type { border-top: 0; padding-top: 0; }
 
-.screening-question { margin: 0 0 4px; font-weight: 600; }
+.screening-question { margin: 0; font-size: 15px; font-weight: 500; }
+.screening-ask .action-buttons { margin-bottom: 0; }
+.screening-ask p.grey, .screening-years p.grey { margin: 0; }
+.screening-ask .field, .years-row .field { max-width: var(--measure); }
 
-.screening-fields {
+.screening-sub { margin: 0; font-size: 15px; font-weight: 500; }
+
+/* Skill, Years and the button on one baseline: the labels sit above their own
+   controls, so the row aligns on the bottom of the fields. */
+.years-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: end;
   gap: 8px;
-  align-items: center;
-  margin: 8px 0 0;
 }
 
-.screening-input {
-  flex: 1 1 220px;
-  min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--card);
-  color: var(--ink);
-  font: inherit;
-  font-size: 14px;
-}
-
-.screening-input.short { flex: 0 0 96px; }
-
-.screening-input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.years-row .field { flex: 1 1 220px; }
+.years-row .field.short { flex: 0 0 96px; }
 
 .screening-years {
+  display: grid;
+  gap: 8px;
   border-top: 1px solid var(--line);
-  padding-top: 12px;
-  margin-top: 4px;
+  padding-top: 16px;
 }
 
 .screening-banked { margin-top: 16px; font-size: 14px; }

@@ -161,7 +161,9 @@
   color: var(--pill-ink);
   font-size: 13px;
 }
-.fix { color: var(--green); }
+/* The Rules screen's green "what to do instead" line. Named for the screen:
+   the row detail owns a `.fix` card of its own, and the two collided. */
+.rule-fix { color: var(--green); }
 
 /* --- Runs ----------------------------------------------------------------- */
 

@@ -15,6 +15,9 @@
 
 import { api, clear, fetchInto, h, panel, toast } from "./app.js";
 
+/** One labelled control, the shape every form in this UI uses. */
+const field = (text, control) => h("label", { class: "field" }, h("span", { class: "field-label", text }), control);
+
 /** The question a parked row's reason line is quoting, if it is quoting one. */
 export function questionInReason(reason) {
   const text = String(reason || "");
@@ -44,15 +47,14 @@ function optionsOf(entry) {
 function fieldFor(entry) {
   const options = entry.kind === "option" ? optionsOf(entry) : [];
   if (options.length) {
-    const select = h("select", { class: "screening-input", "aria-label": "Answer" });
+    const select = h("select", { "aria-label": "Your answer" });
     for (const option of options) select.append(h("option", { value: option, text: option }));
     return select;
   }
   if (entry.kind === "numeric") {
-    return h("input", { class: "screening-input", type: "number", min: "0", step: "1",
-      placeholder: "Years, or a sentence", "aria-label": "Answer" });
+    return h("input", { type: "number", min: "0", step: "1", placeholder: "A number of years", "aria-label": "Your answer" });
   }
-  return h("input", { class: "screening-input", type: "text", placeholder: "Your answer", "aria-label": "Answer" });
+  return h("input", { type: "text", placeholder: "A sentence, or a word", "aria-label": "Your answer" });
 }
 
 /** One unanswered question, with the control that banks it. */
@@ -62,13 +64,13 @@ function askBlock(entry, actions) {
   if (entry.company || entry.title) {
     block.append(h("p", { class: "grey small", text: [entry.title, entry.company].filter(Boolean).join(" at ") }));
   }
-  const field = fieldFor(entry);
+  const input = fieldFor(entry);
   const note = h("p", { class: "grey small" });
   const bank = h("button", { type: "button", class: "btn primary", text: "Bank answer" });
   const drop = h("button", { type: "button", class: "btn", text: "Not a real question" });
 
   bank.addEventListener("click", async () => {
-    const answer = String(field.value || "").trim();
+    const answer = String(input.value || "").trim();
     if (!answer) { note.textContent = "Type an answer first."; return; }
     bank.disabled = true;
     clear(note);
@@ -94,14 +96,14 @@ function askBlock(entry, actions) {
     }
   });
 
-  block.append(h("div", { class: "screening-fields" }, field, h("div", { class: "action-buttons" }, bank, drop)), note);
+  block.append(field("Your answer", input), h("div", { class: "action-buttons" }, bank, drop), note);
   return block;
 }
 
 /** "I have N years with X", the one answer shape that resolves a whole family. */
 function yearsForm(actions) {
-  const skill = h("input", { class: "screening-input", type: "text", placeholder: "Skill, for example azure", "aria-label": "Skill" });
-  const years = h("input", { class: "screening-input short", type: "number", min: "0", step: "1", placeholder: "Years", "aria-label": "Years" });
+  const skill = h("input", { type: "text", placeholder: "For example azure", "aria-label": "Skill" });
+  const years = h("input", { type: "number", min: "0", step: "1", placeholder: "0", "aria-label": "Years" });
   const note = h("p", { class: "grey small" });
   const save = h("button", { type: "button", class: "btn primary", text: "Save years" });
   save.addEventListener("click", async () => {
@@ -120,8 +122,11 @@ function yearsForm(actions) {
     }
   });
   const box = h("div", { class: "screening-years" });
-  box.append(h("p", { class: "grey small", text: "A years question answers itself once the years are on file: \"how many years with X\" is filled from this map, never guessed." }));
-  box.append(h("div", { class: "screening-fields" }, skill, years, h("div", { class: "action-buttons" }, save)), note);
+  box.append(h("h3", { class: "screening-sub", text: "Years with a skill" }),
+    h("p", { class: "grey small", text: "A years question answers itself once the years are on file: \"how many years with X\" is filled from this map, never guessed." }));
+  const row = h("div", { class: "years-row" }, field("Skill", skill), field("Years", years), save);
+  row.querySelectorAll(".field")[1].classList.add("short");
+  box.append(row, note);
   return box;
 }
 

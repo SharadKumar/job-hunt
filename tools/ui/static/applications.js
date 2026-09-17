@@ -15,6 +15,7 @@
 import {
   $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, pageHeader, panel, render, statusLabel, toast,
 } from "./app.js";
+import { markSentControl } from "./row-actions.js";
 
 /** Application tabs, in the order the person works them. Sent is capped at 30 rows.
  * `label` is the short name, `long` is how the filter column says it. */
@@ -36,13 +37,6 @@ const EMPTY = {
   sent: "Nothing has been sent yet. Submitted applications appear here, most recent first.",
   responses: "No replies yet. A row moves here when you record a response, an interview, an offer or a win.",
 };
-
-/** The person's five decisions on a row. The server maps each to a transition. */
-export const ACTIONS = [
-  { key: "approve", label: "Approve", primary: true }, { key: "retry", label: "Retry" },
-  { key: "hold", label: "Hold" }, { key: "reject", label: "Reject", danger: true },
-  { key: "withdraw", label: "Withdraw", danger: true },
-];
 
 /** Where the row detail looks for a request to open with the screening panel
  * focused. A hash carries the id and nothing else, so the intent travels here. */
@@ -80,6 +74,8 @@ export function plainReasonText(text) {
 export function actionButton(row, action, fields, done) {
   const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : "", action.small ? "sm" : ""];
   const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: action.label });
+  // What the move does, in plain words, for whoever hovers or reads it out.
+  if (action.title) button.setAttribute("title", action.title);
   guarded(button, action.label, async () => {
     button.disabled = true;
     const body = { action: action.key, ...(fields ? fields() : {}) };
@@ -141,6 +137,9 @@ export function openScreening(id) {
 export function contextualControl(row, done, { small = true } = {}) {
   const act = row.action || { kind: "none" };
   const cls = small ? "btn sm" : "btn";
+  // `decide` is the server saying there is no one obvious move: the choices it
+  // offers all sit in `also`, and none of them is the primary.
+  if (act.kind === "decide") return null;
   if (act.kind === "portal") {
     return h("a", { class: cls, href: act.href || row.url, target: "_blank", rel: "noreferrer noopener", text: act.label || "Open portal" });
   }
@@ -153,6 +152,51 @@ export function contextualControl(row, done, { small = true } = {}) {
     return routeButton(row, { label: act.label, path: "outcome", body: { status: act.outcome, note: "recorded from the board" }, primary: act.primary, small }, done);
   }
   return null;
+}
+
+/** An `also` entry, or a row's own apply method, that means the person sent
+ * this one themselves somewhere the harness cannot reach. */
+const SELF_SENT = new Set(["mark-sent", "mark_sent", "applied", "self"]);
+
+/**
+ * The secondary controls that sit after the primary: whatever the server hung
+ * off `action.also`, plus the one the board owes an external row even when the
+ * server is an older build that does not send it.
+ *
+ * Buttons and the things they open are returned apart, because a form belongs
+ * under a row rather than inside its line of buttons.
+ */
+export function alsoControls(row, done, { small = true } = {}) {
+  const act = row.action || { kind: "none" };
+  const cls = small ? "btn sm" : "btn";
+  const buttons = [];
+  const extras = [];
+  let selfSent = false;
+  for (const spec of Array.isArray(act.also) ? act.also : []) {
+    if (!spec) continue;
+    if (SELF_SENT.has(String(spec.kind || ""))) {
+      selfSent = true;
+      const control = markSentControl(row, done, { small });
+      if (spec.label) control.button.textContent = spec.label;
+      buttons.push(control.button);
+      extras.push(control.extra);
+    } else if (spec.href || spec.kind === "portal") {
+      buttons.push(h("a", { class: cls, href: spec.href || row.url, target: "_blank",
+        rel: "noreferrer noopener", text: spec.label || "Open portal" }));
+    } else if (spec.post) {
+      buttons.push(actionButton(row, { key: spec.post, label: spec.label || spec.post, danger: spec.danger, small }, null, done));
+    }
+  }
+  // An external portal row is one the person has to finish in their own
+  // browser, so it always earns the way to say they did (AGENTS.md section 2).
+  const external = act.kind === "portal" || row.applyMethod === "external"
+    || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.kind === "portal"));
+  if (external && !selfSent) {
+    const control = markSentControl(row, done, { small });
+    buttons.push(control.button);
+    extras.push(control.extra);
+  }
+  return { buttons, extras };
 }
 
 const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
@@ -179,8 +223,14 @@ function jobRow(row, refresh) {
   const control = h("div", { class: "row-control" });
   const button = contextualControl(row, refresh);
   if (button) control.append(button);
-  else if (row.status !== "submitted") control.append(h("a", { class: "btn sm", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
+  const { buttons, extras } = alsoControls(row, refresh);
+  for (const extra of buttons) control.append(extra);
+  if (!button && !buttons.length && row.status !== "submitted") {
+    control.append(h("a", { class: "btn sm", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
+  }
   article.append(main, score, reason, control);
+  // A form a secondary button opens runs the width of the row, under it.
+  for (const extra of extras) article.append(h("div", { class: "row-extra" }, extra));
   article.addEventListener("click", (event) => {
     if (event.target.closest("a, button, input, select, textarea")) return;
     location.hash = `#/row/${encodeURIComponent(row.id)}`;
@@ -271,6 +321,10 @@ function followUpLine(item, refresh) {
   return line;
 }
 
+/** How many stale applications the strip shows before it folds. Past this it
+ * stops being a strip above the list and becomes a second list. */
+const FOLLOW_UP_SHOWN = 8;
+
 /** The strip above the Sent list: who has gone quiet. Drafts only. */
 async function followUpStrip(refresh) {
   let data = null;
@@ -278,7 +332,15 @@ async function followUpStrip(refresh) {
   const rows = (data && data.rows) || [];
   if (!rows.length) return null;
   const body = h("div", { class: "nudges" });
-  for (const item of rows) body.append(followUpLine(item, refresh));
+  for (const item of rows.slice(0, FOLLOW_UP_SHOWN)) body.append(followUpLine(item, refresh));
+  if (rows.length > FOLLOW_UP_SHOWN) {
+    const more = h("button", { type: "button", class: "btn sm", text: `Show all ${rows.length}` });
+    more.addEventListener("click", () => {
+      more.remove();
+      for (const item of rows.slice(FOLLOW_UP_SHOWN)) body.append(followUpLine(item, refresh));
+    });
+    body.append(more);
+  }
   const title = rows.length === 1
     ? "1 application with no reply after 7 days"
     : `${rows.length} applications with no reply after 7 days`;
