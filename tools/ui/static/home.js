@@ -3,10 +3,11 @@
  * each a summary that links to the screen which can actually do the work.
  *
  * Nothing on Home acts. It reads the harness's own health, the pipeline, the
- * resumes, the keyword ledger, the critic digest and today's journal, and says
+ * resumes, the evidence questions, the critic digest and the last run, and says
  * in one line each what state they are in. AGENTS.md section 2: the lane in
- * force is the first thing on the page, so nobody has to guess whether the
- * machine is sending this morning.
+ * force is the first line of the first card, so nobody has to guess whether the
+ * machine is sending this morning. It is said there and nowhere else: a lede
+ * under the title repeated the Harness card word for word.
  *
  * Everything on this page is written in the person's words, not the machine's.
  * `plainReason` is where that happens: a parked row's reason is a run stamp, a
@@ -15,7 +16,7 @@
  * from here so the applications board says the same thing.
  */
 
-import { api, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown } from "./app.js";
+import { api, dayStamp, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown, shortDate } from "./app.js";
 
 /** The hour scripts/install-launchd.sh puts the daily run at. */
 const RUN_SCHEDULE = "The daily run is at 07:00.";
@@ -111,6 +112,62 @@ export function plainReason(text) {
 }
 
 // ---------------------------------------------------------------------------
+// The greeting
+// ---------------------------------------------------------------------------
+
+/**
+ * What the page says instead of "Home". Four pools by the hour the person is
+ * actually in, because a harness that ran at 07:00 is read at 07:10 and at
+ * 23:40 by the same person, and "Home" tells them nothing either time.
+ */
+const GREETINGS = {
+  morning: ["Good morning, {name}", "Morning, {name}", "Early start, {name}"],
+  afternoon: ["Good afternoon, {name}", "Afternoon, {name}", "Back at it, {name}"],
+  evening: ["Good evening, {name}", "Evening, {name}", "Winding down, {name}?"],
+  night: ["Burning the midnight oil, {name}?", "Still up, {name}?", "Late one, {name}"],
+};
+
+/** A line the day of the week earns, which takes the pick one time in three. */
+const WEEKDAY_FLAVOUR = {
+  0: "Weekend check-in, {name}",
+  1: "New week, {name}",
+  5: "Happy Friday, {name}",
+  6: "Weekend check-in, {name}",
+};
+
+const poolFor = (hour) => {
+  if (hour >= 5 && hour <= 11) return GREETINGS.morning;
+  if (hour >= 12 && hour <= 16) return GREETINGS.afternoon;
+  if (hour >= 17 && hour <= 21) return GREETINGS.evening;
+  return GREETINGS.night;
+};
+
+/**
+ * The greeting for one moment, with no clock and no randomness of its own: the
+ * same date and hour always give the same line, so the page does not reshuffle
+ * itself every time a card refreshes.
+ */
+export function greetingFor(date, name) {
+  const at = date instanceof Date ? date : new Date(date);
+  const hour = at.getHours();
+  let hash = 0;
+  for (const ch of `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}:${hour}`) {
+    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  }
+  const pool = poolFor(hour);
+  const flavour = WEEKDAY_FLAVOUR[at.getDay()];
+  const line = flavour && hash % 3 === 0 ? flavour : pool[hash % pool.length];
+  // With no name on file the line still has to read as a sentence.
+  return name ? line.replace("{name}", name) : line.replace(/,?\s*\{name\}/, "");
+}
+
+/** The first name the profile carries, or nothing to greet by. */
+const firstName = (result) => {
+  const profile = result.status === "fulfilled" && result.value ? result.value.profile : null;
+  return String((profile && profile.name) || "").trim().split(/\s+/)[0] || "";
+};
+
+// ---------------------------------------------------------------------------
 // The cards
 // ---------------------------------------------------------------------------
 
@@ -138,12 +195,8 @@ export function duration(seconds) {
 }
 
 /** A day and time the way the person reads it: "Thu 18 Sep, 07:00". */
-function dayTime(iso, withTime) {
-  if (!iso) return "";
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "";
-  const day = at.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
-  return withTime ? `${day}, ${at.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}` : day;
+export function dayTime(iso, withTime) {
+  return dayStamp(iso, withTime);
 }
 
 /** Channel ids are module names; say them the way the site is named. */
@@ -162,6 +215,7 @@ function healthCard(result) {
   }
   const health = result.value;
   const body = h("div", {});
+  body.append(line(standing(), "home-line"));
 
   const last = health.last_run;
   if (!last) body.append(line("No run has been logged yet.", "home-line grey"));
@@ -180,8 +234,7 @@ function healthCard(result) {
   if (health.next_run) body.append(line(`Next run ${dayTime(health.next_run, true)}.`, "home-line grey"));
   else body.append(line("No schedule is installed, so nothing runs on its own.", "home-line alarm"));
 
-  const cap = typeof health.caps.max_per_day === "number" ? ` of ${health.caps.max_per_day}` : "";
-  body.append(line(`${health.caps.sent_today}${cap} sent today.`, "home-line grey"));
+  // What has gone out against the cap is in the first line already.
 
   if (!health.channels.length) body.append(line("No channel is switched on.", "home-line alarm"));
   for (const channel of health.channels) {
@@ -266,21 +319,26 @@ function resumesCard(result) {
   return card("Resumes", "#/resumes", "Open Resumes", body);
 }
 
-/** The keyword backlog, and the button that starts draining it. */
-function keywordsCard(result) {
-  if (result.status !== "fulfilled") return card("Keywords", "#/keywords", "Open Keywords", failure("Could not load the keyword backlog."));
+/**
+ * The evidence questions: terms the market wants that the CV source has not
+ * answered for yet. They live under Resumes, because that is what they are
+ * about, so the card and its button both go there.
+ */
+function evidenceCard(result) {
+  const where = "#/resumes/evidence";
+  if (result.status !== "fulfilled") return card("Evidence questions", where, "Open the questions", failure("Could not load the pending terms."));
   const total = result.value.term_total ?? 0;
   const body = h("div", {});
   body.append(line(total === 1 ? "1 term pending" : `${total} terms pending`));
   body.append(h("p", { class: "home-actions" },
-    h("a", { class: "btn primary", href: "#/keywords", text: "Start deciding" })));
-  return card("Keywords", "#/keywords", "Open Keywords", body);
+    h("a", { class: "btn primary", href: where, text: "Start deciding" })));
+  return card("Evidence questions", where, "Open the questions", body);
 }
 
 /** The three themes the critic keeps raising. AGENTS.md section 5: they become
  * editorial rules in an attended session, never from here. */
 function digestCard(result) {
-  if (result.status !== "fulfilled") return card("Recurring critic themes", "#/digest", "Open Digest", failure("Could not load the critic digest."));
+  if (result.status !== "fulfilled") return card("Recurring critic themes", "#/rules", "Open Rules", failure("Could not load the critic digest."));
   const themes = (result.value.themes || []).slice(0, 3);
   const body = h("div", {});
   if (!themes.length) body.append(line("No recurring themes in the last 14 days.", "home-line grey"));
@@ -289,23 +347,57 @@ function digestCard(result) {
       h("span", { class: "digest-count", text: String(theme.count ?? 0) }),
       h("span", { text: themeWords(theme.key) })));
   }
-  return card("Recurring critic themes", "#/digest", "Open Digest", body);
+  return card("Recurring critic themes", "#/rules", "Open Rules", body);
 }
 
-/** The head of today's journal: the first dozen lines, read as markdown.
- * Same renderer as the Today screen, so a heading is a heading here too and
- * nobody has to read `## What the run did` as raw source. */
-function todayCard(result) {
-  if (result.status !== "fulfilled") return card("Today's run", "#/today", "Read today", failure("Could not load today's summary."));
-  const markdown = String(result.value.markdown || "").trim();
+/**
+ * The last run the harness logged, as its own tally: the day, what went out,
+ * what it left blocked, how it exited and how long it took. A run that has no
+ * row yet falls back to the head of today's journal, read as markdown, so the
+ * card says something on a machine whose runs index is not written yet.
+ */
+function latestRunCard(runs, journal) {
   const body = h("div", {});
-  if (!markdown) body.append(line("No entry for today yet. The morning run writes one when it finishes.", "home-line grey"));
-  else body.append(h("div", { class: "home-journal" }, richMarkdown(markdown.split("\n").slice(0, 12).join("\n"))));
-  return card("Today's run", "#/today", "Read today", body);
+  const run = runs.status === "fulfilled" ? (runs.value.runs || [])[0] : null;
+  if (run) {
+    const bits = [];
+    if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
+    if (typeof run.blocked === "number") bits.push(`${run.blocked} blocked`);
+    const clean = run.exit_code === 0;
+    const exit = run.exit_code === null || run.exit_code === undefined ? "no log" : `exit ${run.exit_code}`;
+    const took = duration(run.duration_s ?? run.duration_seconds);
+    body.append(h("p", { class: "home-line" },
+      h("span", { text: `${shortDate(run.date) || run.date}: ` }),
+      h("span", { text: bits.length ? `${bits.join(", ")}, ` : "" }),
+      h("span", { class: clean ? "ok" : "alarm", text: exit }),
+      h("span", { class: "grey", text: took ? `, ${took}` : "" })));
+  } else {
+    const markdown = journal.status === "fulfilled" ? String(journal.value.markdown || "").trim() : "";
+    if (markdown) body.append(h("div", { class: "home-journal" }, richMarkdown(markdown.split("\n").slice(0, 12).join("\n"))));
+    else body.append(line("No run has been logged yet. The morning run writes one when it finishes.", "home-line grey"));
+  }
+  return card("Latest run", "#/runs", "Open Runs", body);
 }
 
 export async function viewHome(view) {
-  view.append(pageHeader({ title: "Home", lede: standing() }));
+  // The greeting is drawn before the name is known and filled in when it
+  // arrives; the pick does not depend on the name, so the line does not jump.
+  const now = new Date();
+  const head = pageHeader({ title: greetingFor(now, "") });
+  const title = head.querySelector("h1");
+  // A screen reader should not read a rhetorical question mark out as one.
+  const say = (text) => { title.textContent = text; title.setAttribute("aria-label", text.replace(/\?/g, "")); };
+  say(greetingFor(now, ""));
+  view.append(head);
+  // The quotation pool is loaded when the page is drawn rather than imported at
+  // the top, so this module stays a module about the dashboard.
+  const quotes = await import("./quotes.js").catch(() => null);
+  if (quotes) {
+    const saying = quotes.quoteFor(Math.random);
+    head.append(h("div", { class: "lede quote" },
+      h("p", { class: "quote-text", text: `"${saying.text}"` }),
+      h("p", { class: "quote-by", text: saying.by })));
+  }
   const grid = h("div", { class: "home-grid" });
   grid.append(h("p", { class: "empty", text: "Loading the dashboard." }));
   view.append(grid);
@@ -318,8 +410,11 @@ export async function viewHome(view) {
     api("critic/digest?since=14d"),
     api("journal/today"),
     api("health"),
+    api("runs?limit=1"),
   ]);
-  const [needs, sent, resumes, keywords, digest, journal, health] = results;
+  const [needs, sent, resumes, keywords, digest, journal, health, runs] = results;
+  const name = firstName(resumes);
+  if (name) say(greetingFor(now, name));
   while (grid.firstChild) grid.firstChild.remove();
   // The machine's own state comes first: whether it ran, when it runs next and
   // whether it can still sign in decides what every card below is worth.
@@ -329,11 +424,11 @@ export async function viewHome(view) {
   grid.append(
     needsCard(needs),
     waitingCard(),
-    keywordsCard(keywords),
+    evidenceCard(keywords),
     sentCard(sent),
     resumesCard(resumes),
     digestCard(digest),
-    todayCard(journal),
+    latestRunCard(runs, journal),
   );
   if (results.every((r) => r.status === "rejected")) {
     view.append(h("p", { class: "home-actions" },

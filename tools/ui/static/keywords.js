@@ -21,11 +21,24 @@ import { api, clear, errorBox, h, pageHeader, panel, render, toast } from "./app
 /* AGENTS.md section 9: four fixed answers and no others, recommended first.
  * The labels are verbatim; the values are what POST /api/keywords/record wants. */
 const KEYWORD_OPTIONS = [
-  { value: "confirm", label: "Confirm and update source (Recommended)" },
+  { value: "confirm", label: "Confirm and update source" },
   { value: "na", label: "Not applicable" },
   { value: "familiarity", label: "Bring in as familiarity" },
   { value: "pending", label: "Unsure / keep pending" },
 ];
+
+/**
+ * The ledger recommends an answer per term, and the tag goes on that answer
+ * rather than always on the first one: "AGSVA" is a clearance, not a skill, and
+ * recommending "Confirm and update source" for it is how the queue filled up
+ * with rows nobody should have been asked about. No answer is pre-selected
+ * either way; the tag is a hint, not a default.
+ */
+const RECOMMENDED = " (Recommended)";
+const recommendedAnswer = (item) => {
+  const answer = String((item.recommendation && item.recommendation.answer) || "").trim().toLowerCase();
+  return KEYWORD_OPTIONS.some((option) => option.value === answer) ? answer : "";
+};
 
 /** AGENTS.md section 9: never ask more than four at a time. */
 const KEYWORD_BUNDLE = 4;
@@ -52,14 +65,37 @@ const saveKeywordSession = (state) => {
   try { sessionStorage.setItem(KEYWORD_SESSION, JSON.stringify(state)); } catch { /* private mode: memory only */ }
 };
 
-/** The context line: which positioning asked, which advert it came from, and
- * the hint the ledger holds, if it holds one. */
+/**
+ * The roles an evidence hint names. The hint is written for a tool ("cv-source
+ * .md:25,118 (Forward Deployed Engineer, Nterprise Corp; ...)"), and the file
+ * and the line numbers are no help to a person deciding whether they have done
+ * a thing, so only the names in the brackets are shown.
+ */
+function evidenceRoles(hint) {
+  const inside = /\(([^()]+)\)\s*$/.exec(String(hint || ""));
+  const said = inside ? inside[1].trim() : "";
+  return /^[\s\d,:.]*$/.test(said) ? "" : said;
+}
+
+/** Which adverts asked for this term, said as adverts: a title and a company,
+ * never the opportunity id the ledger files them under. */
+function askedBy(item) {
+  const rows = Array.isArray(item.opportunities) ? item.opportunities : [];
+  const said = rows.slice(0, 2)
+    .map((row) => (row ? [row.title, row.company].filter(Boolean).join(" at ") : ""))
+    .filter(Boolean);
+  return said.length ? `Asked by ${said.join("; ")}` : "";
+}
+
+/** The context line: how often it came up, which positioning wants it, which
+ * advert asked, and which roles the source says might evidence it. */
 function contextOf(item) {
+  const roles = evidenceRoles(item.evidence_hint);
   return [
     item.count === 1 ? "seen once" : `seen ${item.count} times`,
     (item.resumes || []).join(", "),
-    item.context,
-    item.evidence_hint,
+    askedBy(item),
+    roles ? `Evidence: ${roles}` : "",
   ].filter(Boolean).join(". ");
 }
 
@@ -78,6 +114,10 @@ function termCard(item, handlers) {
   if (kind) head.append(h("span", { class: "kind", text: kind }));
   set.append(head);
 
+  // Why the ledger thinks what it thinks, in its own words, under the term.
+  const advice = String((item.recommendation && item.recommendation.note) || "").trim();
+  if (advice) set.append(h("p", { class: "term-advice grey small", text: advice }));
+
   const text = contextOf(item);
   const context = h("p", { class: "context clamp", text });
   set.append(context);
@@ -91,10 +131,11 @@ function termCard(item, handlers) {
   }
 
   const options = h("div", { class: "options segmented" });
+  const advised = recommendedAnswer(item);
   for (const option of KEYWORD_OPTIONS) {
     const label = h("label", { class: "seg" },
       h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
-      h("span", { text: option.label }));
+      h("span", { text: option.value === advised ? `${option.label}${RECOMMENDED}` : option.label }));
     options.append(label);
   }
 
@@ -151,6 +192,12 @@ const categoryOf = (item) => {
   return CATEGORIES.includes(raw) ? raw : "";
 };
 
+/** The heading each category gets in the left list, and the catch-all for a
+ * term the ledger did not classify. */
+const CATEGORY_GROUPS = [
+  ["tool", "Tools"], ["method", "Methods"], ["certification", "Certifications"], ["concept", "Concepts"], ["", "Other"],
+];
+
 /** True when any plan behind the term calls it must-have. The ledger may say so
  * on the term or on the pending rows it groups. */
 const mustHave = (item) => item.must_have === true || item.tier === "must_have"
@@ -177,7 +224,7 @@ export async function viewKeywords(view, opts) {
     const data = await api("keywords/pending?all=1");
     terms = data.terms || [];
     const pending = data.term_total ?? terms.length;
-    count.textContent = `${pending} terms pending, ${data.pending_total ?? 0} questions behind them.`;
+    count.textContent = pending === 1 ? "1 term pending" : `${pending} terms pending`;
     banner.hidden = pending <= TRIAGE_THRESHOLD;
     banner.textContent = banner.hidden
       ? ""
@@ -246,14 +293,19 @@ export async function viewKeywords(view, opts) {
     const needle = search.value.trim().toLowerCase();
     const shown = needle ? terms.filter((t) => t.term.toLowerCase().includes(needle)) : terms;
     if (!shown.length) return list.append(h("li", { class: "grey small", text: needle ? "No term matches that search." : "Nothing pending." }));
+    // Must-have first, because those are the terms a plan is waiting on, then
+    // one group per kind of thing so a run of certifications can be answered
+    // together rather than one at a time between concepts.
     const byTerm = (a, b) => a.term.localeCompare(b.term);
-    const groups = [
-      ["Must have", shown.filter((item) => mustHave(item)).sort(byTerm)],
-      ["Other", shown.filter((item) => !mustHave(item)).sort(byTerm)],
-    ];
+    const must = shown.filter((item) => mustHave(item)).sort(byTerm);
+    const rest = shown.filter((item) => !mustHave(item));
+    const groups = [["Must have", must]];
+    for (const [key, label] of CATEGORY_GROUPS) {
+      groups.push([label, rest.filter((item) => categoryOf(item) === key).sort(byTerm)]);
+    }
     for (const [label, items] of groups) {
       if (!items.length) continue;
-      list.append(h("li", { class: "kw-group eyebrow", text: label }));
+      list.append(h("li", { class: "kw-group eyebrow", text: `${label} (${items.length})` }));
       for (const item of items) list.append(termRow(item));
     }
   }

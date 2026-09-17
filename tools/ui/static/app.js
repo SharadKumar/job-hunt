@@ -122,12 +122,37 @@ export function pageHeader({ title, lede, aside, back } = {}) {
   return head;
 }
 
-/** Local time, short. Falls back to the raw string when it is not a date. */
+/**
+ * Three letter months. en-AU's own short month is "Sept", four letters and out
+ * of step with the other eleven, so the UI carries its own table and every date
+ * on every screen reads the same way: "17 Sep".
+ */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const asDate = (value) => (value instanceof Date ? value : new Date(value));
+
+/** "17 Sep", or "" when there is no date to say. */
+export function shortDate(value) {
+  const d = asDate(value);
+  return !value || Number.isNaN(d.getTime()) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** The clock on its own, 24 hour: "08:12". */
+export const clockTime = (value) => (!value || Number.isNaN(asDate(value).getTime()) ? ""
+  : asDate(value).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false }));
+
+/** "Thu 17 Sep", and with the clock when it is asked for. */
+export function dayStamp(value, withTime) {
+  const day = shortDate(value);
+  if (!day) return "";
+  const full = `${asDate(value).toLocaleDateString("en-AU", { weekday: "short" })} ${day}`;
+  return withTime ? `${full}, ${clockTime(value)}` : full;
+}
+
+/** Local time, short: "17 Sep, 08:12". The raw string when it is not a date. */
 export function when(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleString("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const d = asDate(iso);
+  return Number.isNaN(d.getTime()) ? String(iso) : `${shortDate(d)}, ${clockTime(d)}`;
 }
 
 /** The person's own day as YYYY-MM-DD, so "sent today" means what they mean. */

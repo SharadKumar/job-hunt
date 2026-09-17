@@ -1,6 +1,6 @@
 /*
- * settings.js - the token this browser holds, the safety control, and whether
- * the harness itself is running.
+ * settings.js - the token this browser holds, the safety control, whether the
+ * harness itself is running, and the four ways to start this server.
  *
  * AGENTS.md section 2: the kill switch halts every unattended send, so it lives
  * here rather than in the header, behind an armed press and in red. Autopilot
@@ -15,10 +15,32 @@
 import {
   api, clear, getPolicy, guarded, h, isPolicyAvailable, loadPolicy, pageHeader, panel, readToken, render, toast, writeToken,
 } from "./app.js";
-import { channelLabel, duration } from "./home.js";
+import { channelLabel, dayTime, duration } from "./home.js";
 
 /** Where the person reads the long version. A path, not a link off this machine. */
 const DOCS_LINE = "Docs: README, Local UI section.";
+
+/**
+ * The ways to run this UI, best first. The portless way is the one to use day
+ * to day: it puts the page on a name instead of a port, so nothing has to be
+ * remembered. Only the last-but-one line, the one that binds to another
+ * address, needs the token, which is why the token card sits above this one.
+ */
+const COMMANDS = [
+  "npm run ui:portless            # https://job-hunt.localhost, no port to remember",
+  "npm run ui -- --open           # the plain port way, http://127.0.0.1:7788",
+  "bash scripts/install-ui-launchd.sh   # keep it running across logins",
+  "npm run ui -- --host 100.x.y.z   # a Tailscale address, with HARNESS_UI_TOKEN set",
+  "sheet:\n  enabled: false   # the local UI is the approval surface, not the Sheet",
+];
+
+function howToRunCard() {
+  return panel("How to run", h("div", {},
+    h("p", { class: "grey small measure", text: "The portless way is the one to use day to day: it puts the UI on a name instead of a port." }),
+    h("pre", { class: "commands", text: COMMANDS.join("\n\n") }),
+    h("p", { class: "grey small", text: `This browser is using ${location.origin}` }),
+    h("p", { class: "grey small", text: DOCS_LINE })));
+}
 
 /** The environment variable scripts/daily.sh posts its one-line summary to. */
 const NOTIFY_HELP = "Set HARNESS_NOTIFY_URL to an ntfy topic url, or any url that accepts a POST body, "
@@ -97,13 +119,8 @@ function row(label, value, bad) {
     h("span", { class: bad ? "alarm" : "", text: value }));
 }
 
-const when = (iso, withTime) => {
-  if (!iso) return "never";
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return String(iso);
-  const day = at.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
-  return withTime ? `${day}, ${at.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false })}` : day;
-};
+/** The same stamp Home uses, and "never" when there is no date at all. */
+const when = (iso, withTime) => (iso ? (dayTime(iso, withTime) || String(iso)) : "never");
 
 /** The machine's state, filled in once GET /api/health answers. */
 function harnessCard() {
@@ -160,9 +177,8 @@ function harnessCard() {
 }
 
 export function viewSettings(view) {
-  view.append(pageHeader({ title: "Settings", lede: "The token, the kill switch and whether the harness is running." }));
+  view.append(pageHeader({ title: "Settings", lede: "The token, the kill switch, whether the harness is running, and how to start it." }));
   const stack = h("div", { class: "stack" });
-  stack.append(tokenCard(), safetyCard(), harnessCard());
-  stack.append(panel("About", h("p", { class: "grey small measure", text: DOCS_LINE })));
+  stack.append(tokenCard(), safetyCard(), harnessCard(), howToRunCard());
   view.append(stack);
 }

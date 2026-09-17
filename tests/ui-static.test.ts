@@ -40,8 +40,9 @@ const CSS_PATH = path.join(STATIC_DIR, "app.css");
  * the rest are one screen each. The list is the contract: a new screen is a new
  * module here, not another thousand lines in app.js. */
 const MODULES = [
-  "app.js", "applications.js", "row.js", "keywords.js",
-  "home.js", "settings.js", "runs.js", "rules.js", "resumes.js",
+  "app.js", "applications.js", "row.js", "row-actions.js", "row-letter.js",
+  "keywords.js", "home.js", "settings.js", "runs.js", "rules.js", "resumes.js",
+  "screening.js", "quotes.js",
 ];
 
 /** No module may pass this. It is the whole reason the front end is split. */
@@ -146,12 +147,17 @@ test("no module is longer than 500 lines", () => {
 });
 
 test("app.js imports every screen module", () => {
-  // keywords.js is the exception: it is the Resumes screen's second tab now,
-  // so the screen that owns the tabs imports it and the router does not.
-  for (const name of MODULES.filter((m) => m !== "app.js" && m !== "keywords.js")) {
+  // The exceptions are owned by a screen rather than by the router:
+  // keywords.js is the Resumes screen's second tab; row-actions.js and
+  // row-letter.js are the row detail's own parts, and the applications board
+  // reuses one of them; screening.js is imported by the row when it needs it.
+  const owned = new Set(["app.js", "keywords.js", "row-actions.js", "row-letter.js", "screening.js", "quotes.js"]);
+  for (const name of MODULES.filter((m) => !owned.has(m))) {
     assert.ok(app.includes(`from "./${name}"`), `app.js does not import ./${name}`);
   }
   assert.match(app, /import \{ viewResumes \} from "\.\/resumes\.js"/, "app.js must import the resumes view");
+  assert.ok(rowJs.includes('from "./row-actions.js"'), "the row detail must own its retry, redraft and mark-sent controls");
+  assert.ok(rowJs.includes('from "./row-letter.js"'), "and the letter card must be its own module");
   assert.match(resumesJs, /import \{ viewKeywords \} from "\.\/keywords\.js"/,
     "the Resumes screen must own the evidence questions tab");
   assert.ok(!app.includes('from "./keywords.js"'), "the router must not draw the keywords view itself");
@@ -238,13 +244,45 @@ test("the term list says what a term is, not that it was asked once", () => {
   assert.match(keywords, /categoryOf\s*=\s*\(item\)/, "the category must come off the term, or be omitted");
   assert.match(keywords, /mustHave\s*=\s*\(item\)/, "a must-have term must be marked");
   assert.match(keywords, /\(item\.count \?\? 0\) > 1/, "the count must only show when it is more than one");
-  assert.match(keywords, /\["Must have", shown\.filter/, "the list must lead with the must-have group");
-  assert.match(keywords, /\["Other", shown\.filter/, "and follow it with the rest");
+  assert.match(keywords, /const groups = \[\["Must have", must\]\]/, "the list must lead with the must-have group");
+  assert.match(keywords, /\["tool", "Tools"\], \["method", "Methods"\], \["certification", "Certifications"\], \["concept", "Concepts"\], \["", "Other"\]/,
+    "and then one group per category, Other last");
+  assert.match(keywords, /text: `\$\{label\} \(\$\{items\.length\}\)`/, "each group must carry its count");
   assert.match(keywords, /class: "kw-group eyebrow"/, "each group carries a small heading");
   assert.match(css, /\.must \{[\s\S]*?background: var\(--green\);/, "must-have is a green dot");
   assert.match(css, /@media \(min-width: 900px\) \{\s*\.kw-layout \{ grid-template-columns: 240px/,
     "the term list must be 240 px on a desktop");
   assert.match(css, /\.kw-list \{ position: sticky; top: 88px; \}/, "and it must stay in view while the cards scroll");
+});
+
+test("the recommended answer is the one the ledger recommends", () => {
+  // The tag used to be baked into the first label, so every term recommended
+  // "Confirm and update source", including the ones that are not skills.
+  assert.match(keywords, /const RECOMMENDED = " \(Recommended\)";/, "the tag must be its own string");
+  assert.ok(!/label: "Confirm and update source \(Recommended\)"/.test(keywords),
+    "the tag must not be baked into the first answer");
+  assert.match(keywords, /recommendedAnswer = \(item\)/, "the tag must follow item.recommendation.answer");
+  assert.match(keywords, /item\.recommendation && item\.recommendation\.answer/, "and read it off the term");
+  assert.match(keywords, /option\.value === advised \? `\$\{option\.label\}\$\{RECOMMENDED\}` : option\.label/,
+    "the tag must sit on the recommended segment and nowhere else");
+  assert.match(keywords, /item\.recommendation\.note/, "the ledger's note must be shown under the term");
+  assert.match(keywords, /class: "term-advice grey small"/, "and it must be the quiet line, not a heading");
+  assert.ok(!/checked: true/.test(keywords), "no answer may be pre-selected");
+});
+
+test("a term says who asked and what might evidence it, in words", () => {
+  assert.match(keywords, /`Asked by \$\{said\.join\("; "\)\}`/, "the context must name the adverts that asked");
+  assert.match(keywords, /rows\.slice\(0, 2\)/, "and it must name at most two of them");
+  assert.match(keywords, /\[row\.title, row\.company\]\.filter\(Boolean\)\.join\(" at "\)/,
+    "an advert is a title at a company, never an opportunity id");
+  assert.ok(!/item\.context,/.test(keywords), "the raw opportunity id must not reach the page");
+  assert.match(keywords, /function evidenceRoles\(hint\)/, "the evidence hint must be read for its role names");
+  assert.match(keywords, /roles \? `Evidence: \$\{roles\}` : ""/, "and shown as Evidence, not as a file and a line number");
+  assert.ok(!/item\.evidence_hint,/.test(keywords), "cv-source.md:25,118 must never be printed as it stands");
+  assert.match(keywords, /pending === 1 \? "1 term pending" : `\$\{pending\} terms pending`/,
+    "the lede must be the pending count and nothing else");
+  assert.match(css, /\.kw-terms \{[\s\S]*?max-height: 70vh;[\s\S]*?overflow-y: auto;/,
+    "the term list must scroll inside its own box");
 });
 
 test("an unsure answer skips the term after a short window", () => {
@@ -393,21 +431,89 @@ test("the counts sentence under the header is gone", () => {
 
 test("Home is a dashboard of cards, each linking to its screen", () => {
   for (const title of [
-    "Blocked", "Sent today", "To approve", "Resumes", "Keywords",
-    "Recurring critic themes", "Today's run",
+    "Blocked", "Sent today", "To approve", "Resumes", "Evidence questions",
+    "Recurring critic themes", "Latest run",
   ]) {
     assert.ok(home.includes(`"${title}"`), `Home is missing the card: ${title}`);
   }
-  for (const href of ["#/applications/needs", "#/applications/sent", "#/applications/waiting", "#/resumes"]) {
+  // Every card links at the screen that can do the work, and the three that
+  // moved (keywords, digest, today) link at where they moved to.
+  for (const href of [
+    "#/applications/needs", "#/applications/sent", "#/applications/waiting",
+    "#/resumes", "#/resumes/evidence", "#/rules", "#/runs",
+  ]) {
     assert.ok(home.includes(href), `a Home card does not link to ${href}`);
   }
-  assert.ok(home.includes("Start deciding"), "the keywords card must carry the primary Start deciding button");
+  for (const gone of ['"#/keywords"', '"#/digest"', '"#/today"']) {
+    assert.ok(!home.includes(gone), `a Home card still links at the moved address ${gone}`);
+  }
+  assert.ok(home.includes("Start deciding"), "the evidence card must carry the primary Start deciding button");
+  assert.ok(home.includes("Open Rules"), "the critic themes card must open the Rules screen");
+  assert.ok(home.includes("Open Runs"), "the latest run card must open the Runs screen");
   assert.match(home, /See all \$\{rows\.length\}/, "the needs card must offer to see all of them");
   assert.match(home, /rows\.slice\(0, 5\)/, "the needs card must show the top five rows");
   assert.match(home, /slice\(0, 3\)/, "the digest card must show the top three themes");
-  assert.match(home, /slice\(0, 12\)/, "the run card must show the first twelve lines of the summary");
-  assert.match(home, /Read today/, "the run card must link to Today");
+  assert.match(home, /slice\(0, 12\)/, "the run card must fall back to the first twelve lines of the summary");
+  assert.ok(home.includes('api("runs?limit=1")'), "the latest run card must read the runs index");
+  assert.match(home, /\$\{run\.sent\} sent/, "the latest run must say what went out");
+  assert.match(home, /\$\{run\.blocked\} blocked/, "and what it left blocked");
+  assert.match(home, /`exit \$\{run\.exit_code\}`/, "and how it exited");
   assert.match(applications, /TABS\.some\(\(t\) => t\.key === which\)/, "a Home link must open the right applications tab");
+});
+
+test("Home greets the person by the hour, and says the same thing all hour", () => {
+  assert.match(home, /export function greetingFor\(date, name\)/, "home.js must export the greeting for the test");
+  for (const pool of ["morning", "afternoon", "evening", "night"]) {
+    const found = new RegExp(`${pool}: \\[([^\\]]*)\\]`).exec(home);
+    assert.ok(found, `the greeting has no ${pool} pool`);
+    const lines = found![1].split('", "').length;
+    assert.ok(lines >= 3, `the ${pool} pool has ${lines} lines; three is the minimum`);
+    assert.ok(found![1].includes("{name}"), `the ${pool} pool must greet by name`);
+  }
+  for (const flavour of ["New week, {name}", "Happy Friday, {name}", "Weekend check-in, {name}"]) {
+    assert.ok(home.includes(flavour), `the weekday flavour is missing: ${flavour}`);
+  }
+  assert.match(home, /hash % 3 === 0 \? flavour/, "the weekday line must take the pick one time in three");
+  // Pure: the same date and hour must give the same line, so nothing in it may
+  // read the clock or roll a die of its own.
+  const fn = /export function greetingFor[\s\S]*?\n\}/.exec(home);
+  assert.ok(fn, "greetingFor must be one function");
+  for (const impure of ["Math.random", "Date.now", "new Date()"]) {
+    assert.ok(!fn![0].includes(impure), `greetingFor must be pure: it uses ${impure}`);
+  }
+  assert.match(home, /at\.getFullYear\(\)\}-\$\{at\.getMonth\(\)\}-\$\{at\.getDate\(\)\}:\$\{hour\}/,
+    "the pick must hash the date and the hour, so it holds for the hour");
+  assert.match(home, /line\.replace\(\/,\?\\s\*\\\{name\\\}\/, ""\)/, "with no name on file the line must still read");
+  assert.match(home, /setAttribute\("aria-label", text\.replace\(\/\\\?\/g, ""\)\)/,
+    "a rhetorical question mark must not be read out");
+  assert.match(css, /h1 \{\s*margin: 0;\s*font-size: 26px;\s*font-weight: 600;/, "the greeting is the 26 px 600 page title");
+  assert.ok(home.includes("profile.name"), "the name must come from the profile the resumes API carries");
+});
+
+test("a quotation sits under the greeting, attributed, and rerolled each load", () => {
+  const quotes = src["quotes.js"];
+  assert.match(quotes, /export const QUOTES = \[/, "the pool must be its own module's export");
+  assert.match(quotes, /export function quoteFor\(rng\)/, "and the pick must take its random source as an argument");
+  const entries = [...quotes.matchAll(/\{ text: "([^"]+)", by: "([^"]+)" \}/g)];
+  assert.ok(entries.length >= 70, `the pool has ${entries.length} quotations; the brief fixes 70`);
+  for (const [, text, by] of entries) {
+    assert.ok(text.trim().length > 8, `a quotation is too short to be one: ${text}`);
+    assert.ok(by.trim().length > 2, `the quotation has no attribution: ${text}`);
+    assert.ok(!/[\u2014\u2013]/.test(`${text} ${by}`), `a quotation carries a banned dash: ${text}`);
+  }
+  // Pure: fed a number, it returns the same entry every time.
+  const fn = /export function quoteFor[\s\S]*?\n\}/.exec(quotes);
+  for (const impure of ["Math.random", "Date.now", "new Date("]) {
+    assert.ok(!fn![0].includes(impure), `quoteFor must be pure: it uses ${impure}`);
+  }
+  assert.ok(home.includes("quotes.quoteFor(Math.random)"), "Home must reroll the quotation on every load");
+  assert.ok(home.includes('await import("./quotes.js")'), "and load the pool when the page is drawn, not at import time");
+  assert.match(home, /class: "lede quote"/, "the quotation sits where the lede goes");
+  assert.match(home, /class: "quote-text", text: `"\$\{saying\.text\}"`/, "the quotation is quoted");
+  assert.match(home, /class: "quote-by", text: saying\.by/, "and the attribution is on its own line");
+  assert.match(css, /\.quote-text \{ margin: 0; max-width: 72ch; font-style: italic; font-size: 15px; color: var\(--grey\); \}/,
+    "the quotation is 15 px grey italic at 72ch");
+  assert.match(css, /\.quote-by \{ margin: 0; font-size: 13px; color: var\(--grey\); \}/, "the attribution is 13 px grey");
 });
 
 test("the Home cards are packed, not laid out on a grid of rows", () => {
@@ -433,7 +539,7 @@ test("the Home cards are in priority order", () => {
   const order = [...call![1].matchAll(/(\w+Card)\s*\(/g)].map((m) => m[1]);
   assert.deepEqual(
     order,
-    ["needsCard", "waitingCard", "keywordsCard", "sentCard", "resumesCard", "digestCard", "todayCard"],
+    ["needsCard", "waitingCard", "evidenceCard", "sentCard", "resumesCard", "digestCard", "latestRunCard"],
     "the Home cards are out of priority order",
   );
 });
@@ -451,7 +557,13 @@ test("the run card renders markdown rather than printing the source", () => {
   );
 });
 
-test("Home says which lane is in force, once, at the top", () => {
+test("Home says which lane is in force, once, in the Harness card", () => {
+  // It used to be the lede under the title as well, which said the same
+  // sentence twice on one screen.
+  assert.match(home, /pageHeader\(\{ title: greetingFor\(now, ""\) \}\)/, "Home must draw the greeting as its title");
+  assert.ok(!home.includes("lede: standing()"), "the lane sentence must not be the lede any more");
+  assert.match(home, /body\.append\(line\(standing\(\), "home-line"\)\);/,
+    "the lane sentence belongs to the Harness card, as its first line");
   assert.match(home, /Autopilot \$\{policy\.autopilot_enabled \? "on" : "off"\}/, "Home must name the autopilot state");
   assert.match(home, /Kill switch \$\{policy\.kill_switch \? "on" : "off"\}/, "Home must name the kill switch state");
   assert.match(home, /of \$\{policy\.max_per_day\}/, "Home must show the daily cap against what has gone out");
@@ -652,8 +764,226 @@ test("the row detail carries the three stat cards", () => {
   assert.match(css, /\.stats\s*\{/, "app.css must style the stats row");
   assert.match(css, /\.stat\.good \.value\s*\{\s*color:\s*var\(--green\)/, "a passing verdict must be green");
   assert.match(css, /\.stat\.bad \.value\s*\{\s*color:\s*var\(--red\)/, "a failed verdict must be red");
-  for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed", "Score"]) {
+  for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed"]) {
     assert.ok(rowJs.includes(stamp), `the stats row never says: ${stamp}`);
+  }
+  // The gate has one verdict. "Gate waiting, blocked" read as two.
+  assert.ok(!/Gate waiting, \$\{statusLabel/.test(rowJs), "the gate card must not repeat the row's status");
+  // The package card names what is in the package, not that something is.
+  assert.match(rowJs, /resume\.mode === "tailored" \? "Tailored CV" : resume\.mode === "baseline" \? "Baseline CV"/,
+    "the package card must say which CV went in");
+  assert.ok(!rowJs.includes('"CV recorded"'), "CV recorded says nothing the person can use");
+  assert.match(rowJs, /`score \$\{Math\.round\(row\.score\)\}`/, "the fact line runs in lower case");
+});
+
+test("a blocked row is never offered Approve", () => {
+  // Approving a blocked row marks the package approved and the next run reads
+  // the same finding, blocks it again and parks it. So the button is gated on
+  // the statuses where approving means something.
+  assert.match(rowJs, /const APPROVABLE = new Set\(\["awaiting_approval", "shortlisted", "drafted"\]\)/,
+    "row.js must name the statuses that can take an approval");
+  assert.match(rowJs, /APPROVABLE\.has\(row\.status\) && act\.post !== "approve"/,
+    "Approve must be gated on the row's status and not offered twice");
+  assert.ok(!/key: "approve", label: "Approve", primary: true/.test(front),
+    "Approve must not be an unconditional primary anywhere");
+  assert.match(rowJs, /const DECISIONS = \[/, "the standing decisions must be one list");
+  for (const label of ["Hold", "Reject", "Withdraw"]) {
+    assert.ok(new RegExp(`label: "${label}"`).test(rowJs), `the decision bar is missing: ${label}`);
+  }
+  assert.ok(!applications.includes("export const ACTIONS"), "the old five-button decision list must be gone");
+});
+
+test("the decision card puts the run first, then the moves", () => {
+  const bar = /function actionBar\(([\s\S]*?)\n\}/.exec(rowJs);
+  assert.ok(bar, "row.js must build the decision card in one function");
+  // Retry now is not a move, so it sits above the moves with its own line of
+  // explanation; the moves then read contextual, also, approve, standing.
+  const order = ["retryNowControl(", "Runs the critic and the gate again", 'eyebrow("Move this application")',
+    "contextualControl(", "alsoControls(", "APPROVABLE.has(", "of DECISIONS"];
+  let at = -1;
+  for (const piece of order) {
+    const found = bar![1].indexOf(piece);
+    assert.ok(found > at, `the decision bar builds ${piece} out of order`);
+    at = found;
+  }
+  // The screening panel is the answer, so the button that only scrolls to it
+  // is noise on a page that already carries the panel.
+  assert.match(rowJs, /act\.kind === "answer" && screeningOnPage/, "Answer must not be a button beside the screening panel");
+  assert.match(rowJs, /const screeningOnPage = UNANSWERED_QUESTION\.test/, "and the test must be the one the panel mounts on");
+});
+
+test("Retry now runs the gate here and says what it found", () => {
+  const actions = src["row-actions.js"];
+  assert.match(actions, /export function retryNowControl\s*\(/, "row-actions.js must own the retry control");
+  assert.match(actions, /rows\/\$\{encodeURIComponent\(row\.id\)\}\/retry-now/, "it must post to the retry-now route");
+  assert.match(actions, /api\(`jobs\/\$\{encodeURIComponent\(id\)\}`\)/, "and follow the job it starts");
+  assert.match(actions, /const POLL_MS = 2000;/, "the job must be polled every two seconds");
+  assert.ok(actions.includes("Running the critic and the gate"), "the progress line must say what is running");
+  assert.match(actions, /guarded\(button, "Retry now"/, "the retry must arm before it runs");
+  assert.match(actions, /class: small \? "btn primary sm" : "btn primary", text: "Retry now"/, "Retry now is the black button");
+  assert.match(actions, /error\.status === 404 \? MISSING_ROUTE : `Refused\. \$\{error\.message\}`/,
+    "a 409 must show the server's own reason, and a 404 must degrade");
+  assert.match(actions, /result\.status_after \? `The row is now \$\{statusLabel\(result\.status_after\)\}\.` : ""/,
+    "the result must name the status the tool left the row in");
+  assert.match(rowJs, /const wantsRetry = \(act\)/, "a row whose move is a retry must offer it");
+  assert.ok(rowJs.includes("Answer banked. Retry now?"), "and so must a row that has just banked an answer");
+});
+
+test("Redraft letter asks the next run for a new letter", () => {
+  const actions = src["row-actions.js"];
+  assert.match(actions, /export function redraftControl\s*\(/, "row-actions.js must own the redraft control");
+  assert.match(actions, /rows\/\$\{encodeURIComponent\(row\.id\)\}\/redraft/, "it must post to the redraft route");
+  assert.match(actions, /guarded\(button, "Redraft letter"/, "the redraft must arm before it posts");
+  assert.ok(actions.includes("The next run rewrites the letter with the critic findings."),
+    "the note must say what happens next, and when");
+  assert.match(actions, /`Redraft requested \$\{stamp\}/, "an outstanding request must be shown with its date");
+  assert.match(rowJs, /redraftControl\(row, data\.redraft_requested/, "the row detail must pass the stored request through");
+  // Nothing is rewritten in the browser: the letter that goes out is written
+  // by cover-letter-writer in the run (AGENTS.md section 5).
+  assert.ok(!/redraft[\s\S]{0,120}cover-letter\.md/.test(actions), "the browser must not write the letter itself");
+});
+
+test("an external portal row can be recorded as applied", () => {
+  const actions = src["row-actions.js"];
+  assert.match(actions, /export function markSentControl\s*\(/, "row-actions.js must own the mark-sent control");
+  assert.match(actions, /text: "I applied myself"/, "the control must be named in the person's words");
+  assert.match(actions, /rows\/\$\{encodeURIComponent\(row\.id\)\}\/mark-sent/, "it must post to the mark-sent route");
+  assert.match(actions, /confirmation: reference\.value\.trim\(\)/, "the form must carry a confirmation reference");
+  assert.match(actions, /note: note\.value\.trim\(\)/, "and a note");
+  assert.match(actions, /guarded\(save, "Mark as sent"/, "the commit must arm before it writes");
+  assert.ok(actions.includes("Nothing is submitted from here."), "the form must say what it is and is not doing");
+  assert.match(applications, /act\.kind === "portal" \|\| row\.applyMethod === "external"/,
+    "the board must offer it on an external row even when the server does not say so");
+});
+
+test("the critic findings say what is wrong and what to do about it", () => {
+  const letter = src["row-letter.js"];
+  assert.match(letter, /const issue = finding\.issue \?\? finding\.message/, "a finding's issue must be read by its own name");
+  assert.match(letter, /const fix = finding\.fix \?\? finding\.suggestion/, "and so must its fix");
+  assert.match(letter, /class: "fix-issue", text: issue/, "the issue must reach the page");
+  assert.match(letter, /text: `Fix: \$\{fix\}`/, "and the fix must be labelled as one");
+  assert.match(letter, /const pinned = findings\.length > 0 && !stale/,
+    "warnings on a passing letter are still worth reading");
+  // The Rules screen had a `.fix` class of its own, which painted these green.
+  assert.ok(!/^\.fix \{/m.test(read(path.join(STATIC_DIR, "screens-c.css"))), "the Rules screen must not restyle the finding card");
+});
+
+test("the letter and the job description stand the same height", () => {
+  assert.match(css, /\.columns \{ display: grid; gap: 24px; align-items: stretch; \}/,
+    "the two cards must share one grid row");
+  assert.match(css, /\.columns > \.card \{ display: flex; flex-direction: column; min-width: 0; \}/,
+    "each card must be a column so its body can take the spare height");
+  assert.match(css, /\.columns:not\(\.one\) > \.card > \.jd \{ flex: 1 1 0; min-height: 0; max-height: none; \}/,
+    "the job description must fill what the letter leaves and scroll inside its own card");
+  assert.match(css, /\.jd \{ overflow: auto; max-height: 460px; \}/,
+    "stacked on a phone it must keep a box of its own rather than running the page down");
+  assert.ok(!/\.jd pre \{[^}]*max-height/.test(css), "the job description must not keep a height of its own any more");
+});
+
+test("the letter's controls sit on its title row", () => {
+  const letter = src["row-letter.js"];
+  assert.match(letter, /class: "card-head" \}, h\("h2", \{ text: "Cover letter" \}\), controls/,
+    "Edit and Redraft belong on the card's title row, not in a footer");
+  assert.match(letter, /text: "Edit letter"/, "the letter must be editable from there");
+  assert.match(letter, /controls\.append\(save, cancel\)/, "and the same spot must carry Save and Cancel while editing");
+  assert.match(letter, /if \(redraft\) card\.append\(redraft\.extra\)/, "the redraft note is a caption under the title");
+  assert.match(css, /\.card-head \{[\s\S]*?justify-content: space-between;/, "the title row must put the controls hard right");
+  assert.match(css, /\.card-head-actions \{ display: flex; align-items: center; gap: 8px; \}/,
+    "and the controls must sit together on one line");
+  assert.match(rowJs, /redraftControl\(row, data\.redraft_requested, \(\) => decision\.reason\.value, \{ small: true \}\)/,
+    "the redraft control is built by the row and handed to the letter card");
+});
+
+test("the row detail reads in one order, history last", () => {
+  const view = /export async function viewRow\(([\s\S]*?)\n\}/.exec(rowJs);
+  assert.ok(view, "row.js must draw the row in one function");
+  const order = ["detail-meta", "statsRow(", "letterCard(", "jd-card", "screening", "actionBar(", "historyBlock("];
+  let at = -1;
+  for (const piece of order) {
+    const found = view![1].indexOf(piece);
+    assert.ok(found > at, `the row detail draws ${piece} out of order`);
+    at = found;
+  }
+  assert.match(rowJs, /rest\.append\(screening, actionBar\([^)]*\), historyBlock\(row\.history\)\)/,
+    "the decision must come before the history, not after it");
+});
+
+test("the history is a timeline with a dot per move", () => {
+  assert.match(rowJs, /function moveTone\(to\)/, "a move must be toned by where it went");
+  assert.match(rowJs, /if \(to === "submitted"\) return "good"/, "a move to sent is green");
+  assert.match(rowJs, /return "bad"/, "a move to a stop is red");
+  assert.match(rowJs, /class: "timeline"/, "the history must be the timeline list");
+  assert.match(rowJs, /class: "tl-dot", "aria-hidden": "true"/, "each entry must carry its own dot");
+  const screensB = read(path.join(STATIC_DIR, "screens-b.css"));
+  assert.match(screensB, /\.timeline \{[\s\S]*?border-left: 2px solid var\(--line\);/, "the rail must be 2 px");
+  assert.match(screensB, /\.tl\.good \.tl-dot \{ background: var\(--green\); \}/, "a green dot for a send");
+  assert.match(screensB, /\.tl\.bad \.tl-dot \{ background: var\(--red\); \}/, "a red dot for a stop");
+  assert.match(screensB, /\.tl-when \{ margin: 0; font-size: 13px; color: var\(--grey\); \}/, "the time is 13 px grey");
+  assert.match(screensB, /\.tl-move \{ margin: 0; font-size: 15px; \}/, "the move is 15 px");
+  assert.ok(rowJs.includes('text: "more"'), "a long reason must still fold");
+});
+
+test("a decision says what it does, and the notes field waits to be wanted", () => {
+  assert.match(rowJs, /const DECISION_HELP = \{/, "each decision must carry a plain explanation");
+  for (const [key, help] of [
+    ["approve", "Let the next run send it"], ["hold", "Keep it here"],
+    ["reject", "Not applying"], ["withdraw", "Applied but pulling out"],
+  ]) {
+    assert.ok(rowJs.includes(`${key}: "${help}"`), `the decision ${key} has no explanation`);
+  }
+  assert.ok(src["row-actions.js"].includes("Record that you sent it through the portal"),
+    "I applied myself must explain itself too");
+  assert.match(applications, /if \(action\.title\) button\.setAttribute\("title", action\.title\)/,
+    "a decision button must put its explanation in the title");
+  assert.match(rowJs, /function decisionFields\(\)/, "the two fields belong to one helper");
+  assert.ok(rowJs.includes('h("span", { class: "field-label", text })'), "both fields must be visibly labelled");
+  assert.ok(rowJs.includes('"Reason", "goes into the history"'), "the reason field must say where it goes");
+  assert.ok(rowJs.includes('"Notes for the next run", "edits to the letter or package"'),
+    "the notes field must say who reads it");
+  assert.match(rowJs, /notesField\.hidden = true;/, "the notes field starts hidden");
+  assert.match(rowJs, /approve\.addEventListener\("click", decision\.reveal\)/, "Approve reveals it");
+  assert.match(rowJs, /if \(spec\.key === "hold"\) button\.addEventListener\("click", decision\.reveal\)/, "so does Hold");
+  assert.match(rowJs, /redraft\.button\.addEventListener\("click", decision\.reveal\)/, "and so does Redraft");
+  assert.match(rowJs, /Runs the critic and the gate again and sends through \$\{sendsThrough\(row\)\} if they pass\./,
+    "Retry now must say what it runs and where it would send");
+  assert.match(rowJs, /const SEND_METHOD = \{ easy_apply: "Easy Apply", quick_apply: "Quick Apply" \}/,
+    "and it must name the channel's own words for the method");
+});
+
+test("the screening card is a form, not a row of loose controls", () => {
+  const screening = src["screening.js"];
+  assert.match(screening, /const field = \(text, control\) =>/, "the card must use one labelled control shape");
+  assert.ok(screening.includes('field("Your answer", input)'), "the answer field must be labelled");
+  assert.ok(screening.includes('field("Skill", skill), field("Years", years), save'),
+    "skill, years and the button must sit on one row");
+  assert.match(screening, /text: "Years with a skill"/, "the years form must be headed");
+  assert.ok(!screening.includes("screening-input"), "the card must not carry its own input styling any more");
+  assert.match(css, /\.field \{ display: grid; gap: 4px; min-width: 0; \}/, "app.css must own the labelled field");
+  const screensA = read(path.join(STATIC_DIR, "screens-a.css"));
+  assert.match(screensA, /\.years-row \{[\s\S]*?align-items: end;/, "the years row must share one baseline");
+  assert.match(screensA, /\.screening-question \{ margin: 0; font-size: 15px; font-weight: 500; \}/,
+    "the question is a 15 px 500 line");
+});
+
+test("the applications board carries the secondary actions the server offers", () => {
+  assert.match(applications, /export function alsoControls\s*\(/, "applications.js must render action.also");
+  assert.match(applications, /act\.kind === "decide"\) return null/, "a decide row has no primary, only its also buttons");
+  assert.match(applications, /spec\.href \|\| spec\.kind === "portal"/, "an also entry with a link must render as a link");
+  assert.match(applications, /actionButton\(row, \{ key: spec\.post/, "and one with a post must render as a decision");
+  assert.match(applications, /const FOLLOW_UP_SHOWN = 8;/, "the follow-up strip must cap at eight rows");
+  assert.match(applications, /text: `Show all \$\{rows\.length\}`/, "and offer the rest behind one press");
+  const screensB = read(path.join(STATIC_DIR, "screens-b.css"));
+  assert.match(screensB, /\.row-extra \{ grid-column: 1 \/ -1; \}/, "a form a row opens must run the row's width");
+  assert.match(screensB, /\.action-extra \{ display: grid;/, "and on the row detail it must sit under the button row");
+});
+
+test("every date on every screen reads as 17 Sep", () => {
+  assert.match(app, /const MONTHS = \["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"\]/,
+    "app.js must carry the three letter months, because en-AU says Sept");
+  assert.match(app, /export function shortDate\s*\(/, "app.js must own the one short date");
+  assert.match(app, /export function dayStamp\s*\(/, "and the one day stamp");
+  for (const name of MODULES) {
+    assert.ok(!/month:\s*"short"/.test(src[name]), `${name} must not format a month itself: en-AU spells it Sept`);
   }
 });
 

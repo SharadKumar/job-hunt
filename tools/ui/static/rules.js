@@ -204,7 +204,7 @@ function neverNamedCard(rules) {
       ul.append(h("li", {},
         h("code", { class: "pattern", text: entry.pattern }),
         entry.issue ? h("p", { class: "grey small", text: entry.issue }) : null,
-        entry.fix ? h("p", { class: "fix small", text: entry.fix }) : null));
+        entry.fix ? h("p", { class: "rule-fix small", text: entry.fix }) : null));
     }
     body.append(ul);
   }
@@ -225,7 +225,7 @@ function neverNamedCard(rules) {
       h("p", { class: "ban-head" }, h("code", { class: "pattern", text: ban.id }),
         meta ? h("span", { class: "grey small", text: meta }) : null),
       ban.note ? h("p", { class: "grey small", text: ban.note }) : null,
-      ban.title_must_equal ? h("p", { class: "fix small", text: `Title must read "${ban.title_must_equal}".` }) : null,
+      ban.title_must_equal ? h("p", { class: "rule-fix small", text: `Title must read "${ban.title_must_equal}".` }) : null,
       ban.forbidden && ban.forbidden.length
         ? h("p", { class: "small", text: `Forbidden: ${ban.forbidden.join(", ")}` })
         : null));

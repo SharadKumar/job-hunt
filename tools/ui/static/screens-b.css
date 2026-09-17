@@ -150,3 +150,80 @@
 .banked { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .banked:empty { display: none; }
 .banked p { margin: 0; font-weight: 500; }
+
+/* --- What a secondary control opens ------------------------------------- */
+
+/* A form or a progress line a button opens runs the width of the row, under
+   the line it belongs to, rather than squeezing into the control column. */
+.row-extra { grid-column: 1 / -1; }
+.row-extra:empty { display: none; }
+
+/* The decision bar is one row of buttons; everything any of them has to say
+   lands here, under it, so the bar keeps its shape however much is said. */
+.action-extra { display: grid; gap: 8px; margin-bottom: 16px; }
+.action-extra:empty { display: none; }
+
+/* app.css gives every button a display of its own, which beats the browser's
+   own [hidden] rule, so a button hidden in script stayed on the page. Said
+   here once, for every button in the UI. */
+button[hidden], .btn[hidden], .mark-sent[hidden], .job-progress[hidden] { display: none; }
+
+/* One line from a job the person started: the progress while it runs, then the
+   tool's own verdict. Never rewritten into something softer (AGENTS.md 3.8). */
+.job-line { margin: 0; font-size: 13px; }
+.job-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.job-progress:empty { display: none; }
+
+/* Recording an application the person sent themselves. */
+.mark-sent { display: grid; gap: 8px; padding: 12px 0 0; }
+
+.mark-sent-fields { display: grid; gap: 8px; }
+
+@media (min-width: 720px) {
+  .mark-sent-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+.mark-sent input {
+  font: inherit;
+  font-size: 15px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.mark-sent .action-buttons { margin-bottom: 0; }
+
+/* --- The row's history, as a timeline ------------------------------------ */
+
+/* One rail down the left, a dot per move. The dot says what kind of move it
+   was: green to sent, red to a stop, ink for the steps in between. */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 20px;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 16px;
+}
+
+.timeline li { position: relative; }
+
+.tl-dot {
+  position: absolute;
+  left: -25px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+  background: var(--ink);
+}
+
+.tl.good .tl-dot { background: var(--green); }
+.tl.bad .tl-dot { background: var(--red); }
+
+.tl-when { margin: 0; font-size: 13px; color: var(--grey); }
+.tl-move { margin: 0; font-size: 15px; }
+.tl-why { margin: 4px 0 0; font-size: 13px; color: var(--grey); }

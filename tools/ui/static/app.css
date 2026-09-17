@@ -277,6 +277,12 @@ a:hover { text-decoration: underline; }
   .page-aside { justify-self: start; order: 1; margin-top: 12px; }
 }
 
+/* The line under the greeting: the quotation in italics at reading measure,
+   the attribution quieter under it. */
+.quote { display: grid; gap: 4px; }
+.quote-text { margin: 0; max-width: 72ch; font-style: italic; font-size: 15px; color: var(--grey); }
+.quote-by { margin: 0; font-size: 13px; color: var(--grey); }
+
 .lede {
   margin: 4px 0 0;
   color: var(--grey);
@@ -311,7 +317,8 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; }
 
 .sorter { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--grey); }
 
-select, .field {
+/* A bare select, anywhere it is not inside a labelled .field. */
+select {
   font: inherit;
   font-size: 15px;
   color: var(--ink);
@@ -332,6 +339,22 @@ select, .field {
 }
 
 .cards { display: grid; gap: 24px; }
+
+/* A card whose title row carries controls: the title left, small buttons hard
+   right, both on one baseline. The h2 keeps its size and gives up its margin
+   to the row. */
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.card-head h2 { margin: 0; }
+.card-head-actions { display: flex; align-items: center; gap: 8px; }
+.card-head-actions:empty { display: none; }
 
 .job:hover { background: var(--hover); }
 
@@ -502,10 +525,21 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .stat.bad .value { color: var(--red); }
 .stat .note { margin: 4px 0 0; font-size: 13px; color: var(--grey); }
 
-.columns { display: grid; gap: 24px; }
+.columns { display: grid; gap: 24px; align-items: stretch; }
+
+/* Both cards are the same height and neither runs past the other. */
+.columns > .card { display: flex; flex-direction: column; min-width: 0; }
+/* Stacked on a phone, or alone on a desktop, the job description keeps a box
+   of its own rather than running the page down. */
+.jd { overflow: auto; max-height: 460px; }
 
 @media (min-width: 900px) {
-  .columns { grid-template-columns: 3fr 2fr; align-items: start; }
+  .columns { grid-template-columns: 3fr 2fr; }
+  /* The letter sets the height. A flex basis of zero keeps the job description
+     out of the row's own sizing, so it fills whatever the letter leaves and
+     scrolls inside its card instead of running past it. With no letter on the
+     page (.one) there is nothing to match, so it keeps its own box. */
+  .columns:not(.one) > .card > .jd { flex: 1 1 0; min-height: 0; max-height: none; }
 }
 
 .letter { max-width: var(--measure); }
@@ -513,8 +547,6 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .jd pre {
   margin: 0;
-  max-height: 460px;
-  overflow: auto;
   white-space: pre-wrap;
   font: inherit;
   font-size: 13px;
@@ -535,7 +567,35 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .action-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 
-.action-fields { display: grid; gap: 8px; margin-bottom: 12px; }
+.action-fields { display: grid; gap: 16px; margin-bottom: 12px; }
+
+/* A labelled control: the label above, an optional grey aside beside it, and
+   the control under both. One shape for every form in the UI. */
+.field { display: grid; gap: 4px; min-width: 0; }
+/* An author display beats the browser's own [hidden] rule, so it is said here. */
+.field[hidden] { display: none; }
+.field-label { font-size: 13px; font-weight: 500; }
+.field-help { font-size: 13px; }
+.field > .field-label + .field-help { margin-top: -4px; }
+
+.field input, .field select, .field textarea {
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.field textarea { height: auto; min-height: 96px; padding: 8px 12px; resize: vertical; }
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
 
 .action-fields input, .action-fields textarea {
   font: inherit;
@@ -655,12 +715,15 @@ button[disabled] { opacity: 0.45; cursor: default; }
   color: var(--ink);
 }
 
+/* The list scrolls inside its own box rather than running the page down: two
+   hundred terms beside a four-card bundle is a column nobody reaches the end
+   of, and the bundle is what the person is answering. */
 .kw-terms {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  max-height: 60vh;
-  overflow: auto;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .kw-term {

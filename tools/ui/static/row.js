@@ -13,8 +13,12 @@
  * bytes that would go out.
  */
 
-import { ACTIONS, actionButton, contextualControl, FOCUS_KEY, plainReasonText } from "./applications.js";
-import { APPLY_METHODS, api, asText, eyebrow, fetchInto, h, pageHeader, panel, paragraphs, render, statusLabel, toast, when } from "./app.js";
+import {
+  actionButton, alsoControls, channelLabel, contextualControl, FOCUS_KEY, loadReasonHelper, plainReasonText,
+} from "./applications.js";
+import { APPLY_METHODS, asText, eyebrow, fetchInto, h, pageHeader, panel, render, statusLabel, when } from "./app.js";
+import { redraftControl, retryNowControl } from "./row-actions.js";
+import { letterCard } from "./row-letter.js";
 
 /** The reason that means a person has to answer something before the run can
  * finish. Same family of wording the daily writes into the row's notes. */
@@ -63,11 +67,13 @@ function qualityOf(metadata) {
   };
 }
 
-/** What the run put in the package, in the words the metadata uses. */
+/** What the run put in the package, in the words the metadata uses. A run that
+ * recorded the baseline approval check chose the baseline, and says so. */
 function resumeOf(metadata) {
   const meta = metadata && typeof metadata === "object" ? metadata : {};
   const resume = (meta.resume && typeof meta.resume === "object") ? meta.resume : {};
-  const mode = String(resume.mode ?? resume.choice ?? (resume.docx || resume.pdf ? "rendered" : "")).toLowerCase();
+  const inferred = resume.baselineApprovalCheck ? "baseline" : (resume.docx || resume.pdf ? "rendered" : "");
+  const mode = String(resume.mode ?? resume.choice ?? inferred).toLowerCase();
   const ref = resume.ref ?? resume.resume_id ?? resume.id ?? resume.resumeId
     ?? (typeof resume.docx === "string" ? resume.docx.split("/").pop() : null);
   return { mode: mode || null, ref: ref ? String(ref) : null };
@@ -92,8 +98,10 @@ export function statsRow(row, pkg, files) {
     `Voice ${quality.voice || "not recorded"}`,
     `Term grounding ${quality.grounding || "not recorded"}`,
   ];
+  // The gate has either let this row through or it has not. Saying "Gate
+  // waiting, blocked" said the same thing twice and read as two verdicts.
   const sent = row.status === "submitted";
-  stats.append(stat("Gates", sent ? "Gate passed" : `Gate waiting, ${statusLabel(row.status)}`, sent ? "good" : "", `${notes.join(". ")}.`));
+  stats.append(stat("Gates", sent ? "Gate passed" : "Gate waiting", sent ? "good" : "", `${notes.join(". ")}.`));
   const resume = resumeOf(pkg.metadata);
   const names = Array.isArray(files) ? files : [];
   const letterWords = quality.words
@@ -104,185 +112,177 @@ export function statsRow(row, pkg, files) {
     names.length ? `${names.length} files` : "No files found",
   ].filter(Boolean).join(". ");
   const label = resume.mode === "tailored" ? "Tailored CV" : resume.mode === "baseline" ? "Baseline CV"
-    : resume.mode ? "CV recorded" : "No CV recorded";
+    : resume.mode ? "CV in the package" : "No CV recorded";
   stats.append(stat("Package", label, resume.mode ? "" : "bad", `${packageNote}.`));
   return stats;
 }
 
-/** The quoted sentences the critic pinned, so they can be found in the letter. */
-function quotesFrom(critic) {
-  const findings = critic && Array.isArray(critic.findings) ? critic.findings : [];
-  return findings
-    .map((f) => String((f && (f.quote ?? f.sentence)) || "").trim())
-    .filter((q) => q.length >= 8);
+/** The dot's colour: green when the row moved to sent, red when it moved to a
+ * stop, ink for every ordinary step in between. */
+function moveTone(to) {
+  if (to === "submitted") return "good";
+  if (to === "manual_action_needed" || to === "rejected" || to === "withdrawn" || to === "parked") return "bad";
+  return "";
 }
 
-/** One line of the letter, with any quoted stretch wrapped in a mark. */
-function markLine(line, quotes) {
-  const lower = line.toLowerCase();
-  let best = null;
-  for (const quote of quotes) {
-    const needle = quote.toLowerCase().replace(/[.…]+$/, "");
-    if (needle.length < 8) continue;
-    const at = lower.indexOf(needle);
-    if (at > -1 && (!best || at < best.at)) best = { at, len: needle.length };
+/** The reason under one entry: the first sentence, with the rest behind "more".
+ * A field_update entry is an enrichment pass, not a decision, so it says which
+ * fields moved and keeps the raw machinery off the page. */
+function historyReason(item) {
+  const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
+  if (fields) return h("p", { class: "tl-why", text: `updated ${fields[1].trim() || "some fields"}` });
+  if (!item.reason) return null;
+  const full = plainReasonText(item.reason);
+  // The stop has to be followed by a space or the end of the line, or a reason
+  // that names a host is cut to "External portal: rba.".
+  const match = /^[^.!?]*[.!?](?=\s|$)/.exec(full);
+  const first = match ? match[0] : full;
+  const note = h("p", { class: "tl-why", text: first });
+  if (first.length < full.length) {
+    const more = h("button", { type: "button", class: "linkish", text: "more" });
+    more.addEventListener("click", () => { note.textContent = full; more.remove(); });
+    note.append(" ", more);
   }
-  if (!best) return [document.createTextNode(line)];
-  const head = line.slice(0, best.at);
-  const hit = line.slice(best.at, best.at + best.len);
-  const tail = line.slice(best.at + best.len);
-  return [...(head ? [document.createTextNode(head)] : []), h("mark", { text: hit }), ...markLine(tail, quotes)];
+  return note;
 }
 
-/** The letter as paragraphs, with the critic's quotes highlighted in place. */
-function markedLetter(text, quotes) {
-  if (!quotes.length) return paragraphs(text);
-  const out = [];
-  for (const block of String(text).replace(/\r\n/g, "\n").split(/\n{2,}/)) {
-    const lines = block.split("\n").filter((line) => line.trim() !== "");
-    if (!lines.length) continue;
-    const p = h("p", {});
-    lines.forEach((line, i) => {
-      if (i) p.append(h("br", {}));
-      for (const node of markLine(line.trim(), quotes)) p.append(node);
-    });
-    out.push(p);
-  }
-  return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
-}
-
-/** One finding beside the letter: what is wrong, and what to do about it. */
-function fixCard(finding) {
-  const card = h("div", { class: finding.severity === "fail" ? "fix bad" : "fix" });
-  card.append(h("p", { class: "fix-sev", text: finding.severity === "fail" ? "Fail" : "Warn" }));
-  if (finding.quote || finding.sentence) card.append(h("p", { class: "fix-quote", text: `"${finding.quote || finding.sentence}"` }));
-  if (finding.issue || finding.message) card.append(h("p", { class: "fix-issue", text: finding.issue || finding.message }));
-  if (finding.fix) card.append(h("p", { class: "fix-do grey small", text: finding.fix }));
-  return card;
-}
-
-function findingsColumn(findings) {
-  const column = h("div", { class: "fixes" });
-  column.append(eyebrow("What the critic pinned"));
-  for (const finding of findings) column.append(fixCard(finding));
-  return column;
-}
-
-/**
- * The letter card. On a blocked or to-approve row it can be edited in place:
- * Save writes cover-letter.md back into the package and returns the
- * deterministic pre-check findings. The model critic is not run from here.
- */
-function letterCard(row, pkg) {
-  const editable = row.status === "manual_action_needed" || row.status === "awaiting_approval";
-  const critic = pkg.letter_critic;
-  const findings = critic && Array.isArray(critic.findings) ? critic.findings.filter(Boolean) : [];
-  const blocked = Boolean(critic) && String(critic.verdict || "").toLowerCase() !== "pass";
-  let text = asText(pkg.cover_letter);
-  // Once the letter has been edited the stored verdict is about bytes that no
-  // longer exist, so the quotes stop being highlighted and the card says why.
-  let stale = false;
-  const body = h("div", { class: "letter-body" });
-  const notes = h("div", { class: "letter-notes" });
-
-  const paint = () => {
-    while (body.firstChild) body.firstChild.remove();
-    const pinned = blocked && !stale;
-    const letter = h("div", { class: "letter" }, text.trim()
-      ? markedLetter(text, pinned ? quotesFrom(critic) : [])
-      : h("p", { class: "grey", text: "No cover letter in this package. Retry to have the harness draft one." }));
-    if (pinned && findings.length) body.append(h("div", { class: "letter-fix" }, letter, findingsColumn(findings)));
-    else body.append(letter);
-  };
-
-  const edit = h("button", { type: "button", class: "btn sm", text: "Edit letter" });
-  edit.addEventListener("click", () => {
-    while (body.firstChild) body.firstChild.remove();
-    const area = h("textarea", { class: "letter-edit", "aria-label": "Cover letter" });
-    area.value = text;
-    const save = h("button", { type: "button", class: "btn primary sm", text: "Save letter" });
-    const cancel = h("button", { type: "button", class: "btn sm", text: "Cancel" });
-    cancel.addEventListener("click", () => { paint(); edit.hidden = false; });
-    save.addEventListener("click", async () => {
-      save.disabled = true;
-      while (notes.firstChild) notes.firstChild.remove();
-      try {
-        const result = await api(`rows/${encodeURIComponent(row.id)}/letter`, { method: "POST", body: { text: area.value } });
-        text = area.value;
-        stale = true;
-        paint();
-        edit.hidden = false;
-        toast(`Letter saved, ${result.words} words.`);
-        notes.append(h("p", { class: "grey small", text: result.findings.length
-          ? `${result.findings.length} pre-check finding${result.findings.length === 1 ? "" : "s"} on the saved letter. The full critic runs when you retry.`
-          : "The pre-checks found nothing. The full critic runs when you retry, against the letter that would go out." }));
-        for (const finding of result.findings) notes.append(fixCard(finding));
-      } catch (error) {
-        save.disabled = false;
-        notes.append(h("p", { class: "error", text: error.message }));
-      }
-    });
-    body.append(area, h("div", { class: "letter-actions" }, save, cancel));
-    edit.hidden = true;
-  });
-
-  paint();
-  const card = panel("Cover letter", h("div", {}, body, notes));
-  if (editable) card.append(h("div", { class: "letter-actions" }, edit));
-  return card;
-}
-
+/** The row's life as a timeline, newest first: a rail, a dot per move, the
+ * time, what moved, and why. */
 function historyBlock(history) {
   const entries = Array.isArray(history) ? history : [];
   if (!entries.length) return panel("History", h("p", { class: "grey", text: "No transitions recorded on this row yet." }));
-  const ul = h("ul", { class: "history" });
+  const ul = h("ul", { class: "timeline" });
   for (const item of [...entries].reverse()) {
-    const li = h("li", {});
+    const tone = moveTone(item.to);
+    const li = h("li", { class: tone ? `tl ${tone}` : "tl" });
     const from = item.from ? statusLabel(item.from) : "new";
-    li.append(h("span", { class: "at", text: `${when(item.at)}  ` }), `${from} to ${statusLabel(item.to) || "unknown"}`);
-    // A field_update entry is an enrichment pass, not a decision: say which
-    // fields moved and keep the raw machinery off the page.
-    const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
-    if (fields) li.append(h("div", { class: "grey small", text: `updated ${fields[1].trim() || "some fields"}` }));
-    else if (item.reason) {
-      const full = plainReasonText(item.reason);
-      const match = /^[^.!?]*[.!?]/.exec(full);
-      const first = match ? match[0] : full;
-      const note = h("div", { class: "grey small", text: first });
-      if (first.length < full.length) {
-        const more = h("button", { type: "button", class: "linkish", text: "more" });
-        more.addEventListener("click", () => { note.textContent = full; more.remove(); });
-        note.append(" ", more);
-      }
-      li.append(note);
-    }
+    li.append(h("span", { class: "tl-dot", "aria-hidden": "true" }),
+      h("p", { class: "tl-when", text: when(item.at) }),
+      h("p", { class: "tl-move", text: `${from} to ${statusLabel(item.to) || "unknown"}` }));
+    const why = historyReason(item);
+    if (why) li.append(why);
     ul.append(li);
   }
   return panel("History", ul);
 }
 
 /**
- * The decision bar. The contextual action comes first and is the primary;
- * Approve is the black button only on a row that is actually waiting on a yes.
+ * Approve is a real move on a row that is waiting for one. On a blocked row it
+ * is a trap: it marks the package approved, and the next run reads the same
+ * finding, blocks it again and parks it. So it is offered on the statuses where
+ * it means something and on no others.
  */
-function actionBar(data, row, onDone) {
+const APPROVABLE = new Set(["awaiting_approval", "shortlisted", "drafted"]);
+
+/** The rows where asking for a fresh letter is worth anything: the letter has
+ * not gone out, and there is still a run coming that could rewrite it. */
+const REDRAFTABLE = new Set(["manual_action_needed", "awaiting_approval", "approved", "shortlisted", "parked"]);
+
+/** The standing decisions, in the order they are offered. Approve is not one of
+ * them: it is contextual, and only on a row that can take it. */
+const DECISIONS = [
+  { key: "hold", label: "Hold" },
+  { key: "reject", label: "Reject", danger: true },
+  { key: "withdraw", label: "Withdraw", danger: true },
+];
+
+const wantsRetry = (act) => act.kind === "retry" || act.post === "retry"
+  || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.post === "retry"));
+
+/** What a decision does, in the words the person would use. The title is on
+ * the button, so the explanation is there when it is wanted and silent when it
+ * is not. */
+const DECISION_HELP = {
+  approve: "Let the next run send it",
+  hold: "Keep it here",
+  reject: "Not applying",
+  withdraw: "Applied but pulling out",
+  retry: "Put it back in the queue for the next run",
+};
+
+/** The channel and method an unattended send would go out through. */
+const SEND_METHOD = { easy_apply: "Easy Apply", quick_apply: "Quick Apply" };
+function sendsThrough(row) {
+  const method = SEND_METHOD[row.applyMethod];
+  return method ? `${channelLabel(row.channel)} ${method}` : "the channel it came from";
+}
+
+/** The two fields a decision can carry. The notes field is for the run to read,
+ * so it only appears once a decision that a run acts on has been pressed. */
+function decisionFields() {
+  const reason = h("input", { type: "text", id: "decide-reason", placeholder: "Optional" });
+  const notes = h("textarea", { id: "decide-notes", placeholder: "Optional" });
+  const labelled = (control, text, help) => h("label", { class: "field", for: control.id },
+    h("span", { class: "field-label", text }), h("span", { class: "field-help grey small", text: help }), control);
+  const notesField = labelled(notes, "Notes for the next run", "edits to the letter or package");
+  notesField.hidden = true;
+  return {
+    reason,
+    node: h("div", { class: "action-fields" }, labelled(reason, "Reason", "goes into the history"), notesField),
+    reveal: () => { notesField.hidden = false; },
+    values: () => ({
+      ...(reason.value.trim() ? { reason: reason.value.trim() } : {}),
+      ...(notes.value.trim() ? { edits: notes.value.trim() } : {}),
+    }),
+  };
+}
+
+/**
+ * The decision card. "Retry now" is at the top, because it is the one control
+ * that does something on this machine rather than moving a row. Under it the
+ * moves: the one this row is waiting on, whatever else the server hung off it,
+ * and the three standing decisions.
+ *
+ * `screeningOnPage` suppresses the Answer button, because the panel it would
+ * scroll to is already on the page and the panel is the answer.
+ */
+function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}) {
+  const body = h("div", {});
   const buttons = h("div", { class: "action-buttons" });
-  const reason = h("input", { type: "text", "aria-label": "Reason, optional", placeholder: "Reason, optional" });
-  const edits = h("textarea", { "aria-label": "Edits, optional", placeholder: "Edits to the letter or package, optional" });
-  const fields = () => ({
-    ...(reason.value.trim() ? { reason: reason.value.trim() } : {}),
-    ...(edits.value.trim() ? { edits: edits.value.trim() } : {}),
-  });
+  const extras = h("div", { class: "action-extra" });
   const act = data.action || { kind: "none" };
-  const contextual = contextualControl({ ...row, action: { ...act, primary: true } }, onDone, { small: false });
-  if (contextual) buttons.append(contextual);
-  for (const action of ACTIONS) {
-    if (act.post && action.key === act.post) continue;
-    const primary = action.key === "approve" ? row.status === "awaiting_approval" && act.kind !== "approve" : false;
-    buttons.append(actionButton(row, { ...action, primary }, fields, onDone));
+  const fields = () => decision.values();
+
+  // The run again, here, now. It is not a move, so it sits above the moves.
+  if (wantsRetry(act)) {
+    const retry = retryNowControl(row, () => render());
+    body.append(h("div", { class: "action-buttons" }, retry.button),
+      h("p", { class: "grey small", text: `Runs the critic and the gate again and sends through ${sendsThrough(row)} if they pass.` }),
+      retry.extra);
   }
-  return panel("Your decision", h("div", {}, buttons, h("div", { class: "action-fields" }, reason, edits),
-    h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." })));
+
+  body.append(eyebrow("Move this application"), buttons, extras);
+  // With "Retry now" above it the tray retry is the slower of the two, so it
+  // says which one it is and gives up the black button to the one that runs.
+  const primary = wantsRetry(act) && act.post === "retry"
+    ? { ...act, primary: false, label: "Retry in the next run" }
+    : { ...act, primary: true };
+  if (!(act.kind === "answer" && screeningOnPage)) {
+    const contextual = contextualControl({ ...row, action: primary }, onDone, { small: false });
+    if (contextual) {
+      if (act.post && DECISION_HELP[act.post]) contextual.title = DECISION_HELP[act.post];
+      buttons.append(contextual);
+    }
+  }
+  const also = alsoControls({ ...row, action: act }, onDone, { small: false });
+  for (const button of also.buttons) buttons.append(button);
+  for (const extra of also.extras) extras.append(extra);
+
+  if (APPROVABLE.has(row.status) && act.post !== "approve") {
+    const approve = actionButton(row, { key: "approve", label: "Approve", title: DECISION_HELP.approve,
+      primary: !buttons.childElementCount }, fields, onDone);
+    approve.addEventListener("click", decision.reveal);
+    buttons.append(approve);
+  }
+  for (const spec of DECISIONS) {
+    if (act.post === spec.key) continue;
+    const button = actionButton(row, { ...spec, title: DECISION_HELP[spec.key] }, fields, onDone);
+    if (spec.key === "hold") button.addEventListener("click", decision.reveal);
+    buttons.append(button);
+  }
+  body.append(decision.node,
+    h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." }));
+  return panel("Your decision", body);
 }
 
 /**
@@ -290,7 +290,7 @@ function actionBar(data, row, onDone) {
  * stuck on a question, and when an answer is banked offer the retry that puts
  * the row back on the autopilot path.
  */
-async function mountScreening(host, row, reason, onDone) {
+async function mountScreening(host, row, reason) {
   if (!UNANSWERED_QUESTION.test(String(reason || ""))) return;
   const mod = await import("./screening.js").catch(() => null);
   if (!mod || typeof mod.screeningPanel !== "function") return;
@@ -300,11 +300,13 @@ async function mountScreening(host, row, reason, onDone) {
     reason,
     onBanked: () => {
       while (banked.firstChild) banked.firstChild.remove();
-      const retry = actionButton(row, { key: "retry", label: "Retry", primary: true }, null, onDone);
-      banked.append(h("p", { text: "Answer banked. Retry now?" }), retry);
+      // The answer is in the file now, so the thing worth offering is the run
+      // that reads it, not another trip through the morning queue.
+      const retry = retryNowControl(row, () => render());
+      banked.append(h("p", { text: "Answer banked. Retry now?" }), retry.button, retry.extra);
       // guarded() arms on the first press, so one programmatic press leaves the
       // button armed and focused: the person's press is the one that commits.
-      retry.click();
+      retry.button.click();
     },
   });
   if (node) host.append(node);
@@ -313,6 +315,8 @@ async function mountScreening(host, row, reason, onDone) {
 
 export async function viewRow(view, id) {
   view.append(h("p", { class: "empty", text: "Loading the row." }));
+  // The history's reasons are run stamps until home.js's rewriter is loaded.
+  await loadReasonHelper();
   const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
   if (!data) return view.prepend(pageHeader({ title: "Row", back: h("a", { href: "#/applications", text: "Applications" }) }));
   const row = data.row || {};
@@ -323,7 +327,7 @@ export async function viewRow(view, id) {
   }));
   const facts = [
     row.company, row.location,
-    typeof row.score === "number" ? `Score ${Math.round(row.score)}` : null,
+    typeof row.score === "number" ? `score ${Math.round(row.score)}` : null,
     row.classification?.work_arrangement || row.workArrangement,
     APPLY_METHODS[row.applyMethod] || row.applyMethod,
     row.userSaved ? "saved by you" : null, statusLabel(row.status) || null,
@@ -334,28 +338,41 @@ export async function viewRow(view, id) {
 
   view.append(statsRow(row, pkg, data.package_files));
 
-  // Letter left at reading measure, JD right and quieter. Stacked on a phone,
+  // Letter left at reading measure, JD right and quieter, the two cards the
+  // same height with the JD scrolling inside its own card. Stacked on a phone,
   // letter first, because the letter is what the decision is about. With no
   // letter in the package there is nothing to read beside, so the JD takes the
   // full width.
+  const decision = decisionFields();
+  const redraft = REDRAFTABLE.has(row.status)
+    ? redraftControl(row, data.redraft_requested, () => decision.reason.value, { small: true })
+    : null;
+  if (redraft) redraft.button.addEventListener("click", decision.reveal);
   const hasLetter = asText(pkg.cover_letter).trim() !== "";
+  const editable = row.status === "manual_action_needed" || row.status === "awaiting_approval";
   const columns = h("div", { class: hasLetter ? "columns" : "columns one" });
-  if (hasLetter) columns.append(letterCard(row, pkg));
+  if (hasLetter) columns.append(letterCard(row, pkg, redraft));
   const jdText = asText(row.description || pkg.jd);
-  columns.append(panel("Job description", jdText.trim()
+  const jd = h("section", { class: "card jd-card" }, h("div", { class: "card-head" }, h("h2", { text: "Job description" })));
+  jd.append(jdText.trim()
     ? h("div", { class: "jd" }, h("pre", { text: jdText }))
-    : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." })));
+    : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." }));
+  columns.append(jd);
   view.append(columns);
-  if (!hasLetter && (row.status === "manual_action_needed" || row.status === "awaiting_approval")) {
-    view.append(letterCard(row, pkg));
-  }
+  if (!hasLetter && editable) view.append(letterCard(row, pkg, redraft));
 
+  // The order the page is read in: what it is, whether it may go, what it
+  // says, the question in the way, the decision, and the history last.
   const rest = h("div", { class: "stack" });
   const done = () => { location.hash = "#/applications"; render(); };
   const screening = h("div", { class: "screening-slot" });
-  rest.append(historyBlock(row.history), screening, actionBar(data, row, done));
+  // The panel mounts on exactly this condition, so the bar can leave the
+  // Answer button out without waiting for the panel's module to load.
+  const reason = data.reason || row.notes;
+  const screeningOnPage = UNANSWERED_QUESTION.test(String(reason || ""));
+  rest.append(screening, actionBar(data, row, done, { screeningOnPage, decision }), historyBlock(row.history));
   view.append(rest);
-  await mountScreening(screening, row, data.reason || row.notes, done);
+  await mountScreening(screening, row, reason);
   try {
     if (sessionStorage.getItem(FOCUS_KEY) === row.id) {
       sessionStorage.removeItem(FOCUS_KEY);
