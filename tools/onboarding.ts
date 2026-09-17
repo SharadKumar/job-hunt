@@ -101,9 +101,15 @@ async function cmdWriteResume(resumeJson: string): Promise<void> {
   if (idx >= 0) existing.resumes[idx] = t;
   else existing.resumes.push(t);
   const yaml = YAML.stringify(existing);
-  // Preserve the header comments
-  const headerMatch = original.match(/^([\s\S]*?)(?=\nresumes:|\s*$)/);
-  const header = headerMatch ? headerMatch[1].trimEnd() : "";
+  // Preserve only the leading comment block. Every YAML key (render_efficiency,
+  // resumes, ...) is re-emitted by YAML.stringify below, so keeping anything
+  // past the first non-comment line would duplicate top-level keys.
+  const headerLines: string[] = [];
+  for (const line of original.split("\n")) {
+    if (line.trim() === "" || line.trimStart().startsWith("#")) headerLines.push(line);
+    else break;
+  }
+  const header = headerLines.join("\n").trimEnd();
   await fs.writeFile(repoPath("state/profile/resumes.yaml"), `${header}\n\n${yaml}`);
   console.log(JSON.stringify({ id: t.id, wrote_resume: true }, null, 2));
 }

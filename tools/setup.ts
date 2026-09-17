@@ -91,7 +91,8 @@ async function stageProfile(profileId: string | null): Promise<Stage> {
     const placeholders = required.filter((k) => typeof fm?.[k] === "string" && /TODO|Jane Citizen|example\.com/i.test(fm[k]));
     checks.push({ id: "frontmatter", ok: !!fm && missing.length === 0, detail: fm ? (missing.length ? `missing ${missing.join(", ")}` : "valid") : "no frontmatter", fix: "fill the frontmatter in profile.md" });
     checks.push({ id: "frontmatter_filled", ok: placeholders.length === 0, detail: placeholders.length ? `placeholder values in ${placeholders.join(", ")}` : "no placeholders", fix: "replace the placeholder values in profile.md" });
-    const todos = (raw.match(/\bTODO\b/g) || []).length;
+    // Only live lines count: commented-out examples and the "replace every TODO" instruction do not.
+    const todos = raw.split("\n").filter((l) => !/^\s*#/.test(l) && !/every TODO/i.test(l) && /\bTODO\b/.test(l)).length;
     checks.push({ id: "profile_todos", ok: todos === 0, detail: `${todos} TODO marker(s) in profile.md`, fix: "resolve each TODO in profile.md (the /setup skill asks about them)" });
   } catch {
     checks.push({ id: "frontmatter", ok: false, detail: "profile.md unreadable", fix: "npm run setup:scaffold" });
@@ -170,8 +171,10 @@ async function stageSheet(): Promise<Stage> {
   const checks: Check[] = [];
   const env = await fs.readFile(repoPath(".env"), "utf8").catch(() => "");
   const get = (k: string) => (process.env[k] || env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1] || "").trim();
-  const cred = get("GOOGLE_APPLICATION_CREDENTIALS");
-  const sid = get("SHEETS_SPREADSHEET_ID");
+  // .env.example ships placeholder values; treat them as unset so the Sheet stays optional until real values land.
+  const unset = (v: string) => !v || /\/path\/to\//.test(v) || /^<.*>$/.test(v);
+  const cred = unset(get("GOOGLE_APPLICATION_CREDENTIALS")) ? "" : get("GOOGLE_APPLICATION_CREDENTIALS");
+  const sid = unset(get("SHEETS_SPREADSHEET_ID")) ? "" : get("SHEETS_SPREADSHEET_ID");
   const credOk = !!cred && existsSync(cred.replace(/^~/, process.env.HOME || ""));
   checks.push({ id: "sheet_credentials", ok: credOk, detail: cred ? (credOk ? "key file readable" : `key file not found at ${cred}`) : "GOOGLE_APPLICATION_CREDENTIALS unset", fix: "download the service-account JSON and set GOOGLE_APPLICATION_CREDENTIALS in .env" });
   checks.push({ id: "sheet_id", ok: !!sid, detail: sid ? "set" : "SHEETS_SPREADSHEET_ID unset", fix: "create an empty Sheet, share it with the service-account email as Editor, set SHEETS_SPREADSHEET_ID in .env" });
@@ -199,7 +202,9 @@ async function stageSchedule(): Promise<Stage> {
   }
   const label = "com.job-hunt-harness.daily";
   const plist = path.join(process.env.HOME || "", "Library", "LaunchAgents", `${label}.plist`);
-  checks.push({ id: "plist", ok: existsSync(plist), detail: existsSync(plist) ? plist : "not installed", fix: "bash scripts/install-launchd.sh" });
+  const plistText = existsSync(plist) ? await fs.readFile(plist, "utf8") : "";
+  const pointsHere = plistText.includes(repoPath("."));
+  checks.push({ id: "plist", ok: existsSync(plist) && pointsHere, detail: !existsSync(plist) ? "not installed" : pointsHere ? plist : `installed but points at another checkout, not ${repoPath(".")}`, fix: "bash scripts/install-launchd.sh" });
   const loaded = await cmdOk("launchctl", ["print", `gui/${process.getuid?.() ?? ""}/${label}`]);
   checks.push({ id: "loaded", ok: loaded.ok, detail: loaded.ok ? "loaded" : "not loaded", fix: "bash scripts/install-launchd.sh" });
   const env = await fs.readFile(repoPath(".env"), "utf8").catch(() => "");

@@ -21,7 +21,7 @@ Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its
 
 ### 1. Check prerequisites
 
-- `state/profile/cv-source.md` exists and contains ≥5 role headers under "Professional Experience".
+- `state/profile/cv-source.md` exists and contains at least 3 role headers under "Professional Experience" (5 or more gives the positioning proposals more to work with).
 - If not, prompt the user for their master CV path and run `npm run markdownify:cv -- --source <path-to-master-cv.docx>` to generate it.
 
 ### 2. Collect supplementary URLs

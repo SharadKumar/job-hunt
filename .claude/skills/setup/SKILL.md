@@ -27,7 +27,7 @@ For each failing check, show the `fix` command and ask the person to run it them
 
 1. `npm run setup:scaffold` (idempotent; copies `templates/profile/*` into `state/profile/`, never overwrites).
 2. Ask, in two batches of at most four questions each, for the facts `profile.md` needs. Batch A: full name, email, phone, city and country. Batch B: citizenship / work rights, current security clearance (none is a fine answer), target day rate (or salary) and floor, work arrangement (remote / hybrid with a days-onsite cap / onsite). Then one more batch: role families they want (2 to 3, in priority order), engagement type (contract / permanent / both), industries to avoid, LinkedIn URL.
-3. Write the answers into `state/profile/profile.md`: frontmatter fields and the prose sections. Replace every `TODO` you have an answer for. Leave a `TODO` only where the person said "skip", and tell them it stays flagged.
+3. Write the answers into `state/profile/profile.md`: frontmatter fields and the prose sections. Every live `TODO` must go: fill it from the answers, derive it where the answers imply it (a remote-first person's "Location priority" is "remote first, then <city>"), or write `none` / `not applicable` where the person said skip. Commented-out example lines may keep their TODOs. The check counts live TODOs and blocks on any.
 4. Voice samples: ask them to paste 3 to 5 emails or posts they wrote (at least 200 words total) into `state/profile/voice-samples.md` between the fences, or paste them into the chat and you place them. Explain in one sentence why (the letters are written in their voice, checked against these).
 5. Re-run the check. `profile_todos` and `voice_samples` must pass before moving on.
 
