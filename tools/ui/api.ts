@@ -36,6 +36,7 @@ import {
   type AnswerEntry,
   type AppliedAnswers,
 } from "../resume/keyword-confirm.ts";
+import { getResumes, resolveResumeFile } from "./resumes-api.ts";
 import { readJsonIfExists, readYamlIfExists } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
@@ -540,7 +541,18 @@ export type ApiRequest = {
   body?: unknown;
 };
 
-export type ApiResult = { status: number; body: unknown };
+export type ApiResult = {
+  status: number;
+  body: unknown;
+  /** Extra response headers, used by the routes that serve something other than JSON. */
+  headers?: Record<string, string>;
+  /**
+   * An absolute path the server should stream instead of writing `body`. Only
+   * the resume file route sets it; `body` then carries the content type so a
+   * direct caller (a test) can still assert the result without a socket.
+   */
+  stream?: string;
+};
 
 /**
  * Route one API request. Never throws: an `ApiError` becomes its own status
@@ -585,6 +597,30 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
     }
     if (method === "GET" && pathname === "/api/critic/digest") {
       return { status: 200, body: await getCriticDigest({ since: query.get("since") }, ctx) };
+    }
+
+    if (method === "GET" && pathname === "/api/resumes") {
+      return { status: 200, body: await getResumes({ profileId: ctx.profileId ?? null, now: ctx.now }) };
+    }
+
+    // The artefact route: a page image, a PDF, a DOCX or the markdown, read
+    // out of state/profile/resumes/<id>/. It sits behind the same token gate
+    // as every other /api route, and it never leaves that folder.
+    const artefact = pathname.match(/^\/api\/resumes\/([^/]+)\/file\/([^/]+)$/);
+    if (artefact) {
+      if (method !== "GET") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+      const resolved = await resolveResumeFile(
+        decodeURIComponent(artefact[1]),
+        decodeURIComponent(artefact[2]),
+        { profileId: ctx.profileId ?? null },
+      );
+      if (resolved.status !== 200) return { status: resolved.status, body: { error: resolved.error } };
+      return {
+        status: 200,
+        body: { file: resolved.file, content_type: resolved.contentType },
+        headers: { "content-type": resolved.contentType, "cache-control": "no-store" },
+        stream: resolved.file,
+      };
     }
 
     const action = pathname.match(/^\/api\/rows\/([^/]+)\/action$/);

@@ -176,6 +176,24 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<UiSe
         }
       }
       const result = await handleApi({ method: req.method ?? "GET", pathname, query: url.searchParams, body }, ctx);
+      // A handler that names a file gets it written out as itself: a page PNG
+      // or a PDF is not JSON. The gate above has already run, so a streamed
+      // artefact is as protected as every other /api response.
+      if (result.stream) {
+        const data = await fsp.readFile(result.stream).catch(() => null);
+        if (!data) {
+          send(res, 404, { error: `not found: ${pathname}` });
+          return;
+        }
+        res.writeHead(result.status, {
+          "content-type": "application/octet-stream",
+          ...(result.headers ?? {}),
+          "content-length": data.length,
+          "cache-control": "no-store",
+        });
+        res.end(req.method === "HEAD" ? undefined : data);
+        return;
+      }
       send(res, result.status, result.body);
       return;
     }

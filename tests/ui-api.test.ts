@@ -355,6 +355,108 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   console.log("  ✓ journal for today and the critic digest");
 }
 
+// ---------- resumes ----------
+
+{
+  // The Resumes screen reads what is on disk under state/profile/resumes/<id>/.
+  // The fixture is a tiny invented positioning: two page images, a passing
+  // critic round, an audit with one warn, and stub artefacts of a few bytes.
+  const fixture = path.join(import.meta.dirname, "fixtures", "ui-resumes", "example-resume");
+  const resumeDir = path.join(root, "state", "profile", "resumes", "example-resume");
+  fs.cpSync(fixture, resumeDir, { recursive: true });
+  // An approval is an approval of artefacts as they were: backdate the copied
+  // files so the stamp does not read stale purely because cp touched them.
+  const old = new Date("2026-08-15T00:00:00.000Z");
+  for (const name of fs.readdirSync(resumeDir)) fs.utimesSync(path.join(resumeDir, name), old, old);
+
+  write("state/profile/resumes.yaml", `resumes:
+  - id: example-resume
+    label: Example Consultant
+    display_headline: Example Consultant, delivery and governance
+    active: true
+    template: classic
+    search_keywords: [Example Consultant]
+    should: [delivery ownership]
+    could: [governance experience]
+    flagged: [junior role]
+    cover_letter_angle: Ran the programme end to end.
+    rate_band: { floor: 1000, target: 1200, ceiling: 1400, currency: AUD, billing_unit: day, gst_handling: "+ GST" }
+    preferred_channels: [seek]
+    market_lens:
+      clouds:
+        - { id: example-delivery, weight: 5 }
+`);
+  write("state/org/keyword-clouds.yaml", `version: 1
+clouds:
+  - id: example-delivery
+    kind: capability
+    label: Example delivery
+    refreshed_at: "2026-01-05"
+    terms:
+      - { term: delivery governance, tier: corpus }
+`);
+
+  const listed = await api.handleApi({ method: "GET", pathname: "/api/resumes" }, ctx);
+  assert.equal(listed.status, 200);
+  const payload = listed.body as any;
+  assert.equal(typeof payload.profile.name, "string", "the response names the profile the cards belong to");
+  assert.equal(payload.resumes.length, 1, "one positioning on disk is one card");
+
+  const card = payload.resumes[0];
+  assert.equal(card.id, "example-resume");
+  assert.equal(card.label, "Example Consultant");
+  assert.equal(card.positioning, "Example Consultant, delivery and governance", "the headline comes from resumes.yaml");
+  assert.equal(card.stamp.kind, "approved", "metadata.json says approved and nothing was rebuilt after it");
+  assert.match(card.stamp.text, /Approved/);
+
+  assert.equal(card.pages.length, 2, "both page images are listed");
+  assert.equal(card.pages[0].low, false);
+  assert.equal(card.pages[1].fill, 62);
+  assert.equal(card.pages[1].low, true, "62 percent is under the 75 percent floor the audit declares");
+  for (const page of card.pages) {
+    assert.match(page.src, /^api\/resumes\/example-resume\/file\/[^/]+\.png$/, "a page is served through the file route");
+  }
+
+  const ats = card.gates.find((g: any) => g.name === "ats");
+  assert.equal(ats.verdict, "warn", "the gate chips carry the audit's own verdicts");
+  assert.ok(card.checks.some((c: any) => c.key === "critic"), "the tick row includes the critic mark");
+  assert.deepEqual(
+    { verdict: card.critic.verdict, round: card.critic.round, findings_count: card.critic.findings_count },
+    { verdict: "pass", round: 2, findings_count: 0 },
+    "the critic line reads off <prefix>.critic.json",
+  );
+  assert.deepEqual(card.keywords.must_have, { surfaced: 14, total: 18 });
+  assert.deepEqual(card.keywords.renderable, { surfaced: 31, total: 40 });
+  assert.equal(card.clouds.length, 1);
+  assert.equal(card.clouds[0].stale, true, "a cloud refreshed in January is stale in September");
+  assert.match(card.files.pdf, /\/file\/.+\.pdf$/);
+  assert.match(card.files.docx, /\/file\/.+\.docx$/);
+  assert.match(card.files.md, /\/file\/.+\.md$/);
+
+  // The urls the card hands out must resolve through the file route itself.
+  const page = await api.handleApi({ method: "GET", pathname: `/${card.pages[0].src}` }, ctx);
+  assert.equal(page.status, 200);
+  assert.equal(page.headers?.["content-type"], "image/png");
+  assert.equal(page.headers?.["cache-control"], "no-store", "an artefact is never cached");
+  assert.ok(page.stream && fs.existsSync(page.stream), "the handler names a real file for the server to stream");
+
+  const escape = await api.handleApi(
+    { method: "GET", pathname: "/api/resumes/example-resume/file/..%2F..%2Fresumes.yaml" },
+    ctx,
+  );
+  assert.equal(escape.status, 403, "a name that walks out of the folder is refused");
+
+  const wrongType = await api.handleApi({ method: "GET", pathname: "/api/resumes/example-resume/file/notes.txt" }, ctx);
+  assert.equal(wrongType.status, 403, "only the artefact extensions are served");
+
+  const absent = await api.handleApi({ method: "GET", pathname: "/api/resumes/example-resume/file/missing.png" }, ctx);
+  assert.equal(absent.status, 404, "a name that is not there is a 404");
+
+  const wrongMethod = await api.handleApi({ method: "POST", pathname: `/${card.pages[0].src}` }, ctx);
+  assert.equal(wrongMethod.status, 405, "the file route is read-only");
+  console.log("  ✓ resumes list, page urls, traversal and extension refusals");
+}
+
 // ---------- dispatcher, token and static ----------
 
 {
@@ -399,6 +501,17 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
 
     const missing = await fetch(`${base}/app.css`);
     assert.equal(missing.status, 404, "a missing asset is a 404, not the shell");
+
+    // The artefact route sits under the same gate as every other /api route,
+    // and the bytes come back as themselves rather than as JSON.
+    const fileUrl = `${base}/api/resumes/example-resume/file/Fixture-Person_Example-Consultant.page-1.png`;
+    const noToken = await fetch(fileUrl);
+    assert.equal(noToken.status, 401, "a resume artefact is behind the token too");
+    const withToken = await fetch(fileUrl, { headers: { authorization: "Bearer s3cret" } });
+    assert.equal(withToken.status, 200);
+    assert.equal(withToken.headers.get("content-type"), "image/png", "a page image is served as a PNG");
+    assert.equal(withToken.headers.get("cache-control"), "no-store");
+    assert.ok((await withToken.arrayBuffer()).byteLength > 0, "the file route streams bytes");
 
     const escape = await fetch(`${base}/../package.json`);
     assert.ok(escape.status === 403 || escape.status === 404, "a path that escapes the static root is refused");

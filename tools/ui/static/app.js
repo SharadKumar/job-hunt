@@ -14,11 +14,12 @@
  * section 3, no em or en dashes, and Australian English throughout.
  */
 
+import { viewResumes } from "./resumes.js";
+
 // --- Constants ---
 
-/** Hash routes: #/applications, #/row/<id>, #/keywords, #/today, #/digest.
- * #/queue is the old address for #/applications and still works. */
-const ROUTES = ["applications", "queue", "row", "keywords", "today", "digest", "settings"];
+/** Hash routes, in nav order. #/queue is the old address for #/applications. */
+const ROUTES = ["applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"];
 
 /** Application tabs, in the order the person works them. Sent is capped at 30 rows.
  * `label` is the short name, `long` is how the filter column says it. */
@@ -926,7 +927,8 @@ async function render() {
     if (route === "row") {
       if (id) await viewRow(view, id);
       else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the applications list." }));
-    } else if (route === "keywords") await viewKeywords(view);
+    } else if (route === "resumes") await viewResumes(view, { h, panel, fetchInto });
+    else if (route === "keywords") await viewKeywords(view);
     else if (route === "today") await viewToday(view);
     else if (route === "digest") await viewDigest(view);
     else if (route === "settings") viewSettings(view);

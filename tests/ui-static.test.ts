@@ -31,6 +31,7 @@ const STATIC_DIR = path.join(ROOT, "tools/ui/static");
 const HTML_PATH = path.join(STATIC_DIR, "index.html");
 const JS_PATH = path.join(STATIC_DIR, "app.js");
 const CSS_PATH = path.join(STATIC_DIR, "app.css");
+const RESUMES_PATH = path.join(STATIC_DIR, "resumes.js");
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -54,6 +55,7 @@ console.log("ui static front end");
 const html = read(HTML_PATH);
 const js = read(JS_PATH);
 const css = read(CSS_PATH);
+const resumesJs = read(RESUMES_PATH);
 
 test("index.html loads app.js and app.css", () => {
   assert.match(html, /<script[^>]+type="module"[^>]+src="app\.js"/, "index.html must load app.js as a module");
@@ -138,10 +140,10 @@ test("the keyword view can drain a list of hundreds", () => {
 });
 
 test("every route is present", () => {
-  for (const route of ["applications", "queue", "row", "keywords", "today", "digest", "settings"]) {
+  for (const route of ["applications", "queue", "row", "resumes", "keywords", "today", "digest", "settings"]) {
     assert.ok(js.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  for (const hash of ["#/applications", "#/keywords", "#/today", "#/digest", "#/settings"]) {
+  for (const hash of ["#/applications", "#/resumes", "#/keywords", "#/today", "#/digest", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
   assert.ok(js.includes("#/row/"), "app.js must link an application card to #/row/<id>");
@@ -186,8 +188,8 @@ test("the token is read from localStorage and sent as a bearer header", () => {
   assert.match(js, /id: "token-input"/, "app.js must draw the token field on the settings view");
 });
 
-test("no em dash and no en dash in any of the three files", () => {
-  for (const [file, body] of [[HTML_PATH, html], [JS_PATH, js], [CSS_PATH, css]] as const) {
+test("no em dash and no en dash in any of the four files", () => {
+  for (const [file, body] of [[HTML_PATH, html], [JS_PATH, js], [CSS_PATH, css], [RESUMES_PATH, resumesJs]] as const) {
     const hit = /[\u2013\u2014]/.exec(body);
     if (hit) {
       const line = body.slice(0, hit.index).split("\n").length;
@@ -317,6 +319,83 @@ test("the stylesheet keeps to the flat card house style", () => {
   assert.match(rules, /border-radius:\s*8px/, "controls and pills must have an 8 px radius");
   assert.match(rules, /outline:\s*2px solid var\(--ink\)/, "focus must show a 2 px outline in the ink colour");
   assert.match(rules, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
+});
+
+test("the Resumes screen sits between Applications and Keywords", () => {
+  assert.match(html, /<a href="#\/resumes" data-nav="resumes">Resumes<\/a>/, "the nav link must read Resumes");
+  const order = ["#/applications", "#/resumes", "#/keywords"];
+  let at = -1;
+  for (const hash of order) {
+    const found = html.indexOf(`href="${hash}"`);
+    assert.ok(found > at, `the nav link ${hash} is out of order`);
+    at = found;
+  }
+});
+
+test("the Resumes screen lives in its own module that app.js imports", () => {
+  assert.match(js, /import \{ viewResumes \} from "\.\/resumes\.js"/, "app.js must import the resumes view");
+  assert.match(js, /route === "resumes"/, "app.js must route #/resumes to the resumes view");
+  assert.match(resumesJs, /export async function viewResumes\s*\(/, "resumes.js must export the view");
+  assert.ok(resumesJs.includes('"resumes"'), "resumes.js must call GET /api/resumes");
+});
+
+test("resumes.js pulls nothing off the network and builds no markup from a string", () => {
+  assert.ok(!/https?:\/\//i.test(resumesJs), "resumes.js must not contain an http(s) URL");
+  assert.ok(!/\.innerHTML\s*=/.test(resumesJs), "resumes.js must not assign innerHTML");
+  // Every image and link on the screen goes through the local file route.
+  for (const src of [...resumesJs.matchAll(/src:\s*([^,\n]+)/g)].map((m) => m[1].trim())) {
+    assert.ok(!/^["']https?:/i.test(src), `resumes.js sets an external image src: ${src}`);
+  }
+  assert.ok(resumesJs.includes("page.src"), "a thumbnail must take its src from the API's file url");
+});
+
+test("the Resumes screen renders nothing and approves nothing", () => {
+  // AGENTS.md section 5: both belong to resume-writer, resume-critic and an
+  // attended `npm run resume:approve`. The screen says so in as many words.
+  assert.ok(
+    resumesJs.includes("Rendering and approval run through /resume-review with the person present."),
+    "the note under the list must name /resume-review",
+  );
+  assert.ok(
+    resumesJs.includes("No positionings yet. Run /onboarding, then /resume-review."),
+    "the empty state must point at /onboarding and /resume-review",
+  );
+  assert.ok(
+    !/text:\s*"(Render|Approve)(\s+[A-Za-z]+)?"/.test(resumesJs),
+    "resumes.js must not offer a Render or an Approve button",
+  );
+  for (const label of ["Open PDF", "Open DOCX", "Markdown"]) {
+    assert.ok(resumesJs.includes(label), `the card footer is missing the button: ${label}`);
+  }
+  assert.match(resumesJs, /Critic \$\{verdict\}/, "the card must carry a critic line");
+  assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
+});
+
+test("the resume card is styled as the board asks", () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(rules, /\.stamp\.approved \{ color: var\(--green\)/, "an approved stamp must be green");
+  assert.match(rules, /\.stamp\.missing \{ color: var\(--red\)/, "a missing render must be red");
+  assert.match(rules, /\.page-img \{[^}]*height:\s*120px/, "a page thumbnail must be 120 px tall");
+  assert.match(rules, /\.page\.low \{ border-color: var\(--red\)/, "a low-fill page must be outlined red");
+  assert.match(rules, /\.chip\.good \.dot \{ background: var\(--green\)/, "a passing gate chip must carry a green dot");
+});
+
+test("resumes.js parses", () => {
+  const stripped = resumesJs
+    .split("\n")
+    .map((line) => (/^\s*(import|export)\b/.test(line) ? line.replace(/^\s*export\s+/, "") : line))
+    .join("\n");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-static-test-"));
+  const copy = path.join(dir, "resumes.check.js");
+  try {
+    fs.writeFileSync(copy, stripped);
+    execFileSync(process.execPath, ["--check", copy], { stdio: "pipe" });
+  } catch (error) {
+    const stderr = String((error as { stderr?: Buffer }).stderr ?? error);
+    assert.fail(`resumes.js does not parse:\n${stderr}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("app.js stays small enough to read in one sitting", () => {

@@ -30,6 +30,7 @@
   --pill-ink: #374151;  /* tag text */
   --green: #16a34a;     /* score, sent, pass */
   --red: #dc2626;       /* block, fail, reject, kill switch */
+  --amber: #b45309;     /* a warn: worth a look, not a blocker */
 
   --maxw: 1140px;
   --gutter: 24px;
@@ -48,6 +49,7 @@
     --pill-ink: #cbd3e1;
     --green: #35c46b;
     --red: #f2685f;
+    --amber: #d98324;
   }
 }
 
@@ -570,6 +572,75 @@ button[disabled] { opacity: 0.45; cursor: default; }
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+
+/* --- Resumes -------------------------------------------------------------
+   One card per positioning: the approval stamp, the pages as they render, the
+   gates as dots, and the files. No render or approve control lives here;
+   AGENTS.md section 5 keeps both with resume-writer and the person. */
+
+.resume h2 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+
+.stamp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }
+
+.stamp {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--pill);
+  color: var(--pill-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stamp.approved { color: var(--green); border-color: var(--green); }
+.stamp.stale { color: var(--amber); border-color: var(--amber); }
+.stamp.missing { color: var(--red); border-color: var(--red); }
+
+.pages { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; }
+.page-fig { margin: 0; display: grid; gap: 4px; justify-items: center; }
+
+.page {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.page.low { border-color: var(--red); }
+.page-img { display: block; height: 120px; width: auto; }
+.page-fig figcaption { font-size: 12px; }
+.page-fig .bad { color: var(--red); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--pill);
+  color: var(--pill-ink);
+  font-size: 13px;
+}
+
+.chip .dot { width: 8px; height: 8px; border-radius: 8px; background: var(--grey); }
+.chip.good .dot { background: var(--green); }
+.chip.warn .dot { background: var(--amber); }
+.chip.bad .dot { background: var(--red); }
+
+.critic-line { margin: 0 0 12px; }
+.critic-line.bad { color: var(--red); }
+.critic-line.warn { color: var(--amber); }
+
+.covers { display: grid; gap: 8px; margin: 0 0 12px; }
+.covers .cover p { margin: 0 0 4px; }
+.covers .bar { margin: 0; max-width: 320px; }
+
+.btn.disabled { color: var(--grey); cursor: default; }
+.btn.disabled:hover { background: var(--card); }
 
 /* --- Empty, error, toast ------------------------------------------------ */
 
