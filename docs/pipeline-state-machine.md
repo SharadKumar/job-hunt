@@ -1,6 +1,6 @@
 # Pipeline state machine
 
-Source of truth: `VALID_TRANSITIONS` in `tools/pipeline.ts`. `npm run pipeline -- set-status` refuses any move not listed here and exits non-zero. This page explains what each status means, who is allowed to move a row into it, and what the row looks like while it sits there.
+Source of truth: `VALID_TRANSITIONS` in `tools/pipeline.ts`. Rows live in the SQLite store at `state/pipeline/pipeline.db` (`tools/pipeline-store.ts`); read them with `npm run pipeline -- get <id> | list | summary`. `npm run pipeline -- set-status` refuses any move not listed here and exits non-zero. This page explains what each status means, who is allowed to move a row into it, and what the row looks like while it sits there.
 
 ## The queue in one line
 
@@ -19,8 +19,8 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 | `drafted` | Package assembled in `state/pipeline/archive/<id>/`: JD, keyword plan, CV (baseline or tailored), cover letter, metadata. Not yet reviewed. | `/apply`, daily orchestrator | archive dir |
 | `awaiting_approval` | Package complete and shown in the Sheet Tray. An `approve` in the Tray authorises preparation only, never submission. | `/apply`, daily orchestrator | Tray row |
 | `approved` | User approved the package. Still not submitted. | Tray pull (`sheets:pull`), attended session | `approvedAt` |
-| `submission_pending` | A submission is in progress (form partly filled, external ATS mid-flow, or the autopilot adapter driving SEEK Quick Apply). | `submission-runner`, attended session, `autopilot-submit` | |
-| `submitted` | Confirmed sent: success page text or ATS confirmation recorded in `archive/<id>/confirmation.txt`. Attended sessions, or SEEK Quick Apply on autopilot (see below). | attended session, `submission-runner` (attended), `tools/autopilot-submit.ts` (SEEK only) | `submittedAt`, `confirmation.txt`, `resumeId`; autopilot adds `letter-critic.json` and an audit `submitted` event with actor `autopilot` |
+| `submission_pending` | A submission is in progress (form partly filled, external ATS mid-flow, or the autopilot adapter driving SEEK Quick Apply or LinkedIn Easy Apply). | `submission-runner`, attended session, `autopilot-submit` | |
+| `submitted` | Confirmed sent: success page text or ATS confirmation recorded in `archive/<id>/confirmation.txt`. Attended sessions, or a one-click channel on autopilot (SEEK Quick Apply, LinkedIn Easy Apply; see below). | attended session, `submission-runner` (attended), `tools/autopilot-submit.ts` (channels in `autopilot.channels`) | `submittedAt`, `confirmation.txt`, `resumeId`; autopilot adds `letter-critic.json` and an audit `submitted` event with actor `autopilot` |
 | `manual_action_needed` | The harness cannot finish it (account portal, native file picker, personal data fields, letter-critic block, gate failure, unknown screening question). Checklist written to `archive/<id>/manual-checklist.md` where applicable; the reason is in `notes`; the user completes it and reports back. | `/apply`, `submission-runner`, daily orchestrator, `autopilot-submit` | `manual-checklist.md` or a `notes` reason |
 | `responded` / `interview` / `offered` / `won` | Post-submission progress, recorded by the user or `/follow-up`. | attended session | |
 | `rejected` | Exit (user may reopen to `discovered`). Harness or user decided not to pursue, with a reason: hard skill gap, fixed-term/PAYG, mandatory clearance, duplicate requisition, seniority mismatch, or employer decline after submission. | any attended flow; `pipeline:rescore` never rejects | reason in history |
@@ -31,7 +31,7 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 ```
 discovered          → shortlisted | parked | awaiting_external | rejected | manual_action_needed
 awaiting_external   → shortlisted | rejected | withdrawn
-shortlisted         → drafted | parked | rejected | withdrawn
+shortlisted         → drafted | parked | discovered | rejected | withdrawn
 parked              → shortlisted | discovered | rejected | withdrawn
 drafted             → awaiting_approval | rejected | withdrawn
 awaiting_approval   → approved | rejected | withdrawn | manual_action_needed
@@ -60,16 +60,16 @@ Computed in `tools/score.ts` and applied by `tools/rescore-pipeline.ts`:
 4. Blockers: onsite 5 days, junior/mid, exclusive, PAYG-only, permanent/fixed-term, relevance < 25, or no `matched_resume_id`.
 5. A row with `userSaved: true` (saved by the user on SEEK) is always `shortlisted`; the gate applies only the hard employment blocks at send time. Otherwise `score ≥ 55` and no blocker → `shortlisted`, unless the role is interstate and `location_flexibility` is `onsite` or `unknown`, in which case → `parked` with `parkedReason`.
 
-## Autopilot (SEEK Quick Apply, unattended)
+## Autopilot (one-click channels, unattended)
 
-User decision 2026-09-15: `/daily` may move a SEEK row to `submitted` without a human reading the package. The only tool allowed to do that is `tools/autopilot-submit.ts` (`npm run autopilot:submit -- --id <id> --run-id daily-<date>`). It walks `drafted → awaiting_approval → approved` through `setStatus`, then `approved → submission_pending → submitted` only after both of these hold:
+User decision 2026-09-15 (SEEK), extended 2026-09-16 (LinkedIn Easy Apply): `/daily` may move a row on a channel listed in `autopilot.channels` to `submitted` without a human reading the package. The full gate list is `AGENTS.md` section 2 and `references/harness/autopilot-gates.md`. The only tool allowed to do that is `tools/autopilot-submit.ts` (`npm run autopilot:submit -- --id <id> --run-id daily-<date>`). It walks `drafted → awaiting_approval → approved` through `setStatus`, then `approved → submission_pending → submitted` only after both of these hold:
 
 1. `archive/<id>/letter-critic.json` is a `pass` from `tools/letter-critic.ts` whose `letter_sha256` matches the current `cover-letter.md` (a cold fact-check against `cv-source.md`; any unsupported claim, misattribution, dash or confidentiality breach is a `fail` and blocks).
-2. `tools/submission-gate.ts` returns `submit` for provenance `autopilot:<run-id>`: `autopilot.enabled` in `submission-policy.yaml`, status `approved`, `classification._classifier: "agent"`, `userSaved: true` or (`discipline_fit: core` and not an interstate onsite/unknown row), no `red_flag_blocker`, channel `seek` opted in and listed in `autopilot.channels`, kill switch off, both daily caps open.
+2. `tools/submission-gate.ts` returns `submit` for provenance `autopilot:<run-id>`: `autopilot.enabled` in `submission-policy.yaml`, status `approved`, `classification._classifier: "agent"`, `userSaved: true` or (`discipline_fit: core` and not an interstate onsite/unknown row), no `red_flag_blocker`, the row's channel opted in and listed in `autopilot.channels`, kill switch off, both daily caps open.
 
-Evidence a row must carry after an autopilot send: `archive/<id>/confirmation.txt` (channel, SEEK job id, confirmation text, resume filename, letter sha, run id, timestamp), the adapter's success screenshot in the archive, `letter-critic.json`, an audit `submitted` event with `actor: "autopilot"` and `details.run_id`, and the full letter text under "Sent unattended" in that day's journal. A user-saved row is also unsaved on SEEK (`npm run seek:unsave`).
+Evidence a row must carry after an autopilot send: `archive/<id>/confirmation.txt` (channel, channel job id, confirmation text, resume filename, letter sha, run id, timestamp), the adapter's success screenshot in the archive, `letter-critic.json`, an audit `submitted` event with `actor: "autopilot"` and `details.run_id`, and the full letter text under "Sent unattended" in that day's journal. A user-saved row is also unsaved on SEEK (`npm run seek:unsave`).
 
-Any other outcome (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) moves the row to `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path once `linkedin_jobs` is in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
+Any other outcome (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) moves the row to `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path, with `linkedin_jobs` in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
 
 ## Sheet
 

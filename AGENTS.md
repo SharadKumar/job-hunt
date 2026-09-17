@@ -34,7 +34,7 @@ Kill switch, caps and gates are defence in depth on both lanes. `kill_switch: tr
 1. **Preserve the person's voice.** Read `references/voice/voice-rules.md`, `references/voice/slop-banlist.md` and `state/profile/voice-samples.md` before drafting anything. Every letter, comment, DM and rewritten CV bullet passes `npm run slop:check` and `npm run voice:check` before it lands anywhere.
 2. **No em dashes, no en dashes**, in generated content or in replies to the person. Rewrite the clause.
 3. **Australian English** in everything user-facing unless `profile.md` says otherwise.
-4. **Local files in `state/` are the source of truth.** The Google Sheet is a one-way mirror except the Tray tab's `Action` and `Edits` columns, which are pulled in on each run. Nothing else in the Sheet is authoritative.
+4. **Local files in `state/` are the source of truth.** Pipeline rows live in SQLite at `state/pipeline/pipeline.db`; read them with `npm run pipeline -- get <id> | list` and never from `opportunities.json`, which is only an on-demand export. The Google Sheet is a one-way mirror except the Tray tab's `Action` and `Edits` columns, which are pulled in on each run. Nothing else in the Sheet is authoritative.
 5. **Market narrative first.** Every positioning is written against current keyword clouds (`state/org/keyword-clouds.yaml`, weighted per type in `market_lens.clouds`), researched from the title outward. A cloud is refreshed once and every positioning that references it moves with it. Unmatched but important terms are put to the person, never silently dropped; minor gaps may become familiarity.
 6. **Tool discipline.** Prefer the scripts in `tools/` (cached, dedup-aware, lint-aware) over ad-hoc `curl` or `grep`. The npm scripts in `package.json` are the canonical entry points. Every tool prints one compact JSON object; parse it, do not grep prose.
 7. **Deterministic tools decide mechanical facts; agents decide semantics.** Page fill, line width, ATS structure, term grounding, provenance and the submission gate are tool verdicts and are never argued down. Section soundness, heading choice, duplicate or contradictory bullets, register and unsupported claims are agent judgements (`resume-critic`, `letter-critic`).
@@ -44,7 +44,7 @@ Kill switch, caps and gates are defence in depth on both lanes. `kill_switch: tr
 
 ## 4. Pipeline state machine
 
-Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Mutate rows only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue and nothing else: fit, no blocker, a positioning to apply with, doable from the home city. Interstate roles needing routine onsite attendance sit in `parked`.
+Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Rows live in the SQLite store (`state/pipeline/pipeline.db`): read them with `npm run pipeline -- get <id> | list | summary`, mutate them only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue and nothing else: fit, no blocker, a positioning to apply with, doable from the home city. Interstate roles needing routine onsite attendance sit in `parked`.
 
 ## 5. Resume pipeline contract
 
@@ -58,7 +58,7 @@ Statuses, transitions and who may move a row are in `docs/pipeline-state-machine
 
 ## 6. Session-start protocol
 
-A `SessionStart` hook prints a six-line brief. If it did not fire, run `bash .claude/hooks/session-start.sh`. Then read `state/pipeline/opportunities.md` and the latest entry under `state/journal/` to ground yourself.
+A `SessionStart` hook prints a short brief. If it did not fire, run `bash .claude/hooks/session-start.sh`. Then read `state/pipeline/opportunities.md` and the latest entry under `state/journal/` to ground yourself.
 
 If the brief says there is no profile, or `npm run setup:check` reports a blocked stage, run the `setup` skill before anything else. It is the only path from a fresh clone to autopilot: it scaffolds `state/profile/` from `templates/profile/`, asks the person for the facts the profile needs, ingests the CV, hands off to `onboarding` and `resume-review`, has the person log the channels in, connects the Sheet, installs the schedule and switches autopilot on, re-running `setup:check` between stages so nothing is assumed.
 
@@ -66,7 +66,7 @@ If the brief says there is no profile, or `npm run setup:check` reports a blocke
 
 Each user-invokable workflow lives in `.claude/skills/<name>/SKILL.md` and is discovered by both CLIs (`.agents/skills/` is a symlink). Invoke on intent match or explicitly by `/<name>`. Each skill's body says which subagents to invoke and which tools to call, in order; follow it.
 
-`setup`, `daily`, `hunt`, `apply`, `submit-approved`, `manual-applications`, `review-drafts`, `pipeline`, `follow-up`, `prep-interview`, `rate-check`, `refresh-cv`, `onboarding`, `resume-strategy`, `resume-render`, `resume-review`, `resume-critique`, `profile-report`, `my-contracting-discovery-import`, `my-contracting-application-progress`.
+`setup`, `daily`, `hunt`, `apply`, `submit-approved`, `manual-applications`, `review-drafts`, `pipeline`, `follow-up`, `prep-interview`, `rate-check`, `refresh-cv`, `onboarding`, `resume-strategy`, `resume-render`, `resume-review`, `resume-critique`, `profile-report`.
 
 ## 8. Routing free-form asks
 

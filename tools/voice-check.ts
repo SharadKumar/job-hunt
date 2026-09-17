@@ -109,11 +109,17 @@ function check(text: string, kind: Kind, voiceSamples: string): { verdict: Verdi
     }
   }
 
-  // Em-dash density
+  // Dashes. AGENTS.md section 3 rule 2 is absolute: no em dash (U+2014) and no
+  // en dash (U+2013) in generated content, ever. This used to be a density warn,
+  // which let dashes through every gate that only stops on `fail`.
   const words = text.split(/\s+/).filter(Boolean).length;
-  const emDashes = (text.match(/—/g) || []).length;
-  if (words > 0 && emDashes * 80 > words) {
-    issues.push({ rule: "em_dash_density", severity: "warn", detail: `${emDashes} em-dashes in ${words} words (max 1/80)` });
+  const emDashes = (text.match(/\u2014/g) || []).length;
+  const enDashes = (text.match(/\u2013/g) || []).length;
+  if (emDashes > 0) {
+    issues.push({ rule: "em_dash", severity: "fail", detail: `${emDashes} em dash${emDashes === 1 ? "" : "es"}; rewrite the clause (no em dashes, ever)` });
+  }
+  if (enDashes > 0) {
+    issues.push({ rule: "en_dash", severity: "fail", detail: `${enDashes} en dash${enDashes === 1 ? "" : "es"}; use "to" for a range or rewrite the clause` });
   }
 
   // Forbidden openers (cover/dm/comment)
@@ -182,6 +188,7 @@ function check(text: string, kind: Kind, voiceSamples: string): { verdict: Verdi
       avg_words_per_sentence: Number(avg.toFixed(1)),
       longest_sentence_words: longest,
       em_dashes: emDashes,
+      en_dashes: enDashes,
       total_words: words,
       kind,
     },

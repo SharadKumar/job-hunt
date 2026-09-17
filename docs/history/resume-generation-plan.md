@@ -1,5 +1,7 @@
 # Resume Generation Plan
 
+> **Historical planning document (May/June 2026). Superseded by AGENTS.md section 5 and README. Kept for context.**
+
 ## Purpose
 
 Create excellent, reusable resume outputs from a person's canonical CV evidence and resume market positionings.
@@ -163,4 +165,4 @@ The samples are generated from `tests/fixtures/resume-content/senior-operator.js
 
 5. Verification
    - Add regression tests for guardrails, metadata, approvals, and template availability.
-   - Run `npm run verify:plan` after the migration.
+   - Run `npm run verify:plan -- --plan <path>` after the migration (the `--plan` flag is required).

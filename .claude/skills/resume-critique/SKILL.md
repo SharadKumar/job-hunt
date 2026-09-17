@@ -3,7 +3,7 @@ name: resume-critique
 description: Run the independent content review of a rendered CV before anyone is offered the chance to approve it. Use when the user says "critique my CV", "review the content of this resume", "is this CV actually good", "check for duplicate bullets", "did it contradict itself", or after any render where the deterministic gates passed but nobody has read the document as a human. Also invoked by /resume-render, /resume-review and /apply's tailored path, which must not offer approval until this skill has returned a critic pass. Argument is the resume-id, plus optional `--rounds N` (default 2) and `--profile <id>`.
 ---
 
-# /resume-critique — the read the gates cannot do
+# /resume-critique: the read the gates cannot do
 
 ## What this skill does
 
@@ -15,13 +15,13 @@ Nothing this skill does lives only in the conversation. Every round lands in `<p
 
 ## Arguments
 
-- `<resume-id>` (required) — must match `state/profile/resumes.yaml`, or the profile's `resumes.yaml` when `--profile` is given.
-- `--rounds N` (default 2) — the maximum number of critic passes. Round 1 reviews, round 2 re-reviews after the edits land. More than 2 is almost always the wrong fix; a CV that cannot converge in two rounds has a composition problem, not a wording problem.
-- `--profile <id>` — team profiles resolve under `state/profiles/<id>/`; the default stays `state/profile/`.
+- `<resume-id>` (required): must match `state/profile/resumes.yaml`, or the profile's `resumes.yaml` when `--profile` is given.
+- `--rounds N` (default 2): the maximum number of critic passes. Round 1 reviews, round 2 re-reviews after the edits land. More than 2 is almost always the wrong fix; a CV that cannot converge in two rounds has a composition problem, not a wording problem.
+- `--profile <id>`: team profiles resolve under `state/profiles/<id>/`; the default stays `state/profile/`.
 
 ## Sequence
 
-Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its output as the base for every path below. `<profile-dir>` is `state/profile/` or `state/profiles/<profile-id>/`. `<dir>` is `<profile-dir>/resumes/<resume-id>/`. `<prefix>` is the path stem inside `<dir>` shared by `*.composition.json`, `*.provenance.json`, `*.audit.json` and the rendered `.md`.
+Resolve the repo root first (`references/harness/repo-root.md`). `<profile-dir>` is `state/profile/` or `state/profiles/<profile-id>/`. `<dir>` is `<profile-dir>/resumes/<resume-id>/`. `<prefix>` is the path stem inside `<dir>` shared by `*.composition.json`, `*.provenance.json`, `*.audit.json` and the rendered `.md`.
 
 ### 1. Confirm there is something to review
 
@@ -50,17 +50,17 @@ Agent(subagent_type: "resume-critic",
 
 ### 4. Act on the verdict
 
-**`pass`** — record it (the critic already did, via `--record-only`), print the summary, and stop. The caller may now offer approval.
+**`pass`**: record it (the critic already did, via `--record-only`), print the summary, and stop. The caller may now offer approval.
 
-**`block`** — stop. Do not apply anything, do not start another round. Surface the findings to the user with `AskUserQuestion` (Codex: `request_user_input`), recommended option first:
-- `Fix the source and re-render (Recommended)` — a `contradiction`, `unsupported` or `rule` finding usually traces to the corpus or the positioning, not the wording. Route to `/refresh-cv`, `/resume-strategy`, or the keyword-confirm patch flow.
-- `Apply the critic's proposed edits anyway` — only when the user reads the findings and judges the proposed wording correct.
-- `Approve without a review` — spells out that `npm run resume:approve -- --resume <id> --skip-critic` logs the override into `metadata.json`.
+**`block`**: stop. Do not apply anything, do not start another round. Surface the findings to the user with `AskUserQuestion` (Codex: `request_user_input`), recommended option first:
+- `Fix the source and re-render (Recommended)`: a `contradiction`, `unsupported` or `rule` finding usually traces to the corpus or the positioning, not the wording. Route to `/refresh-cv`, `/resume-strategy`, or the keyword-confirm patch flow.
+- `Apply the critic's proposed edits anyway`: only when the user reads the findings and judges the proposed wording correct.
+- `Approve without a review`: spells out that `npm run resume:approve -- --resume <id> --skip-critic` logs the override into `metadata.json`.
 - `Cancel`.
 
 A block verdict never converts itself into an approval offer. That is the whole point of the verdict.
 
-**`revise`** — apply, re-audit, and go again:
+**`revise`**: apply, re-audit, and go again:
 
 ```bash
 npm run resume:edit -- --resume <id> [--profile <p>] --edits <scratch>.json --images
@@ -68,7 +68,7 @@ npm run resume:edit -- --resume <id> [--profile <p>] --edits <scratch>.json --im
 
 One command, one process: it applies every exact `proposed_edit` (skipping every finding without one), appends the round to `<prefix>.critic.json`, updates the provenance sidecar through the fit ops, re-anchors provenance against `cv-source.md`, stamps `metadata.json`, re-runs the full audit in place with `--strict-line-units true`, and appends any finding that has now recurred across two or more resumes to `<profile-dir>/resume-editorial-rules.md`. It also prints suggested `editorial-bans.yaml` rules; it never writes that file, because a machine ban gates every future render and that is the user's call. Offer any suggestion it printed to the user at step 6.
 
-The critic's own findings JSON is accepted as-is. When YOU need an edit the critic did not phrase as a finding, write the plain form instead — same command, same file argument:
+The critic's own findings JSON is accepted as-is. When YOU need an edit the critic did not phrase as a finding, write the plain form instead, with the same command and the same file argument:
 
 ```json
 { "edits": [ { "path": "experiences[2].bullets[3]", "text": "New wording.", "why": "why" } ] }

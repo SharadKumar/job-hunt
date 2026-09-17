@@ -7,7 +7,9 @@
 # role family and any long-tail terms the positionings do not carry.
 #
 # Every channel starts disabled. Enable one at a time after the adapter has
-# been exercised with `npm run hunt -- <channel> --dry-run`.
+# been exercised on its own: `npm run hunt:seek`, `npm run hunt:linkedin-jobs`,
+# `npm run hunt:linkedin-posts`, `npm run hunt:hn`. Each prints its rows and
+# writes nothing until you add `-- --upsert`.
 
 channels:
   seek:

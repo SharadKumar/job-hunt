@@ -3,11 +3,11 @@ name: setup
 description: Guided first-run setup on a new machine, from a fresh clone to autopilot. Use when the user says "set me up", "get this running", "new machine", "configure the harness", "connect my Google Sheet", "log in to SEEK / LinkedIn", "turn on autopilot", or when `npm run setup:check` reports a blocked stage, or when session start finds no profile. Checks the machine, scaffolds the profile, asks the questions the profile needs, ingests the CV, hands off to /onboarding and /resume-review, logs the channels in, connects the Sheet, installs the daily schedule, and switches autopilot on. Works the same under Claude Code and Codex.
 ---
 
-# /setup — from clone to autopilot
+# /setup: from clone to autopilot
 
 You are walking a person through their first run. They may know nothing about this repo. Be brief, ask in batches with the structured question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex; fall back to a numbered plain-text list only if neither exists), and never guess at machine state: `npm run setup:check` is the source of truth for what is done and what is next.
 
-Resolve the repo root first (`bash .claude/hooks/repo-root.sh`) and treat it as the base for every path.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 ## Loop
 
@@ -47,7 +47,7 @@ Invoke the `resume-review` skill. It renders every active positioning through `r
 
 1. Ask which channels to enable: SEEK (Australia), LinkedIn Jobs, LinkedIn hiring posts, HN Who is Hiring. Set `enabled: true` in `state/profile/channels.yaml` for the chosen ones; set the `location` / `geo` fields from the profile.
 2. For SEEK and LinkedIn, the login is theirs to do: tell them to run `! npm run login:seek` and `! npm run login:linkedin`. Each opens a browser; they log in once; the session persists under `state/channels/`. Wait for them to say it is done, then re-run the check.
-3. Ask whether they use SEEK's "save job" feature and explain the rule: a saved job is an order to apply, regardless of score.
+3. Ask whether they use SEEK's "save job" feature and explain the rule in one line: a saved job is an order to apply, regardless of score (`references/harness/saved-jobs-rule.md`).
 
 ## Stage 6: Google Sheet (optional)
 
@@ -69,7 +69,7 @@ Before enabling any schedule, make sure they have done at least one attended app
 
 ## Stage 8: autopilot
 
-Explain the two lanes in three sentences: one-click channels (SEEK Quick Apply, LinkedIn Easy Apply) can send unattended once the letter-critic and the gate pass; everything else stops at a prepared package for them; the kill switch in `submission-policy.yaml` stops everything. Then ask, as one structured question: "Turn autopilot on now?" with options: On for SEEK and LinkedIn (Recommended after an attended run) / On for SEEK only / Not yet. Write `autopilot.enabled` and `autopilot.channels` accordingly, keep `max_per_day` at the template default unless they ask, and re-run the check.
+Explain the two lanes in three sentences: one-click channels (SEEK Quick Apply, LinkedIn Easy Apply) can send unattended once the letter-critic and the gate pass (`references/harness/autopilot-gates.md`); everything else stops at a prepared package for them; the kill switch in `submission-policy.yaml` stops everything. Then ask, as one structured question: "Turn autopilot on now?" with options: On for SEEK and LinkedIn (Recommended after an attended run) / On for SEEK only / Not yet. Write `autopilot.enabled` and `autopilot.channels` accordingly, keep `max_per_day` at the template default unless they ask, and re-run the check.
 
 When `ready_for_autopilot: true`, print the closing brief:
 

@@ -13,8 +13,8 @@ New here? Jump to [Getting started](#getting-started-new-person) or [Developer o
 - **Drafts** an ATS-safe CV variant tailored to the role + a cover letter in your voice. Closed-loop fit-to-pages (default ≤ 3) and ATS lint gate the output.
 - **Submits** on autopilot where a one-click adapter exists (SEEK Quick Apply, LinkedIn Easy Apply) once an independent letter-critic pass and the submission gate agree. A job you save on SEEK is an order to apply, regardless of score.
 - **Queues** everything else in a Google Sheet `Tray` tab and the manual queue. You tick `approve` / `reject` / `edit` / `hold` per row on your phone; attended `/apply`, `/submit-approved` or `/manual-applications` finishes them with you present.
-- **Tracks** the pipeline in `state/pipeline/opportunities.json`, mirrored to the Sheet.
-- **Surfaces** a 6-line brief whenever you open the project locally.
+- **Tracks** the pipeline in `state/pipeline/pipeline.db`, mirrored to the Sheet.
+- **Surfaces** a short brief whenever you open the project locally.
 
 ## Non-goals
 
@@ -37,7 +37,7 @@ These terms are used with exactly these meanings throughout the code, the skills
 | **Resume** | A go-to-market positioning the harness can hunt and pitch. `state/profile/resumes.yaml`. Each resume declares: label, search keywords, should/could/flagged signals, cover-letter angle, rate band, preferred channels, template name, and notes. |
 | **Template** | A renderer plus rubric that produces a CV from canonical content. `templates/resume/<name>/render.ts` controls artefacts; `rubric.yaml` controls safe headings, page budget, density, and evidence thresholds. Harness-level; shared across profiles. Preferred examples: `classic`, `modern`, `minimalist`. |
 | **Channel** | A source of opportunities (Seek, LinkedIn, Hays, HN, etc.). `tools/channels/<id>.ts`. Pluggable per the `HuntChannel` interface. |
-| **Opportunity** | A specific job posting being tracked. Lives in `state/pipeline/opportunities.json`. Has a status (discovered → shortlisted → drafted → awaiting_approval → approved → submission_pending → submitted → responded → interview → offered → won). |
+| **Opportunity** | A specific job posting being tracked. Lives in the pipeline store `state/pipeline/pipeline.db`. Has a status (discovered → shortlisted → drafted → awaiting_approval → approved → submission_pending → submitted → responded → interview → offered → won). |
 | **Application** | The CV + cover letter package submitted for one opportunity. Archived at `state/pipeline/archive/<opportunity-id>/`. |
 | **Classification** | The agent's structured judgement about an opportunity: red flags, bonuses, matched_resume_id, profile_relevance, requires_tailoring. Schema at `npm run classify:schema`. |
 
@@ -109,7 +109,7 @@ my-contracting/
 │
 ├── .claude/                               ← Claude Code config
 │   ├── settings.json                      ← permissions allowlist/denylist + hook registration
-│   ├── hooks/session-start.sh             ← 6-line brief printed on session resume
+│   ├── hooks/session-start.sh             ← short brief printed on session resume
 │   └── skills/                            ← user-invokable workflows (auto-triggered + explicit /<name>)
 │       ├── setup/                         ← /setup — guided first run: machine, profile, CV, positionings, logins, Sheet, schedule, autopilot
 │       ├── apply/                         ← /apply <opp-id> — assemble + submit one application package
@@ -125,6 +125,8 @@ my-contracting/
 │       ├── rate-check/                    ← /rate-check — market rate snapshot for active resumes' search terms
 │       ├── resume-render/                 ← /resume-render <resume-id> — single-resume baseline through resume-writer
 │       ├── resume-review/                 ← /resume-review — batch walk all active resumes' baselines (approve/edit/skip)
+│       ├── resume-critique/               ← /resume-critique <resume-id> — independent content review before any approval
+│       ├── profile-report/                ← /profile-report — local HTML report for a profile or a consulting team
 │       ├── review-drafts/                 ← /review-drafts — synchronous walk of pending Tray drafts (at the laptop)
 │       └── refresh-cv/                    ← /refresh-cv — re-parse master CV from cv_source_dir; refresh canonical content
 │
@@ -149,7 +151,7 @@ my-contracting/
 │
 ├── tools/                                 ← framework code — pure utilities, no LLM calls inside
 │   ├── setup.ts                           ← first-run checks (9 stages, JSON) + profile scaffold; driven by /setup
-│   ├── pipeline.ts                        ← state CRUD + status transitions for opportunities.json
+│   ├── pipeline.ts                        ← state CRUD + status transitions over the SQLite store (tools/pipeline-store.ts)
 │   ├── audit.ts                           ← append-only event log + cross-channel dedup index
 │   ├── resumes.ts                         ← consume state/profile/resumes.yaml (Resume type + accessors)
 │   ├── profile.ts                         ← read state/profile/profile.md frontmatter + slugify name for filenames
@@ -235,7 +237,8 @@ my-contracting/
     │       └── <resume-id>/               ← resume_<profile-slug>_<resume-id>.{docx,pdf,md}, metadata.json, editorial-rules.md (per-resume learning loop)
     │
     ├── pipeline/
-    │   ├── opportunities.json             ← every opportunity, status, classification (matched_resume_id), score, draftDir
+    │   ├── pipeline.db                    ← SQLite store: every opportunity, status, classification, score, history (the record)
+    │   ├── opportunities.json             ← on-demand export (`npm run pipeline -- export`); never a source
     │   ├── opportunities.md               ← auto-generated human digest
     │   └── archive/<opportunity-id>/      ← per-opportunity package: jd.md, resume_<slug>_<resume-id>.docx, cover-letter.md, metadata.json, confirmation.png
     │
@@ -452,7 +455,7 @@ Recommended flow:
 2. Ask structured questions through Claude Code `AskUserQuestion` or Codex `request_user_input`.
 3. Store answers in `state/profile/market-confirmations.yaml` or `state/profiles/<person-id>/market-confirmations.yaml`.
 4. For confirmed facts, update `cv-source.md` or run `/refresh-cv` before rendering.
-5. Switch to Default mode for composition refresh, `resume:render:raw`, `resume:evaluate`, provenance, ATS lint, and slop checks.
+5. Switch to Default mode for the render itself: `/resume-render`, which routes through `resume-writer` and `resume:audit`, then `resume:evaluate`, provenance, ATS lint, and slop checks. Never call `resume:render:raw` or `resume:audit` yourself for a production artefact (AGENTS.md section 5).
 
 Pragmatic rule: do not force every run through Plan mode. Use it only when structured user judgement is needed.
 
@@ -574,7 +577,15 @@ Post-interview, drop notes into `state/pipeline/archive/<opportunity-id>/intervi
 
 `discovered → shortlisted → drafted → awaiting_approval → approved → submission_pending → submitted → responded → interview → offered → won`
 
+Holds: `parked` (fits, but held for a logistics reason such as an interstate role needing routine onsite attendance) and `awaiting_external` (waiting on something outside the harness).
+
 Terminal/diverted: `rejected`, `withdrawn`, `manual_action_needed`.
+
+Full meanings, who may move a row, and the allowed transitions are in `docs/pipeline-state-machine.md` (`VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them).
+
+### Pipeline store
+
+Rows live in SQLite at `state/pipeline/pipeline.db` (`tools/pipeline-store.ts`, WAL). Read and mutate them only through the CLI: `npm run pipeline -- get <id> | list | summary | export | migrate`, plus `upsert` and `set-status` for writes. `state/pipeline/opportunities.md` is the human digest regenerated by `state-syncer`; `state/pipeline/opportunities.json` is an on-demand export produced by `npm run pipeline -- export`, never a source to read from or edit.
 
 ## The full process (what runs, in order, every day)
 
@@ -582,7 +593,7 @@ This is the canonical lifecycle an opportunity passes through. The `/daily` skil
 
 ### 1. Hunt (channel scrapers → discovered/shortlisted)
 
-`opportunity-finder` runs `npm run hunt:<channel> -- --upsert` for each enabled channel. Each scraper returns raw opportunity data (title, company, URL, full JD body). `pipeline.upsert()` writes them with `status: discovered`, audit-logs a `discovered` event, and runs the cross-channel dedup check (same company + role-family within 60 days?).
+`opportunity-finder` runs `npm run hunt:<channel> -- --upsert` for each enabled channel (the scripts that exist are `hunt:seek`, `hunt:linkedin-jobs` and its `hunt:linkedin_jobs` alias, `hunt:linkedin-posts` and `hunt:hn`). Each scraper returns raw opportunity data (title, company, URL, full JD body). `pipeline.upsert()` writes them with `status: discovered`, audit-logs a `discovered` event, and runs the cross-channel dedup check (same company + role-family within 60 days?).
 
 ### 2. Classify (agent reasoning → structured signals + profile_relevance + matched_resume_id)
 
@@ -701,7 +712,7 @@ For someone changing the harness rather than running it. Read `AGENTS.md` first;
 1. **Agents reason, tools verify.** Judgement (classification, composition, drafting, critique) runs inside the CLI session as subagents under `agents/`. Everything mechanical (rendering, linting, gating, syncing, submitting) is a TypeScript tool under `tools/` with an `npm run` entry in `package.json`. If a check can be expressed as a rule, it is a tool and it has a test.
 2. **`cv-source.md` is the only evidence.** CVs, letters and the critic may claim nothing that is not in it. `resume:term-grounding` and `letter-critic` enforce this; `market-confirmations.yaml` records what the user confirmed as familiarity versus delivered.
 3. **Skills orchestrate, subagents produce, tools gate.** `.claude/skills/<name>/SKILL.md` is the user-facing workflow; it spawns subagents and calls tools in a fixed order. A skill never writes a production artefact inline.
-4. **State is files; the Sheet is a mirror.** `state/pipeline/opportunities.json` and `state/audit/audit-log.jsonl` are the record. `VALID_TRANSITIONS` in `tools/pipeline.ts` is the state machine (`docs/pipeline-state-machine.md`).
+4. **State is local; the Sheet is a mirror.** The SQLite store `state/pipeline/pipeline.db` and `state/audit/audit-log.jsonl` are the record (`opportunities.json` is only an export). `VALID_TRANSITIONS` in `tools/pipeline.ts` is the state machine (`docs/pipeline-state-machine.md`).
 5. **Framework is generic, `state/profile/` is personal.** No name, employer, path or client detail goes into `tools/`, `agents/`, skills or templates. Anything that references the user is read from the profile at runtime.
 
 ### Where things live
@@ -710,7 +721,7 @@ For someone changing the harness rather than running it. Read `AGENTS.md` first;
 agents/            subagent system prompts (Claude reads directly; .codex/agents/*.toml are generated)
 .claude/skills/    workflows (/daily, /apply, /hunt, /resume-render ...); .agents/skills is a symlink for Codex
 tools/             deterministic TypeScript; tools/resume/ is the CV pipeline, tools/channels/ the scrapers + submit adapters
-templates/         resume renderers (classic/modern/minimalist) with rubric.yaml, cover-letter templates, report shell
+templates/         resume renderers (classic/modern/minimalist/modern-columns) with rubric.yaml, cover-letter templates, report shell
 tests/             tsx tests, one file per tool concern; `npm test` runs them all in sequence
 scripts/           daily.sh (unattended orchestrator), install-launchd.sh, login-channel.ts, migrations
 docs/              pipeline state machine, resume research claims (research → rubric → evaluate)
@@ -723,7 +734,7 @@ state/             everything per-user; see Privacy boundary
 - Resolve the repo root with `repoRoot()` from `tools/repo-root.ts` (or `bash .claude/hooks/repo-root.sh` in shell). Never trust `cwd`.
 - Profile-scoped paths come from `resolveProfileContext()` in `tools/profile-context.ts`; `HARNESS_PROFILE=<id>` or `--profile <id>` switches to `state/profiles/<id>/`.
 - Every tool prints one compact JSON object on stdout and exits non-zero on `fail`. Skills and agents parse that, they do not grep prose.
-- Pipeline mutations go through `tools/pipeline.ts` (`upsert`, `set-status`), which validates the transition and appends an audit event. Never edit `opportunities.json` by hand in a tool.
+- Pipeline reads and mutations go through `tools/pipeline.ts` (`get`, `list`, `upsert`, `set-status`), which validates the transition and appends an audit event. Never read or write the `opportunities.json` export in a tool.
 - Every send goes through `tools/submission-gate.ts`. New channel adapters (`tools/channels/<id>-submit.ts`) are dispatched by `tools/autopilot-submit.ts` and must return the same outcome shape (`submitted` / `needsManual` / `newScreeningQuestion` / error); add the channel to `autopilot.channels` only once its test exists.
 - No em dashes or en dashes in generated content, ever (`voice-check` and the critic fail on them).
 - Australian English in anything user-facing.
@@ -738,18 +749,22 @@ state/             everything per-user; see Privacy boundary
 | New standing fact for letters | `state/profile/letter-critic-rules.yaml` (`standing_rules`, `never_named`, `profile_facts`) + `state/profile/resume-editorial-rules.md` (both, they must agree); the framework critic carries only generic rules | `tests/prompt-guardrails.test.ts`; run the critic on a known letter |
 | New channel | `tools/channels/<id>.ts` implementing `HuntChannel`; optional `<id>-submit.ts`; `channels.yaml` entry | `tests/<id>-submit.test.ts` modelled on `seek-submit.test.ts` |
 | New template | `npm run resume:template:new -- --name <n>`, then `render.ts`, `rubric.yaml`, `quality-checks.md`, `sample/` golden | `npm run resume:design:golden`, `npm run resume:templates:check` |
-| New skill | `.claude/skills/<name>/SKILL.md` with frontmatter `name` + `description` (the description is the trigger) | `tests/work-routine-prompts.test.ts` if it is a routine |
+| New skill | `.claude/skills/<name>/SKILL.md` with frontmatter `name` + `description` (the description is the trigger) | `tests/prompt-guardrails.test.ts` (script names, banned phrases, dashes) |
 | Gate change | `tools/submission-gate.ts` + `state/profile/submission-policy.yaml` shape | `tests/submission-gate.test.ts` |
 
 ### Running and debugging
 
 ```bash
-npm test                                   # whole suite
+npm test                                   # typecheck, then the whole suite
+npm run typecheck                          # tsc --noEmit on its own
 npx tsx tests/submission-gate.test.ts      # one file
 npm run resume:audit -- --content-json <composition.json> --resume <id> --out-dir <dir>   # one render, every gate
 npx tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md>                     # critic on one letter
 npm run autopilot:submit -- --id <opp-id> --run-id dev-$(date +%s) --dry-run              # walk the gate without sending
-npm run pipeline -- get --id <opp-id>      # one row with history and notes
+npm run pipeline -- get <opp-id>           # one row with history and notes
+npm run pipeline:flush-discovered -- --older-than 14d --unclassified --apply   # clear the discovery tail (drop --apply for a dry run)
+npm run letter:critic -- --digest --since 14d   # group recurring critic blocks into proposed standing rules
+npm run archive:compact -- --apply              # shrink the archive (dedupe baseline CVs, recompress screenshots); dry run without --apply
 ```
 
 The unattended run's full CLI transcript is `state/journal/launchd/YYYY-MM-DD.log` (JSONL). To see what a step returned, filter on the tool name rather than reading it top to bottom; it is several MB.

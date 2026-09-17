@@ -3,13 +3,13 @@ name: manual-applications
 description: Walk applications that the harness couldn't auto-submit (recruiter email, unsupported portals, Easy-Apply variants without adapters) and help the user finalise them in their browser. Use when the user asks "what's in manual", "finish my manual queue", "any applications I need to send myself", or "walk me through the ones I have to submit by hand".
 ---
 
-# /manual-applications — finish the applications the harness couldn't auto-submit
+# /manual-applications: finish the applications the harness couldn't auto-submit
 
 Some channels (recruiter email, unsupported portals, Easy-Apply variations the adapter doesn't handle) end up in `manual_action_needed`. This walks them so the user can finish in their browser in seconds.
 
 ## What to do
 
-Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its output as the base for every path below; never assume cwd.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 1. `npm run pipeline -- get --status manual_action_needed`.
 2. For each row:
