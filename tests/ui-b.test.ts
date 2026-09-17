@@ -483,6 +483,60 @@ await test("the rest of the table: unanswered, duplicate, letter block, to appro
   assert.equal(ext.actionFor({ ...row, status: "awaiting_approval" }, "package drafted").kind, "approve");
 });
 
+await test("a gate refusal is not a retry: the row says what stopped it", () => {
+  // The reason the gate writes, stamped onto the row by tools/autopilot-submit.ts.
+  const row = { id: "seek-11", status: "manual_action_needed", url: "https://example.test/ad", channel: "seek", applyMethod: "quick_apply" };
+  const refused = ext.actionFor(row,
+    "[autopilot daily-2026-09-17] validation gate failed: autopilot_fit, discipline_fit is 'platform_gap' and the row is not user-saved",
+    "autopilot");
+  assert.equal(refused.kind, "gate_refused", "a policy refusal is its own derivation, not another retry");
+  assert.equal(refused.label, "Outside the autopilot lane");
+  assert.equal(refused.primary, false, "there is no primary: no button here changes a policy");
+  assert.equal(refused.post, null, "and nothing posts, least of all a retry");
+  assert.equal(refused.note,
+    "Discipline is platform_gap and the row is not saved on SEEK. Save it on SEEK to force it through, or send it in an attended session.",
+    "the note says what stopped it and what would actually move it");
+  assert.deepEqual(refused.also.map((a: any) => a.kind), ["reject", "hold"], "drop it, or keep it here");
+  assert.equal(refused.also[0].danger, true, "a reject carries the destructive weight");
+  assert.ok(!refused.also.some((a: any) => a.post === "retry"), "no retry is offered on either lane");
+
+  // The LinkedIn version of the same refusal names the channel it was found on.
+  const linkedin = ext.actionFor({ ...row, channel: "linkedin_jobs", applyMethod: "easy_apply" },
+    "validation gate failed: autopilot_fit, discipline_fit is 'adjacent' and the row is not user-saved", "autopilot");
+  assert.match(linkedin.note ?? "", /Discipline is adjacent and the row is not saved on LinkedIn\./);
+
+  // The rest of the policy gates, each in the words the person would use.
+  const noteFor = (reason: string) => ext.actionFor(row, reason, "autopilot").note;
+  assert.equal(noteFor("validation gate failed: baseline_resume_ref, the approved baseline has changed since the package was prepared"),
+    "The baseline CV is not approved; approve it on Resumes.");
+  assert.equal(noteFor("[autopilot daily-2026-09-17] autopilot daily cap reached (6/6), the rest waits for tomorrow"),
+    "Daily cap reached; it runs tomorrow.");
+  assert.equal(noteFor("validation gate failed: no_red_flag_blocker, opportunity is flagged red_flag_blocker"),
+    "A red flag blocks it; review the classification.");
+  assert.equal(ext.actionFor({ ...row, channel: "recruiter" }, "channel 'recruiter' is not on autopilot, route to manual_action_needed").note,
+    "Recruiter is not on the autopilot list; send it in an attended session.");
+
+  // A run that failed at something a rerun could fix keeps its retry.
+  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording", "autopilot").kind, "retry");
+  assert.equal(ext.actionFor(row, 'unknown screening question: "How many years"', "autopilot").kind, "answer");
+  assert.equal(ext.actionFor(row, "adapter failed on the review page", "autopilot").kind, "retry");
+});
+
+await test("a job the person saved is never refused: saving it is the order to apply", () => {
+  // AGENTS.md section 2: the gate bypasses the fit gates for a saved row and
+  // every run retries it, so telling them to save what they already saved
+  // would be nonsense.
+  const saved = {
+    id: "seek-12", status: "manual_action_needed", url: "https://example.test/ad",
+    channel: "seek", applyMethod: "quick_apply", userSaved: true,
+  };
+  const reason = "[autopilot daily-2026-09-17] validation gate failed: autopilot_fit, discipline_fit is 'platform_gap' and the row is not user-saved";
+  const derived = ext.actionFor(saved, reason, "autopilot");
+  assert.equal(derived.kind, "retry", "a saved row keeps the retry every run gives it");
+  assert.equal(ext.gateRefusal(saved, reason), null, "and the refusal never fires on it");
+  assert.ok(ext.gateRefusal({ ...saved, userSaved: false }, reason), "the same row unsaved is refused");
+});
+
 // ---------------------------------------------------------------------------
 // "I applied myself"
 // ---------------------------------------------------------------------------

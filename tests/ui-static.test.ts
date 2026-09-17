@@ -988,9 +988,37 @@ test("a row in the autopilot lane is a record, not a decision", () => {
   assert.match(rowJs, /eyebrow\(inFlight \? "Take it out of the run" : "Move this application"\)/,
     "and the card is captioned as taking it out of the run");
   assert.match(rowJs, /act\.post !== "approve" && !inFlight/, "Approve must never be offered on an in-flight row");
-  assert.match(rowJs, /if \(inFlight && !IN_FLIGHT_DECISIONS\.has\(spec\.key\)\) continue;/,
-    "and Withdraw must be left off with it");
+  assert.match(rowJs, /if \(\(inFlight \|\| refused\) && !IN_FLIGHT_DECISIONS\.has\(spec\.key\)\) continue;/,
+    "and Withdraw must be left off with it, on an in-flight row and on a refused one");
   assert.match(rowJs, /alsoPosts\.has\(spec\.key\)/, "a decision the server already hung off also must not be drawn twice");
+});
+
+test("a row the gate refused on policy is never offered a retry", () => {
+  // The gate refuses for a reason no button on this page can change (AGENTS.md
+  // section 2), so both retries would hand the row straight back to it.
+  assert.match(rowJs, /const GATE_REFUSED = "gate_refused";/, "row.js must know the refused action kind");
+  assert.match(rowJs, /class: "lane-banner lane-banner-refused", role: "note"/,
+    "a refused row draws the grey banner over the decision card");
+  assert.match(rowJs, /text: act\.label \|\| "Outside the autopilot lane"/, "the banner says which lane refused it");
+  assert.match(rowJs, /const why = String\(act\.note \|\| row\.lane_reason \|\| ""\)\.trim\(\);/,
+    "and carries the server's plain note under it");
+  assert.match(rowJs, /const wantsRetry = \(act\) => act\.kind !== GATE_REFUSED/,
+    "neither Retry now nor Retry in the next run may be drawn on a refused row");
+  assert.match(rowJs, /const refused = act\.kind === GATE_REFUSED;/, "the decision card must know it too");
+  assert.match(rowJs, /if \(!refused && !\(act\.kind === "answer" && screeningOnPage\)\)/,
+    "a refused row has no contextual button at all");
+  assert.match(rowJs, /act\.post !== "approve" && !inFlight && !refused/,
+    "and no Approve, which would authorise nothing the gate would accept");
+
+  // The board says the same thing in one line, and offers the one move it takes.
+  assert.match(applications, /export const GATE_REFUSED = "gate_refused";/, "the board names the kind once");
+  assert.match(applications, /if \(act\.kind === GATE_REFUSED\) return null;/,
+    "a refused row earns no primary control on the list");
+  assert.match(applications, /export function firstClause\(text\)/, "the list shows the first clause of the note");
+  assert.match(applications, /refused \? firstClause\(act\.note\) : plainReasonText\(row\.reason\)/,
+    "which replaces the run's own stamp as the row's reason");
+  assert.match(applications, /\.filter\(\(spec\) => spec && spec\.post === "reject"\)/,
+    "and the only secondary the board draws is Reject");
 });
 
 test("To approve is the person's queue, and the run's rows are read elsewhere", () => {

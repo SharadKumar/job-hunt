@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * submission-gate.ts — the single code-level chokepoint every submission MUST
+ * submission-gate.ts: the single code-level chokepoint every submission MUST
  * pass before a channel adapter is invoked.
  *
  * Until now the submission-safety contract ("never submit without explicit
@@ -72,15 +72,15 @@ const exec = promisify(execFile);
 const POLICY_PATH = repoPath("state/profile/submission-policy.yaml");
 const PROFILE_PATH = repoPath("state/profile/profile.md");
 
-// Channels that are ALWAYS manual regardless of any auto_submit flag — the
+// Channels that are ALWAYS manual regardless of any auto_submit flag: the
 // policy documents these as FORCED FALSE.
 const FORCED_MANUAL_CHANNELS = new Set(["recruiter_email", "manual"]);
 
 export type GateAction =
-  | "submit"          // all gates pass — caller may invoke the adapter
+  | "submit"          // all gates pass, caller may invoke the adapter
   | "manual"          // route to manual_action_needed (channel not opted in)
-  | "duplicate"       // prior submission exists — caller must ask the user
-  | "needs_approval"  // no approval token supplied — usage error / unsafe
+  | "duplicate"       // prior submission exists, caller must ask the user
+  | "needs_approval"  // no approval token supplied: usage error / unsafe
   | "gate_failed"     // a hard validation gate failed
   | "blocked"         // kill switch is on
   | "capped";         // daily cap reached
@@ -293,7 +293,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     checks.push({ gate: "autopilot_enabled", ok: true, detail: `run ${prov.ref}` });
   }
 
-  // 2. Kill switch — never bypass.
+  // 2. Kill switch: never bypass.
   if (policy.kill_switch) {
     checks.push({ gate: "kill_switch", ok: false, detail: "kill_switch is on" });
     await auditLog({
@@ -301,7 +301,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("blocked", false, "kill_switch is on — all submissions halted");
+    return decide("blocked", false, "kill_switch is on, all submissions halted");
   }
   checks.push({ gate: "kill_switch", ok: true, detail: "off" });
 
@@ -313,7 +313,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, gate, detail, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("gate_failed", false, `validation gate failed: ${gate} — ${detail}`);
+    return decide("gate_failed", false, `validation gate failed: ${gate}, ${detail}`);
   };
 
   // Autopilot-only gates. Nobody has read this package, so the row's own
@@ -366,7 +366,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const tailoredStatus = opportunity.tailoredResume?.approvalStatus ?? "missing";
     if (tailoredStatus !== "approved") {
       checks.push({ gate: "tailored_resume_approval", ok: false, detail: `tailored resume status is '${tailoredStatus}'` });
-      return decide("gate_failed", false, `validation gate failed: tailored_resume_approval — tailored resume status is '${tailoredStatus}'`);
+      return decide("gate_failed", false, `validation gate failed: tailored_resume_approval, tailored resume status is '${tailoredStatus}'`);
     }
     checks.push({
       gate: "tailored_resume_approval",
@@ -396,14 +396,14 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
   const optedIn = !FORCED_MANUAL_CHANNELS.has(channel) && policy.channels?.[channel]?.auto_submit === true;
   if (!optedIn) {
     checks.push({ gate: "auto_submit", ok: false, detail: `channel '${channel}' not opted into auto_submit` });
-    return decide("manual", false, `channel '${channel}' is manual-only — route to manual_action_needed`);
+    return decide("manual", false, `channel '${channel}' is manual-only, route to manual_action_needed`);
   }
   checks.push({ gate: "auto_submit", ok: true, detail: `channel '${channel}' opted in` });
   if (autopilot) {
     const apChannels = ap.channels ?? [];
     if (!apChannels.includes(channel)) {
       checks.push({ gate: "autopilot_channel", ok: false, detail: `channel '${channel}' not in autopilot.channels [${apChannels.join(", ")}]` });
-      return decide("manual", false, `channel '${channel}' is not on autopilot — route to manual_action_needed`);
+      return decide("manual", false, `channel '${channel}' is not on autopilot, route to manual_action_needed`);
     }
     checks.push({ gate: "autopilot_channel", ok: true, detail: `channel '${channel}' on autopilot` });
   }
@@ -413,7 +413,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const method = opportunity.applyMethod ?? "unknown";
     if (method !== "easy_apply") {
       checks.push({ gate: "apply_method", ok: false, detail: `linkedin applyMethod is '${method}', adapter handles easy_apply only` });
-      return decide("manual", false, `linkedin ad is '${method}', not Easy Apply — route to manual_action_needed`);
+      return decide("manual", false, `linkedin ad is '${method}', not Easy Apply, route to manual_action_needed`);
     }
     checks.push({ gate: "apply_method", ok: true, detail: "linkedin Easy Apply" });
   }
@@ -437,7 +437,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
   }
   checks.push({ gate: "rate_set_in_profile", ok: true, detail: "rate set" });
 
-  // 6. Cross-channel dedup — a prior submission to the same company+role-family
+  // 6. Cross-channel dedup: a prior submission to the same company+role-family
   //    is a decision for the user, not an auto-submit.
   if ((hg.audit_dedup_check || hg.duplicate_check) && autopilot && userSaved && ap.saved_jobs_bypass_fit_gates !== false) {
     checks.push({ gate: "audit_dedup", ok: true, detail: "skipped: user-saved row is an order to apply regardless of duplicate status" });
@@ -447,13 +447,13 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const priorSubmitted = dup.matches.filter((m) => m.status === "submitted");
     if (priorSubmitted.length) {
       checks.push({ gate: "audit_dedup", ok: false, detail: `prior submission(s) within ${within}d: ${priorSubmitted.map((m) => m.role_id).join(", ")}` });
-      return decide("duplicate", false, `already submitted to ${opportunity.company} for this role-family within ${within} days — needs a user decision`);
+      return decide("duplicate", false, `already submitted to ${opportunity.company} for this role-family within ${within} days, needs a user decision`);
     }
     checks.push({ gate: "audit_dedup", ok: true, detail: `no prior submission within ${within}d` });
   }
 
   // 7. Artefact checks. If the policy requires a check we cannot run (missing
-  //    artefact path), fail closed — never submit something we can't verify.
+  //    artefact path), fail closed: never submit something we can't verify.
   if (hg.cv_lint_ats_must_pass) {
     if (!opts.cvDocxPath) return failGate("cv_lint_ats_must_pass", "no CV docx supplied to verify ATS lint");
     const v = await runVerdict("resume:lint:ats", ["--file", opts.cvDocxPath]);
@@ -483,7 +483,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, submitted_today: todayCount, cap, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("capped", false, `daily cap reached (${todayCount}/${cap}) — try again tomorrow`);
+    return decide("capped", false, `daily cap reached (${todayCount}/${cap}), try again tomorrow`);
   }
   checks.push({ gate: "daily_cap", ok: true, detail: `${todayCount}/${cap} submitted today` });
 
@@ -499,7 +499,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
         details: { company: opportunity.company, title: opportunity.title, submitted_today: apCount, cap: apCap, approved_by: opts.approvedBy, scope: "autopilot" },
         provenance: { url: opportunity.url, channel },
       });
-      return decide("capped", false, `autopilot daily cap reached (${apCount}/${apCap}) — the rest waits for tomorrow`);
+      return decide("capped", false, `autopilot daily cap reached (${apCount}/${apCap}), the rest waits for tomorrow`);
     }
     checks.push({ gate: "autopilot_daily_cap", ok: true, detail: `${apCount}/${apCap} autopilot submissions today` });
   }

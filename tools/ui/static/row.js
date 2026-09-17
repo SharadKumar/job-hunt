@@ -191,8 +191,12 @@ const DECISIONS = [
 const IN_FLIGHT = "in_flight";
 /** A row that is ready but may only go out with the person in the chair. */
 const ATTENDED_SEND = "attended_send";
-/** The two decisions an in-flight row still takes. Approve is not one of them:
- * the run has already approved it, and there is nothing left to say yes to. */
+/** A row the submission gate refused on policy. A retry hits the same gate, so
+ * neither retry is drawn and the banner says what would actually move it. */
+const GATE_REFUSED = "gate_refused";
+/** The two decisions an in-flight row still takes, and the two a refused row
+ * takes. Approve is not one of them: on an in-flight row the run has already
+ * approved it, and on a refused one a yes changes no policy. */
 const IN_FLIGHT_DECISIONS = new Set(["hold", "reject"]);
 
 /** The lane table, read once a session. A row that does not carry its own lane
@@ -224,6 +228,15 @@ function lanePill(row, table) {
  */
 function laneBanner(act, row) {
   const inFlight = act.kind === IN_FLIGHT;
+  // A refused row draws the same banner in grey: the gate stopped it for a
+  // reason, and the reason is what the person has to act on, not a button.
+  if (act.kind === GATE_REFUSED) {
+    const box = h("section", { class: "lane-banner lane-banner-refused", role: "note" });
+    box.append(h("p", { class: "lane-head", text: act.label || "Outside the autopilot lane" }));
+    const why = String(act.note || row.lane_reason || "").trim();
+    if (why) box.append(h("p", { class: "lane-note", text: why }));
+    return box;
+  }
   if (!inFlight && act.kind !== ATTENDED_SEND) return null;
   const box = h("section", { class: `lane-banner lane-banner-${inFlight ? "autopilot" : "attended"}`, role: "note" });
   if (inFlight) {
@@ -237,8 +250,11 @@ function laneBanner(act, row) {
   return box;
 }
 
-const wantsRetry = (act) => act.kind === "retry" || act.post === "retry"
-  || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.post === "retry"));
+// A refused row is the one row that never wants a retry: both retries would
+// hand it back to the gate that just refused it.
+const wantsRetry = (act) => act.kind !== GATE_REFUSED
+  && (act.kind === "retry" || act.post === "retry"
+    || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.post === "retry")));
 
 /** What a decision does, in the words the person would use. The title is on
  * the button, so the explanation is there when it is wanted and silent when it
@@ -299,6 +315,9 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   // The run is carrying this one. Nothing here approves it again; the only
   // question left is whether to take it back out of the run.
   const inFlight = act.kind === IN_FLIGHT;
+  // The gate refused this one on policy. Same shape as in flight: the two
+  // moves that are left, and nothing that pretends a rerun would help.
+  const refused = act.kind === GATE_REFUSED;
   // Whatever the server already hung off `also` is drawn once, so a standing
   // decision that is also an `also` entry is not offered twice.
   const alsoPosts = new Set((Array.isArray(act.also) ? act.also : [])
@@ -318,7 +337,7 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   const primary = wantsRetry(act) && act.post === "retry"
     ? { ...act, primary: false, label: "Retry in the next run" }
     : { ...act, primary: true };
-  if (!(act.kind === "answer" && screeningOnPage)) {
+  if (!refused && !(act.kind === "answer" && screeningOnPage)) {
     const contextual = contextualControl({ ...row, action: primary }, onDone, { small: false });
     if (contextual) {
       if (act.post && DECISION_HELP[act.post]) contextual.title = DECISION_HELP[act.post];
@@ -329,7 +348,7 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   for (const button of also.buttons) buttons.append(button);
   for (const extra of also.extras) extras.append(extra);
 
-  if (APPROVABLE.has(row.status) && act.post !== "approve" && !inFlight) {
+  if (APPROVABLE.has(row.status) && act.post !== "approve" && !inFlight && !refused) {
     const approve = actionButton(row, { key: "approve", label: "Approve", title: DECISION_HELP.approve,
       primary: !buttons.childElementCount }, fields, onDone);
     approve.addEventListener("click", decision.reveal);
@@ -337,7 +356,7 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   }
   for (const spec of DECISIONS) {
     if (act.post === spec.key || alsoPosts.has(spec.key)) continue;
-    if (inFlight && !IN_FLIGHT_DECISIONS.has(spec.key)) continue;
+    if ((inFlight || refused) && !IN_FLIGHT_DECISIONS.has(spec.key)) continue;
     const button = actionButton(row, { ...spec, title: DECISION_HELP[spec.key] }, fields, onDone);
     if (spec.key === "hold") button.addEventListener("click", decision.reveal);
     buttons.append(button);

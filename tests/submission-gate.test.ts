@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Smoke tests for tools/submission-gate.ts — the submission-safety chokepoint.
+ * Smoke tests for tools/submission-gate.ts: the submission-safety chokepoint.
  *
  * Covers the policy-level decisions with fully injected state (roles, policy,
  * nowISO) so the tests touch neither disk nor the channel adapters. Artefact
@@ -251,7 +251,8 @@ const tests: [string, () => Promise<void>][] = [
     const row = coreRow({ classification: { _classifier: "agent", discipline_fit: "platform_gap" } as any });
     const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
     assert.equal(d.action, "gate_failed");
-    assert.match(d.reason, /autopilot_fit/);
+    assert.match(d.reason, /validation gate failed: autopilot_fit, discipline_fit is 'platform_gap' and the row is not user-saved/,
+      "the reason is punctuated with a comma, and the UI reads it to say this is a policy refusal");
   }],
 
   ["autopilot: interstate onsite core row → gate_failed (belongs in parked)", async () => {
@@ -365,6 +366,17 @@ const tests: [string, () => Promise<void>][] = [
     const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("baseline_revoked") }));
     assert.equal(d.action, "gate_failed");
     assert.match(d.reason, /baseline_resume_ref/);
+  }],
+
+  ["no em dash and no en dash anywhere in the module", async () => {
+    // AGENTS.md section 3.2. Every reason this module writes is stamped onto
+    // the row and read by the person on the board, so a dash in a string
+    // literal here is a dash in the UI. The whole file is checked rather than
+    // the literals alone: a comment is the next thing someone copies into one.
+    const source = readFileSync(new URL("../tools/submission-gate.ts", import.meta.url), "utf8");
+    const hit = /[\u2013\u2014]/.exec(source);
+    const line = hit ? source.slice(0, hit.index).split("\n").length : 0;
+    assert.equal(hit, null, `tools/submission-gate.ts:${line} carries a banned dash character`);
   }],
 ];
 

@@ -94,6 +94,8 @@ export type RowAction = {
     | "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "decide" | "mark_sent"
     /** The run owns this row: nothing to click, and the note says who is doing what. */
     | "in_flight"
+    /** The submission gate refused it on policy; a retry would hit the same gate. */
+    | "gate_refused"
     /** Keep the run off this row until the person says otherwise (Tray `hold`). */
     | "hold"
     /** Prepared, but only a person may send it: the attended lane's terminus. */
@@ -136,7 +138,11 @@ const EXTERNAL_PORTAL = /external ats|external portal|external application|exter
 const LETTER_BLOCKED = /letter[-\s]?critic|letter critic/i;
 const DUPLICATE = /duplicate|already submitted .{0,60}within \d+ days|needs a user decision/i;
 
-export type ActionRow = { id: string; status: string; url?: string | null; applyMethod?: string | null; channel?: string | null };
+export type ActionRow = {
+  id: string; status: string; url?: string | null; applyMethod?: string | null; channel?: string | null;
+  /** A job the person saved on the channel: an order to apply (AGENTS.md section 2). */
+  userSaved?: boolean | null;
+};
 
 // ---------------------------------------------------------------------------
 // Which lane a row is in
@@ -246,6 +252,73 @@ const holdOrReject = (): RowAction[] => [
   action({ kind: "reject", label: "Reject", post: "reject", danger: true }),
 ];
 
+// ---------------------------------------------------------------------------
+// A gate refusal is not a retry
+// ---------------------------------------------------------------------------
+
+/**
+ * The gate refused this row on policy, not on something a rerun could fix
+ * (tools/submission-gate.ts writes the reason, and tools/autopilot-submit.ts
+ * stamps it onto the row). Offering "Retry now" here is a lie: the next run
+ * reads the same policy, refuses again, and the row comes back unchanged. So
+ * these reasons earn their own derivation, which says in plain words what
+ * stopped it and what would actually move it.
+ *
+ * A policy refusal is not a letter block or a missing answer: those are the run
+ * failing at something, and a retry is exactly right for them.
+ */
+const POLICY_REFUSAL = /validation gate failed|is not on autopilot|not in autopilot|daily cap reached/i;
+
+/** A channel key as the person would say it, for the sentences below. The same
+ * two special cases the board's `channelLabel` has, and title case for the rest. */
+const CHANNEL_NAMES: Record<string, string> = { seek: "SEEK", [LINKEDIN]: "LinkedIn" };
+const channelName = (channel: string): string => CHANNEL_NAMES[channel]
+  ?? (channel
+    ? channel.split(/[_\s-]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
+    : "the channel");
+
+/**
+ * Which policy refused it, and what the person can do about that one. The order
+ * is the order the gate applies them in, so a reason that names two keys reads
+ * as the first gate that stopped it.
+ */
+const REFUSALS: { test: RegExp; note: (row: ActionRow, text: string) => string }[] = [
+  {
+    // autopilot_fit: the discipline band, or an interstate row that belongs in parked.
+    test: /autopilot_fit|discipline_fit|not user-saved/i,
+    note: (row, text) => {
+      const where = channelName(String(row.channel ?? ""));
+      const fit = /discipline_fit is '([^']+)'/i.exec(text)?.[1];
+      const what = fit
+        ? `Discipline is ${fit} and the row is not saved on ${where}.`
+        : `It is outside the autopilot discipline band and is not saved on ${where}.`;
+      return `${what} Save it on ${where} to force it through, or send it in an attended session.`;
+    },
+  },
+  { test: /red_flag_blocker/i, note: () => "A red flag blocks it; review the classification." },
+  { test: /baseline/i, note: () => "The baseline CV is not approved; approve it on Resumes." },
+  { test: /max_per_day|daily cap reached/i, note: () => "Daily cap reached; it runs tomorrow." },
+  {
+    test: /autopilot_channel|(is )?not (on|in) autopilot/i,
+    note: (row) => `${channelName(String(row.channel ?? ""))} is not on the autopilot list; send it in an attended session.`,
+  },
+];
+
+/**
+ * The note for a refused row, or null when this is not a policy refusal.
+ *
+ * A job the person saved on the channel is never refused here: saving it is the
+ * order to apply, the gate bypasses the fit, blocker and duplicate checks for
+ * it, and every run retries it (AGENTS.md section 2). Telling them to save a
+ * row they already saved would be nonsense.
+ */
+export function gateRefusal(row: ActionRow, reason: string): string | null {
+  if (row.userSaved === true) return null;
+  if (!POLICY_REFUSAL.test(reason)) return null;
+  const hit = REFUSALS.find((r) => r.test.test(reason));
+  return hit ? hit.note(row, reason) : null;
+}
+
 /**
  * One row, one button. The reason is what the run actually recorded, so it
  * decides first: a row blocked on a screening question wants an answer whatever
@@ -276,6 +349,21 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
   // on this machine that can finish someone else's portal.
   if (isExternal(row, text)) {
     return action({ kind: "portal", label: "Open portal", href: row.url ?? null, also: [markSentButton()] });
+  }
+  // The gate refused it on policy. Nothing on this page changes a policy, so
+  // there is no primary here and no retry at all: the row says what stopped it
+  // and keeps the two moves that still mean something.
+  const refused = gateRefusal(row, text);
+  if (refused) {
+    return action({
+      kind: "gate_refused",
+      label: "Outside the autopilot lane",
+      note: refused,
+      also: [
+        action({ kind: "reject", label: "Reject", post: "reject", danger: true }),
+        action({ kind: "hold", label: "Hold", post: "hold" }),
+      ],
+    });
   }
   if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer", primary: true });
   if (DUPLICATE.test(text)) return action({ kind: "decide", label: "", also: decideButtons() });
