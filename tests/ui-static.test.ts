@@ -826,7 +826,7 @@ test("the decision card puts the run first, then the moves", () => {
   assert.ok(bar, "row.js must build the decision card in one function");
   // Retry now is not a move, so it sits above the moves with its own line of
   // explanation; the moves then read contextual, also, approve, standing.
-  const order = ["retryNowControl(", "Runs the critic and the gate again", 'eyebrow("Move this application")',
+  const order = ["retryNowControl(", "Runs the critic and the gate again", '"Move this application"',
     "contextualControl(", "alsoControls(", "APPROVABLE.has(", "of DECISIONS"];
   let at = -1;
   for (const piece of order) {
@@ -932,8 +932,107 @@ test("the row detail reads in one order, history last", () => {
     assert.ok(found > at, `the row detail draws ${piece} out of order`);
     at = found;
   }
-  assert.match(rowJs, /rest\.append\(screening, actionBar\([^)]*\), historyBlock\(row\.history\)\)/,
+  assert.match(rowJs, /rest\.append\(actionBar\([^)]*\), historyBlock\(row\.history\)\)/,
     "the decision must come before the history, not after it");
+  assert.match(rowJs, /rest\.append\(screening\);\n\s*if \(banner\) rest\.append\(banner\);/,
+    "and the lane banner must sit between the question and the decision it frames");
+});
+
+test("every top-level section on the row page shares one 24 px gap", () => {
+  // The bug this fixes: every section set its own vertical margin, and the
+  // decision card, which set none, sat flush against the letter above it.
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(rowJs, /const page = h\("div", \{ class: "row-page" \}\);/,
+    "the row page must draw its sections inside one box");
+  const after = rowJs.slice(rowJs.indexOf('const page = h("div", { class: "row-page" });'));
+  const strays = [...after.matchAll(/view\.append\(([^)]*)\)/g)].map((m) => m[1]);
+  assert.deepEqual(strays, ["page"],
+    `a row section goes straight on the view instead of into the box: ${strays.join(", ")}`);
+  assert.match(rules, /\.row-page > \* \+ \* \{ margin-top: 24px; \}/,
+    "one rule must set the gap for every top-level section on the row page");
+  assert.ok(!/\.stats \{[^}]*margin:/.test(rules),
+    "the stats row must not set its own vertical margin on top of the shared rule");
+  assert.ok(!/\.stack \{[^}]*margin/.test(rules),
+    "nor may the decision stack, or the gap above it comes back doubled");
+  assert.match(rules, /\.stack \{ display: grid; gap: 24px; \}/,
+    "the sections inside the stack keep the same 24 px");
+});
+
+test("a row in the autopilot lane is a record, not a decision", () => {
+  // AGENTS.md section 2: the lane is decided by the channel, never by who
+  // asked, so the row says which lane has it and offers only what is left.
+  assert.match(rowJs, /const IN_FLIGHT = "in_flight";/, "row.js must know the in-flight action kind");
+  assert.match(rowJs, /const ATTENDED_SEND = "attended_send";/, "and the attended-send kind");
+  assert.match(rowJs, /text: act\.label \|\| "Autopilot handles this"/, "the green banner must say autopilot handles it");
+  assert.match(rowJs, /act\.note \|\| row\.lane_reason/, "and carry the note the server sent with it");
+  assert.match(rowJs, /text: "Ready to send in an attended session\."/, "the grey banner must say the session is attended");
+  assert.match(rowJs, /text: "Run \/submit-approved with the person present\."/, "and name the command that does it");
+  assert.match(rowJs, /class: `lane-banner lane-banner-\$\{inFlight \? "autopilot" : "attended"\}`/,
+    "the two banners must be told apart by a class, not by a colour set in js");
+  assert.match(css, /\.lane-banner-autopilot \{ border-color: var\(--green\); \}/, "the autopilot banner is green bordered");
+
+  // The lane pill on the fact line.
+  assert.match(rowJs, /said === "autopilot" \|\| said === "attended"/, "the pill must only draw a lane it knows");
+  assert.match(rowJs, /const said = row\.lane \|\| of\("lane_of"\);/,
+    "a row without its own lane must fall back to the channel's, from GET /api/lanes");
+  assert.match(rowJs, /const lanes = \(\) => \(lanesRead \|\|= api\("lanes"\)\.catch\(\(\) => null\)\);/,
+    "and that table must be read once a session, and never break the page when it is missing");
+  assert.match(rowJs, /class: `pill lane-pill lane-pill-\$\{lane\}`, text: lane/, "the pill says the lane and nothing else");
+  assert.match(rowJs, /pill\.setAttribute\("title", why\)/, "and carries lane_reason as its title");
+  assert.match(css, /\.lane-pill-autopilot \{ color: var\(--green\); \}/, "autopilot is the green lane");
+  assert.match(css, /\.lane-pill-attended \{ color: var\(--grey\); \}/, "attended is the grey one");
+
+  // The decision card an in-flight row gets.
+  assert.match(rowJs, /const IN_FLIGHT_DECISIONS = new Set\(\["hold", "reject"\]\);/,
+    "an in-flight row takes only Hold and Reject");
+  assert.match(rowJs, /eyebrow\(inFlight \? "Take it out of the run" : "Move this application"\)/,
+    "and the card is captioned as taking it out of the run");
+  assert.match(rowJs, /act\.post !== "approve" && !inFlight/, "Approve must never be offered on an in-flight row");
+  assert.match(rowJs, /if \(inFlight && !IN_FLIGHT_DECISIONS\.has\(spec\.key\)\) continue;/,
+    "and Withdraw must be left off with it");
+  assert.match(rowJs, /alsoPosts\.has\(spec\.key\)/, "a decision the server already hung off also must not be drawn twice");
+});
+
+test("To approve is the person's queue, and the run's rows are read elsewhere", () => {
+  assert.match(applications, /export const needsYou = \(row\) => row\.needs_you !== false;/,
+    "a server that does not carry lanes must leave every awaiting row with the person");
+  assert.match(applications, /row\.needs_you === false\n\s*\|\| Boolean\(row\.action && row\.action\.kind === "in_flight"\)/,
+    "an in-flight row is either flagged or says so in its action");
+  assert.match(applications, /if \(tab\.key === "waiting"\) rows = rows\.filter\(needsYou\);/,
+    "the To approve tab must list only what wants the person");
+  assert.match(applications, /tab\.key === "shortlisted"[\s\S]*?rows\?status=awaiting_approval[\s\S]*?filter\(isInFlight\)/,
+    "and the rows the run is carrying must be read under Shortlisted");
+  assert.match(applications, /h\("span", \{ class: "pill", text: "in flight" \}\)/,
+    "with a grey pill saying which they are");
+  assert.match(applications, /tab\.key === "waiting" && typeof laneCounts\.needs_you === "number"/,
+    "the tab count must be counts.needs_you when the server sends it");
+  assert.match(applications, /counts\.needs_you === "number"\) laneCounts\.needs_you = counts\.needs_you;/,
+    "and that count must be remembered off the rows response");
+  assert.match(applications, /const counts = status === "awaiting_approval" && data \? data\.counts : null;/,
+    "only the awaiting_approval response may set it; every status reports its own split");
+});
+
+test("Home counts the approvals that want the person, and says what is in flight", () => {
+  assert.match(home, /api\("rows\?status=awaiting_approval"\)/, "Home must read the awaiting queue for its split");
+  assert.match(home, /typeof counts\.needs_you === "number" \? counts\.needs_you : fallback/,
+    "the To approve figure must be counts.needs_you, falling back to the old total");
+  assert.match(home, /if \(flight > 0\) body\.append\(line\(`\$\{flight\} in flight on autopilot`/,
+    "and one line under it must say what the run is already carrying");
+  assert.match(home, /const \[needs, sent, waiting, resumes, keywords, digest, journal, health, runs\] = results;/,
+    "the results must be unpacked in the order they were asked for");
+});
+
+test("the Sent today card counts the rows it is showing", () => {
+  assert.match(home, /const sentAt = \(row\) => row\.submittedAt \|\| row\.submitted_at \|\| row\.updated_at;/,
+    "a row is sent when it was submitted, not when it was last touched");
+  assert.match(home, /const rows = \(result\.value\.rows \|\| \[\]\)\.filter\(\(row\) => localDay\(sentAt\(row\)\) === today\);/,
+    "the list must be the rows submitted in the local calendar day");
+  assert.match(home, /const count = rows\.length;/,
+    "and the number must come off that list, so the card cannot contradict itself");
+  assert.ok(!/summary\.sent_today/.test(home.slice(home.indexOf("function sentCard"), home.indexOf("function waitingCard"))),
+    "the Sent today card must not take its figure from the summary any more");
+  assert.match(app, /new Intl\.DateTimeFormat\("en-CA"\)\.format\(d\)/,
+    "the day must be computed with Intl in the browser's own timezone");
 });
 
 test("the history is a timeline with a dot per move", () => {

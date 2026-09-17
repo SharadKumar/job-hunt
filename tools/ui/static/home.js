@@ -23,13 +23,10 @@ const RUN_SCHEDULE = "The daily run is at 07:00.";
 
 /**
  * One dashboard card: a heading, a body, and the screen the whole card opens.
- *
- * The card is the anchor rather than carrying an "Open ..." link in its
- * footer, because the footer link was the only part of a summary you could
- * aim at and the rest of the card was already saying "go here". An anchor may
- * not contain another anchor or a button, so nothing inside a card is
- * interactive: the row titles are spans and the evidence prompt is plain text,
- * and the screen the card opens is where anything gets decided.
+ * The card is the anchor rather than a footer link, which was the only part of
+ * a summary you could aim at. An anchor may hold no anchor and no button, so
+ * nothing inside a card is interactive: row titles are spans, the evidence
+ * prompt is plain text, and the screen it opens is where anything is decided.
  */
 function card(title, href, body, note) {
   const section = h("a", { class: "card home-card", href });
@@ -137,10 +134,8 @@ const GREETINGS = {
 
 /** A line the day of the week earns, which takes the pick one time in three. */
 const WEEKDAY_FLAVOUR = {
-  0: "Weekend check-in, {name}",
-  1: "New week, {name}",
-  5: "Happy Friday, {name}",
-  6: "Weekend check-in, {name}",
+  0: "Weekend check-in, {name}", 1: "New week, {name}",
+  5: "Happy Friday, {name}", 6: "Weekend check-in, {name}",
 };
 
 const poolFor = (hour) => {
@@ -299,15 +294,22 @@ function needsCard(result) {
   return card("Blocked", "#/applications/needs", body, more);
 }
 
-/** What went out today, by title. The count is the summary's own figure. */
+/** When a row was actually sent. `updated_at` is the last touch of any kind. */
+const sentAt = (row) => row.submittedAt || row.submitted_at || row.updated_at;
+
+/**
+ * What went out today, by title, counted off the list the card is showing. The
+ * number used to be the summary's own figure over a different day boundary, so
+ * the card said four and listed one. Both are now the rows submitted in the
+ * browser's calendar day, which is the day the server counts in.
+ */
 function sentCard(result) {
-  const summary = getSummary();
-  const count = summary ? summary.sent_today ?? 0 : 0;
   if (result.status !== "fulfilled") {
     return card("Sent today", "#/applications/sent", failure("Could not load what was sent."));
   }
   const today = localDay();
-  const rows = (result.value.rows || []).filter((row) => localDay(row.updated_at) === today);
+  const rows = (result.value.rows || []).filter((row) => localDay(sentAt(row)) === today);
+  const count = rows.length;
   const body = h("div", {});
   body.append(line(count === 1 ? "1 application sent today." : `${count} applications sent today.`));
   for (const row of rows.slice(0, 6)) {
@@ -315,17 +317,26 @@ function sentCard(result) {
       h("span", { class: "home-row-title", text: row.title || "Untitled role" }),
       row.company ? h("span", { class: "grey small", text: row.company }) : null));
   }
-  if (!rows.length && !count) body.append(line("Nothing has gone out yet today.", "home-line grey"));
+  if (!count) body.append(line("Nothing has gone out yet today.", "home-line grey"));
   return card("Sent today", "#/applications/sent", body);
 }
 
-/** How many prepared packages are waiting on the person to say yes. */
-function waitingCard() {
+/**
+ * How many packages want a yes, and how many the run is already carrying. A row
+ * on an autopilot channel is approved and going out without anybody, so
+ * counting it here asked for a decision nobody wanted (AGENTS.md section 2). An
+ * older server sends no split, and then every awaiting row is the person's.
+ */
+function waitingCard(result) {
   const summary = getSummary();
-  const count = summary ? (summary.counts || {}).awaiting_approval ?? 0 : 0;
+  const counts = result && result.status === "fulfilled" ? (result.value.counts || {}) : {};
+  const fallback = summary ? (summary.counts || {}).awaiting_approval ?? 0 : 0;
+  const count = typeof counts.needs_you === "number" ? counts.needs_you : fallback;
+  const flight = typeof counts.in_flight === "number" ? counts.in_flight : 0;
   const body = h("div", {});
   body.append(h("p", { class: "home-big", text: String(count) }));
   body.append(line("Packages ready to send once you say yes.", "home-line grey"));
+  if (flight > 0) body.append(line(`${flight} in flight on autopilot`, "home-line grey"));
   return card("To approve", "#/applications/waiting", body);
 }
 
@@ -454,6 +465,7 @@ export async function viewHome(view) {
   const results = await Promise.allSettled([
     api("rows?status=manual_action_needed"),
     api("rows?status=submitted&limit=30"),
+    api("rows?status=awaiting_approval"),
     api("resumes"),
     api("keywords/pending?limit=1"),
     api("critic/digest?since=14d"),
@@ -461,7 +473,7 @@ export async function viewHome(view) {
     api("health"),
     api("runs?limit=1"),
   ]);
-  const [needs, sent, resumes, keywords, digest, journal, health, runs] = results;
+  const [needs, sent, waiting, resumes, keywords, digest, journal, health, runs] = results;
   const name = firstName(resumes);
   if (name) say(greetingFor(now, name));
   while (grid.firstChild) grid.firstChild.remove();
@@ -472,7 +484,7 @@ export async function viewHome(view) {
   // decision, then the backlog, then what has already happened.
   grid.append(
     needsCard(needs),
-    waitingCard(),
+    waitingCard(waiting),
     evidenceCard(keywords),
     sentCard(sent),
     resumesCard(resumes),

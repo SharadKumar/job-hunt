@@ -16,7 +16,7 @@
 import {
   actionButton, alsoControls, channelLabel, contextualControl, FOCUS_KEY, loadReasonHelper, plainReasonText,
 } from "./applications.js";
-import { APPLY_METHODS, asText, eyebrow, fetchInto, h, pageHeader, panel, render, statusLabel, when } from "./app.js";
+import { api, APPLY_METHODS, asText, eyebrow, fetchInto, h, pageHeader, panel, render, statusLabel, when } from "./app.js";
 import { redraftControl, retryNowControl } from "./row-actions.js";
 import { letterCard } from "./row-letter.js";
 
@@ -186,6 +186,57 @@ const DECISIONS = [
   { key: "withdraw", label: "Withdraw", danger: true },
 ];
 
+/** A row the run is already carrying: it is not waiting on anybody here, and
+ * the only thing left to decide is whether to pull it out of the run. */
+const IN_FLIGHT = "in_flight";
+/** A row that is ready but may only go out with the person in the chair. */
+const ATTENDED_SEND = "attended_send";
+/** The two decisions an in-flight row still takes. Approve is not one of them:
+ * the run has already approved it, and there is nothing left to say yes to. */
+const IN_FLIGHT_DECISIONS = new Set(["hold", "reject"]);
+
+/** The lane table, read once a session. A row that does not carry its own lane
+ * still has one, because the channel decides it (AGENTS.md section 2). */
+let lanesRead = null;
+const lanes = () => (lanesRead ||= api("lanes").catch(() => null));
+
+/**
+ * Which lane the row is in, as a pill on the fact line. Green is the
+ * unattended lane, grey is the attended one, and why it landed there is the
+ * pill's title. With neither the row's lane nor the table there is no pill:
+ * better silent than guessing which lane would send this.
+ */
+function lanePill(row, table) {
+  const of = (map) => (table && table[map] ? table[map][row.channel] : "");
+  const said = row.lane || of("lane_of");
+  const lane = said === "autopilot" || said === "attended" ? said : "";
+  if (!lane) return null;
+  const pill = h("span", { class: `pill lane-pill lane-pill-${lane}`, text: lane });
+  const why = String(row.lane_reason || of("reason_of") || "").trim();
+  if (why) pill.setAttribute("title", why);
+  return pill;
+}
+
+/**
+ * The banner over the decision card: which lane has this row, and what that
+ * means for the person reading it. Only the two lane actions draw one; every
+ * other row is a decision and says so with its buttons.
+ */
+function laneBanner(act, row) {
+  const inFlight = act.kind === IN_FLIGHT;
+  if (!inFlight && act.kind !== ATTENDED_SEND) return null;
+  const box = h("section", { class: `lane-banner lane-banner-${inFlight ? "autopilot" : "attended"}`, role: "note" });
+  if (inFlight) {
+    box.append(h("p", { class: "lane-head", text: act.label || "Autopilot handles this" }));
+    const note = String(act.note || row.lane_reason || "").trim();
+    box.append(h("p", { class: "lane-note", text: note || `The next run sends it through ${sendsThrough(row)}.` }));
+  } else {
+    box.append(h("p", { class: "lane-head", text: "Ready to send in an attended session." }));
+    box.append(h("p", { class: "lane-note", text: "Run /submit-approved with the person present." }));
+  }
+  return box;
+}
+
 const wantsRetry = (act) => act.kind === "retry" || act.post === "retry"
   || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.post === "retry"));
 
@@ -245,6 +296,13 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   const extras = h("div", { class: "action-extra" });
   const act = data.action || { kind: "none" };
   const fields = () => decision.values();
+  // The run is carrying this one. Nothing here approves it again; the only
+  // question left is whether to take it back out of the run.
+  const inFlight = act.kind === IN_FLIGHT;
+  // Whatever the server already hung off `also` is drawn once, so a standing
+  // decision that is also an `also` entry is not offered twice.
+  const alsoPosts = new Set((Array.isArray(act.also) ? act.also : [])
+    .map((spec) => spec && spec.post).filter(Boolean));
 
   // The run again, here, now. It is not a move, so it sits above the moves.
   if (wantsRetry(act)) {
@@ -254,7 +312,7 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
       retry.extra);
   }
 
-  body.append(eyebrow("Move this application"), buttons, extras);
+  body.append(eyebrow(inFlight ? "Take it out of the run" : "Move this application"), buttons, extras);
   // With "Retry now" above it the tray retry is the slower of the two, so it
   // says which one it is and gives up the black button to the one that runs.
   const primary = wantsRetry(act) && act.post === "retry"
@@ -271,14 +329,15 @@ function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}
   for (const button of also.buttons) buttons.append(button);
   for (const extra of also.extras) extras.append(extra);
 
-  if (APPROVABLE.has(row.status) && act.post !== "approve") {
+  if (APPROVABLE.has(row.status) && act.post !== "approve" && !inFlight) {
     const approve = actionButton(row, { key: "approve", label: "Approve", title: DECISION_HELP.approve,
       primary: !buttons.childElementCount }, fields, onDone);
     approve.addEventListener("click", decision.reveal);
     buttons.append(approve);
   }
   for (const spec of DECISIONS) {
-    if (act.post === spec.key) continue;
+    if (act.post === spec.key || alsoPosts.has(spec.key)) continue;
+    if (inFlight && !IN_FLIGHT_DECISIONS.has(spec.key)) continue;
     const button = actionButton(row, { ...spec, title: DECISION_HELP[spec.key] }, fields, onDone);
     if (spec.key === "hold") button.addEventListener("click", decision.reveal);
     buttons.append(button);
@@ -320,11 +379,16 @@ export async function viewRow(view, id) {
   view.append(h("p", { class: "empty", text: "Loading the row." }));
   // The history's reasons are run stamps until home.js's rewriter is loaded.
   await loadReasonHelper();
+  const laneTable = lanes();
   const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
   if (!data) return view.prepend(pageHeader({ title: "Row", back: h("a", { href: "#/applications", text: "Applications" }) }));
   const row = data.row || {};
   const pkg = data.package || {};
-  view.append(pageHeader({
+  // One box for the whole page, so a single rule gives every top-level section
+  // the same 24 px under the one before it (see .row-page in app.css).
+  const page = h("div", { class: "row-page" });
+  view.append(page);
+  page.append(pageHeader({
     title: row.title || "Untitled role",
     back: h("a", { href: "#/applications", text: "Applications" }),
   }));
@@ -336,10 +400,12 @@ export async function viewRow(view, id) {
     row.userSaved ? "saved by you" : null, statusLabel(row.status) || null,
   ].filter(Boolean);
   const line = h("p", { class: "detail-meta", text: `${facts.join(", ")}. ` });
+  const pill = lanePill(row, await laneTable);
+  if (pill) line.append(pill, document.createTextNode(" "));
   if (row.url) line.append(h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
-  view.append(line);
+  page.append(line);
 
-  view.append(statsRow(row, pkg, data.package_files));
+  page.append(statsRow(row, pkg, data.package_files));
 
   // Letter left at reading measure, JD right and quieter, the two cards the
   // same height with the JD scrolling inside its own card. Stacked on a phone,
@@ -361,8 +427,8 @@ export async function viewRow(view, id) {
     ? h("div", { class: "jd" }, h("pre", { text: jdText }))
     : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." }));
   columns.append(jd);
-  view.append(columns);
-  if (!hasLetter && editable) view.append(letterCard(row, pkg, redraft));
+  page.append(columns);
+  if (!hasLetter && editable) page.append(letterCard(row, pkg, redraft));
 
   // The order the page is read in: what it is, whether it may go, what it
   // says, the question in the way, the decision, and the history last.
@@ -373,8 +439,13 @@ export async function viewRow(view, id) {
   // Answer button out without waiting for the panel's module to load.
   const reason = data.reason || row.notes;
   const screeningOnPage = UNANSWERED_QUESTION.test(String(reason || ""));
-  rest.append(screening, actionBar(data, row, done, { screeningOnPage, decision }), historyBlock(row.history));
-  view.append(rest);
+  // The lane banner sits directly above the decision card, because it is the
+  // answer to the question the buttons under it are about to ask.
+  const banner = laneBanner(data.action || { kind: "none" }, row);
+  rest.append(screening);
+  if (banner) rest.append(banner);
+  rest.append(actionBar(data, row, done, { screeningOnPage, decision }), historyBlock(row.history));
+  page.append(rest);
   await mountScreening(screening, row, reason);
   try {
     if (sessionStorage.getItem(FOCUS_KEY) === row.id) {

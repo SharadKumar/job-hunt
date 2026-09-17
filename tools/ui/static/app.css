@@ -510,6 +510,12 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 /* --- Row detail --------------------------------------------------------- */
 
+/* One rhythm down the row page: every top-level section sits 24 px under the
+   one before it. Each section used to set its own margin, so the decision
+   card, which set none, ended up flush against the letter above it. Adjacent
+   margins collapse, so the page header's own 24 px stays 24 px. */
+.row-page > * + * { margin-top: 24px; }
+
 .backlink { margin: 0 0 8px; color: var(--grey); font-size: 13px; }
 
 .detail-meta { margin: 0; color: var(--grey); }
@@ -521,7 +527,6 @@ button[disabled] { opacity: 0.45; cursor: default; }
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  margin: 24px 0;
 }
 
 .stat .value { margin: 0; font-size: 17px; font-weight: 600; }
@@ -558,6 +563,26 @@ button[disabled] { opacity: 0.45; cursor: default; }
 }
 
 .stack { display: grid; gap: 24px; }
+
+/* Which lane this row is in, said once in the fact line. The reason the lane
+   was chosen is the pill's title, so it is there on hover and silent until. */
+.lane-pill { margin-left: 8px; }
+.lane-pill-autopilot { color: var(--green); }
+.lane-pill-attended { color: var(--grey); }
+
+/* The banner over the decision card. Green says the run owns this row and the
+   person is reading a record, not making a decision; grey says the opposite,
+   that nothing goes anywhere until they are in the chair (AGENTS.md 2). */
+.lane-banner {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.lane-banner-autopilot { border-color: var(--green); }
+.lane-banner p { margin: 0; max-width: var(--measure); }
+.lane-banner .lane-head { font-weight: 600; }
+.lane-banner-autopilot .lane-head { color: var(--green); }
+.lane-banner .lane-note { margin-top: 4px; color: var(--grey); font-size: 13px; }
 
 .findings, .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .findings li { padding-left: 12px; border-left: 2px solid var(--line); }
