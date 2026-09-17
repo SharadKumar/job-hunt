@@ -29,6 +29,13 @@
  * tests drive a fake that records calls and never reaches the network. The CLI
  * builds the real client.
  *
+ * Optional: `sheet.enabled: false` in the profile's submission-policy.yaml
+ * switches the mirror off entirely. Every command then exits 0 with
+ * `{ command, ok: true, skipped: "sheet.enabled=false" }` without building a
+ * Google client or reading a single cell, so a person who approves in the
+ * local UI (`npm run ui`) never needs Sheet credentials. A missing `sheet:`
+ * block means enabled, so existing profiles keep mirroring.
+ *
  * Auth: GOOGLE_APPLICATION_CREDENTIALS (service account JSON path) +
  * SHEETS_SPREADSHEET_ID env var. The service-account email must be added
  * to the Sheet as Editor.
@@ -41,9 +48,11 @@
 
 import { promises as fs } from "node:fs";
 import { google } from "googleapis";
-import { load as loadPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import { get as getOpportunity, load as loadPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import path from "node:path";
 import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
+import { resolveProfileContext } from "./profile-context.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
 const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
@@ -78,6 +87,54 @@ const ACTION_STATUS: Record<string, PipelineStatus | null> = {
   withdraw: "withdrawn",
 };
 
+/** Every action the Tray (and the local UI) accepts, for a caller that validates before acting. */
+export const TRAY_ACTIONS: string[] = Object.keys(ACTION_STATUS);
+
+export type TrayActionResult = {
+  /** False when the action is unknown, or when the status move was refused. */
+  ok: boolean;
+  /** The normalised action (trimmed, lower-cased). */
+  action: string;
+  /** False for an action outside ACTION_STATUS; the caller reports it and leaves the row alone. */
+  known: boolean;
+  /** The row's status after the action, or null when the row could not be read. */
+  status_after: PipelineStatus | null;
+  /** Why the move was refused, in the Sheet pull's wording. */
+  error?: string;
+};
+
+/**
+ * Apply one Tray action to one row. This is the whole meaning of an `Action`
+ * cell in one place: `approve` and `hold` move nothing here (the consuming
+ * flow owns them), the rest are status moves, each legal per
+ * VALID_TRANSITIONS from the status the row is actually in.
+ *
+ * Both the Sheet pull and the local web UI go through it, so a decision made
+ * on the phone and the same decision made in the browser cannot diverge.
+ * Neither sends anything: a decision only ever prepares.
+ */
+export async function applyTrayAction(
+  id: string,
+  rawAction: string,
+  opts: { actor?: string; reason?: string } = {},
+): Promise<TrayActionResult> {
+  const action = String(rawAction ?? "").trim().toLowerCase();
+  if (action && !(action in ACTION_STATUS)) return { ok: false, action, known: false, status_after: null };
+
+  const nextStatus = action ? ACTION_STATUS[action] : null;
+  if (!nextStatus) {
+    // approve / hold / edits-only: nothing moves, report where the row stands.
+    const row = await getOpportunity(id).catch(() => null);
+    return { ok: true, action, known: true, status_after: row?.status ?? null };
+  }
+  try {
+    const row = await setStatus(id, nextStatus, opts.reason ?? `sheet: ${action}`, { actor: opts.actor ?? "sheets-sync:pull" });
+    return { ok: true, action, known: true, status_after: row.status };
+  } catch (error: any) {
+    return { ok: false, action, known: true, status_after: null, error: `${action} → ${nextStatus} failed: ${error?.message ?? error}` };
+  }
+}
+
 /** The slice of the googleapis sheets client this tool actually uses. */
 export type SheetsApi = {
   spreadsheets: {
@@ -97,20 +154,50 @@ export type SyncDeps = {
   spreadsheetId: string;
   /** Overridable so a test never writes into state/. */
   queuePath?: string;
+  /**
+   * Overrides the `sheet.enabled` lookup. Left unset by the CLI, which reads
+   * the profile; a test that is exercising the mirror itself pins it so the
+   * result never depends on whether this machine's profile still mirrors.
+   */
+  enabled?: boolean;
 };
 
 export type SyncReport = {
   command: "push" | "pull";
   ok: boolean;
-  pipeline_rows: number;
-  tray_rows: number;
-  manual_rows: number;
-  dropped_unclassified: number;
-  actions_applied: number;
+  /** Present only when the Sheet is switched off: nothing was read or written. */
+  skipped?: string;
+  pipeline_rows?: number;
+  tray_rows?: number;
+  manual_rows?: number;
+  dropped_unclassified?: number;
+  actions_applied?: number;
   queued?: number;
   unknown_actions?: { id: string; action: string }[];
   errors?: string[];
 };
+
+/** The reason every command prints when the mirror is switched off. */
+export const SHEET_DISABLED = "sheet.enabled=false";
+
+/**
+ * Is the Google Sheet mirror switched on for this profile?
+ *
+ * `sheet.enabled: false` in submission-policy.yaml retires the Sheet in favour
+ * of the local UI. A missing block, a missing file or an unreadable one all
+ * mean enabled: the Sheet is the older surface, so the flag only ever turns it
+ * off deliberately, never by accident.
+ */
+export async function sheetEnabled(profileId?: string | null): Promise<boolean> {
+  const policyPath = path.join(resolveProfileContext(profileId).profileDir, "submission-policy.yaml");
+  const policy = await readYamlIfExists<any>(policyPath, {}).catch(() => ({}));
+  return policy?.sheet?.enabled !== false;
+}
+
+/** The report every command returns when the mirror is switched off. */
+function skippedReport(command: "push" | "pull"): SyncReport {
+  return { command, ok: true, skipped: SHEET_DISABLED };
+}
 
 export async function loadLocalEnv(): Promise<void> {
   try {
@@ -269,6 +356,9 @@ export async function readTray(
 }
 
 export async function runPush(deps: SyncDeps): Promise<SyncReport> {
+  // Defence in depth: the CLI checks first, but nothing that reaches here with
+  // the Sheet switched off may touch a cell.
+  if (!(deps.enabled ?? await sheetEnabled())) return skippedReport("push");
   const { sheets, spreadsheetId } = deps;
   await ensureTabs(sheets, spreadsheetId);
 
@@ -491,6 +581,7 @@ export async function applyHeadersAndFilters(
 }
 
 export async function runPull(deps: SyncDeps): Promise<SyncReport> {
+  if (!(deps.enabled ?? await sheetEnabled())) return skippedReport("pull");
   const { sheets, spreadsheetId } = deps;
   const queuePath = deps.queuePath ?? APPROVAL_QUEUE_PATH;
 
@@ -523,23 +614,19 @@ export async function runPull(deps: SyncDeps): Promise<SyncReport> {
     const action = String(row[actionIdx] ?? "").trim().toLowerCase();
     const edits = String(row[editsIdx] ?? "").trim();
     if (!action && !edits) continue;
-    if (action && !(action in ACTION_STATUS)) {
+
+    const applied = await applyTrayAction(id, action, { actor: "sheets-sync:pull" });
+    if (!applied.known) {
       // Reported, row left alone: the cells stay so the person can correct it.
       unknownActions.push({ id, action });
       continue;
     }
-
-    const nextStatus = action ? ACTION_STATUS[action] : null;
-    if (nextStatus) {
-      try {
-        await setStatus(id, nextStatus, `sheet: ${action}`, { actor: "sheets-sync:pull" });
-        actionsApplied++;
-      } catch (error: any) {
-        // Leave the cells intact so the person sees the action did not land.
-        errors.push(`${id}: ${action} → ${nextStatus} failed: ${error?.message ?? error}`);
-        continue;
-      }
+    if (!applied.ok) {
+      // Leave the cells intact so the person sees the action did not land.
+      errors.push(`${id}: ${applied.error}`);
+      continue;
     }
+    if (action && ACTION_STATUS[action]) actionsApplied++;
 
     queue.push({ id, action, edits });
     // Range row indices are 1-based; header is row 1; data starts at row 2.
@@ -587,6 +674,11 @@ async function main() {
   if (!["push", "pull", "init"].includes(cmd)) {
     console.error(`Unknown command: ${cmd}`);
     process.exit(2);
+  }
+  if (!(await sheetEnabled())) {
+    // Exit 0: switched off is a choice, and /daily must read it as "nothing to do".
+    console.log(JSON.stringify(skippedReport(cmd === "pull" ? "pull" : "push")));
+    return;
   }
   const blocker = authBlocker();
   if (blocker) {

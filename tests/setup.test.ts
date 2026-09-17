@@ -3,6 +3,11 @@
  * without overwriting, and setup:check reports the scaffolded profile as blocked
  * on placeholders (not on missing files).
  *
+ * It also pins the two stages that must never block a new person: the Sheet,
+ * which the template switches off in favour of the local UI, and the UI stage
+ * itself, which only reports whether the launchd job is installed and the port
+ * is answering.
+ *
  *   npx tsx tests/setup.test.ts
  */
 import { execFileSync } from "node:child_process";
@@ -40,6 +45,16 @@ try {
 
   const c3 = run(["check", "--stage", "3", "--profile", id]);
   check("stage 3: empty resumes.yaml parses but has no active positionings", c3.stages[0].ok === false && c3.stages[0].checks.find((c: any) => c.id === "resumes_yaml")?.ok === true);
+
+  const c6 = run(["check", "--stage", "6", "--profile", id]);
+  const sheet = c6.stages[0];
+  check("stage 6: the template's sheet.enabled false skips the Sheet, never blocks it", sheet.name === "sheet" && sheet.skipped === true && sheet.ok === true, sheet.checks?.[0]?.detail ?? "");
+
+  const c9 = run(["check", "--stage", "9", "--profile", id]);
+  const ui = c9.stages[0];
+  check("stage 9: the ui stage exists and is informational", ui?.name === "ui" && ui.informational === true);
+  check("stage 9: the ui stage never blocks, whatever its checks say", ui?.ok === true && c9.next_stage === null);
+  check("stage 9: it reports the plist and the port", ["plist", "port"].every((k) => ui?.checks.some((c: any) => c.id === k)), ui?.checks.map((c: any) => `${c.id}=${c.ok}`).join(" "));
 } finally {
   await fs.rm(dir, { recursive: true, force: true });
 }

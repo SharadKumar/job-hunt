@@ -7,6 +7,11 @@
  * (AUDIT_DIR), the approval queue in a temp file (deps.queuePath), and the
  * Sheet is a fake that records every call and keeps tab values in memory.
  *
+ * `enabled: true` is pinned on every deps literal: these cases are about the
+ * mirror's own contract, so they must not change meaning on a machine whose
+ * profile has switched the Sheet off (`sheet.enabled: false`). The switched-off
+ * path has its own file, tests/sheet-optional.test.ts.
+ *
  * Run: npx tsx tests/sheets-sync.test.ts   (exit 0 = all pass)
  */
 
@@ -114,7 +119,7 @@ try {
   // --- push: the Tray carries manual rows, ordered after awaiting rows ------
   {
     const { sheets, calls, tabs } = fakeSheets();
-    const report = await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    const report = await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
 
     assert.equal(report.ok, true);
     assert.equal(report.tray_rows, 3, "all three actionable rows reach the Tray");
@@ -148,7 +153,7 @@ try {
   // --- push carries the person's Action/Edits across the rewrite -----------
   {
     const { sheets, tabs } = fakeSheets();
-    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
     const header = tabs.Tray[0] as string[];
     const idIdx = header.indexOf("id");
     const actionIdx = header.indexOf("Action");
@@ -157,7 +162,7 @@ try {
     tabs.Tray[target][actionIdx] = "approve";
     tabs.Tray[target][editsIdx] = "mention the migration";
 
-    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
     const after = tabs.Tray.find((r, i) => i > 0 && r[idIdx] === awaitingId)!;
     assert.equal(after[actionIdx], "approve", "Action survives the clear + rewrite");
     assert.equal(after[editsIdx], "mention the migration", "Edits survive the clear + rewrite");
@@ -167,7 +172,7 @@ try {
   {
     const { sheets, calls } = fakeSheets({ failGetOn: /^Tray/ });
     await assert.rejects(
-      () => runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH }),
+      () => runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true }),
       /Tray read failed/,
       "a read error must surface, not be swallowed",
     );
@@ -180,7 +185,7 @@ try {
     const { sheets, tabs, calls } = fakeSheets();
     tabs.Tray = [["id", "company", "title"], [awaitingId, "Company 2", "Solution Architect 2"]];
     await assert.rejects(
-      () => runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH }),
+      () => runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true }),
       /missing Action, Edits/,
       "a short header is an error, not an empty Tray",
     );
@@ -190,7 +195,7 @@ try {
   // --- pull: retry / withdraw / unknown ------------------------------------
   {
     const { sheets, tabs, calls } = fakeSheets();
-    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
     const header = tabs.Tray[0] as string[];
     const idIdx = header.indexOf("id");
     const actionIdx = header.indexOf("Action");
@@ -200,7 +205,7 @@ try {
     rowOf(awaitingId)[actionIdx] = "withdraw";
     rowOf(unclassifiedId)[actionIdx] = "escalate"; // not an action we know
 
-    const report = await runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    const report = await runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
 
     assert.equal(report.tray_rows, 3);
     assert.equal(report.manual_rows, 1, "pull counts the manual rows it read");
@@ -236,7 +241,7 @@ try {
     const rejectedId = await seedManual(4, 50, "unsupported portal");
     await setStatus(rejectedId, "rejected", "not pursuing");
     const { sheets, tabs, calls } = fakeSheets();
-    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
     // A rejected row is not in the Tray; forge one to prove the failure path.
     const header = tabs.Tray[0] as string[];
     const row = new Array(header.length).fill("");
@@ -245,7 +250,7 @@ try {
     row[header.indexOf("Status")] = "rejected";
     tabs.Tray.push(row);
 
-    const report = await runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH });
+    const report = await runPull({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
     assert.equal(report.ok, false, "a refused transition makes the run non-ok");
     assert.equal(report.actions_applied, 0);
     assert.match(report.errors?.[0] ?? "", /invalid transition rejected → approved/);

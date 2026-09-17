@@ -7,6 +7,10 @@
  * and returns {hits, slop_score, verdict}. Explicit fatal phrases fail;
  * stylistic/slop-pattern hits warn for writer judgement.
  *
+ * Any em dash (U+2014) or en dash (U+2013) is a fail on its own, at any
+ * density, matching `npm run voice:check` and AGENTS.md section 3 rule 2.
+ * Rewrite the clause with a colon, a comma, parentheses or a new sentence.
+ *
  * Usage:
  *   tsx tools/slop-killer.ts --file path/to/draft.md
  *   tsx tools/slop-killer.ts --text "I am writing to express interest in..."
@@ -111,27 +115,14 @@ function check(text: string, banlist: { phrases: { phrase: string; category: str
     }
   }
 
-  // Em-dash density: more than 1 per 120 words is a strong slop signal.
   const words = text.split(/\s+/).filter(Boolean).length;
-  const emDashCount = (text.match(/—/g) || []).length;
-  const allowedEmDashes = Math.max(1, Math.floor(words / 120));
-  if (words > 0 && emDashCount > allowedEmDashes) {
-    const excess = emDashCount - allowedEmDashes;
-    hits.push({
-      phrase: `em-dash density (${emDashCount} in ${words} words; max ${allowedEmDashes})`,
-      position: 0,
-      category: "punctuation",
-      weight: Math.min(60, 10 + excess * 4),
-    });
-  }
 
-  // Two em-dashes in the same sentence
-  for (const sentence of text.split(/[.!?]\s+/)) {
-    const c = (sentence.match(/—/g) || []).length;
-    if (c >= 2) {
-      hits.push({ phrase: "two em-dashes in one sentence", position: text.indexOf(sentence), category: "punctuation", weight: 5 });
-      break;
-    }
+  // Em and en dashes are banned outright, not rationed. AGENTS.md section 3
+  // rule 2 and voice-check both treat a single one as a fail, so a density
+  // allowance here would have let the one dash that matters through.
+  for (const m of text.matchAll(/[\u2013\u2014]/g)) {
+    const dash = m[0] === "\u2013" ? "en dash (U+2013)" : "em dash (U+2014)";
+    hits.push({ phrase: `${dash}: rewrite the clause`, position: m.index ?? 0, category: "punctuation", weight: 50, fatal: true });
   }
 
   // Triple ellipses

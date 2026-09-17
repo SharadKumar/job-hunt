@@ -29,6 +29,7 @@ import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import net from "node:net";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
@@ -37,7 +38,34 @@ import { resolveProfileContext } from "./profile-context.ts";
 const exec = promisify(execFile);
 
 type Check = { id: string; ok: boolean; detail: string; fix?: string };
-type Stage = { stage: number; name: string; ok: boolean; checks: Check[] };
+type Stage = {
+  stage: number;
+  name: string;
+  ok: boolean;
+  /** The stage does not apply to this profile at all (the Sheet, switched off). */
+  skipped?: boolean;
+  /** The stage reports but never blocks: a failing check here is information. */
+  informational?: boolean;
+  checks: Check[];
+};
+
+/** The local approval UI's launchd job and its default bind address. */
+const UI_LABEL = "com.job-hunt-harness.ui";
+const UI_HOST = "127.0.0.1";
+const UI_PORT = Number(process.env.HARNESS_UI_PORT ?? 7788);
+const UI_PROBE_MS = 300;
+
+/** Is something answering on host:port? A short probe; any failure is a "no". */
+function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const done = (answer: boolean) => { socket.destroy(); resolve(answer); };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
+}
 
 const PROFILE_FILES = [
   "profile.md", "channels.yaml", "submission-policy.yaml", "scoring-weights.yaml",
@@ -169,7 +197,17 @@ async function stageChannels(profileId: string | null): Promise<Stage> {
   return { stage: 5, name: "channels", ok: checks.every((c) => c.ok), checks };
 }
 
-async function stageSheet(): Promise<Stage> {
+async function stageSheet(profileId: string | null): Promise<Stage> {
+  // The Sheet is optional and, from WP4.3, retirable: `sheet.enabled: false`
+  // in submission-policy.yaml means the local UI is the approval surface and
+  // there is nothing here to configure. Skipped, not blocked.
+  const policy = await readYaml(path.join(resolveProfileContext(profileId).profileDir, "submission-policy.yaml"));
+  if (policy?.sheet?.enabled === false) {
+    return {
+      stage: 6, name: "sheet", ok: true, skipped: true,
+      checks: [{ id: "sheet", ok: true, detail: "disabled (sheet.enabled: false); the local UI is the approval surface", fix: "set sheet.enabled: true in submission-policy.yaml to mirror to a Google Sheet again" }],
+    };
+  }
   const checks: Check[] = [];
   const env = await fs.readFile(repoPath(".env"), "utf8").catch(() => "");
   const get = (k: string) => (process.env[k] || env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1] || "").trim();
@@ -229,6 +267,38 @@ async function stageAutopilot(profileId: string | null): Promise<Stage> {
   return { stage: 8, name: "autopilot", ok: checks.every((c) => c.ok), checks };
 }
 
+/**
+ * Stage 9: the local approval UI (`npm run ui`).
+ *
+ * Informational on purpose. The UI is a convenience, not a prerequisite, so a
+ * missing plist or a silent port must never block `ready_for_autopilot`; the
+ * stage reports what is true and the /setup skill offers to install it.
+ */
+async function stageUi(): Promise<Stage> {
+  const checks: Check[] = [];
+  const plist = path.join(process.env.HOME || "", "Library", "LaunchAgents", `${UI_LABEL}.plist`);
+  if (process.platform !== "darwin") {
+    checks.push({ id: "plist", ok: true, detail: "not macOS; run `npm run ui` yourself, or supervise it with your init system" });
+  } else {
+    const plistText = existsSync(plist) ? await fs.readFile(plist, "utf8").catch(() => "") : "";
+    const pointsHere = plistText.includes(repoPath("."));
+    checks.push({
+      id: "plist",
+      ok: !!plistText && pointsHere,
+      detail: !plistText ? "not installed" : pointsHere ? plist : `installed but points at another checkout, not ${repoPath(".")}`,
+      fix: "bash scripts/install-ui-launchd.sh",
+    });
+  }
+  const answering = await tcpProbe(UI_HOST, UI_PORT, UI_PROBE_MS);
+  checks.push({
+    id: "port",
+    ok: answering,
+    detail: `${UI_HOST}:${UI_PORT} ${answering ? "answering" : `not answering (${UI_PROBE_MS} ms probe)`}`,
+    fix: `npm run ui -- --port ${UI_PORT}`,
+  });
+  return { stage: 9, name: "ui", ok: true, informational: true, checks };
+}
+
 /* ------------------------------------------------------------ scaffold */
 
 async function scaffold(profileId: string | null): Promise<{ created: string[]; skipped: string[] }> {
@@ -272,7 +342,8 @@ async function main() {
 
   const all = [
     () => stageMachine(), () => stageProfile(profileId), () => stageCv(profileId), () => stagePositionings(profileId),
-    () => stageBaselines(profileId), () => stageChannels(profileId), () => stageSheet(), () => stageSchedule(), () => stageAutopilot(profileId),
+    () => stageBaselines(profileId), () => stageChannels(profileId), () => stageSheet(profileId), () => stageSchedule(),
+    () => stageAutopilot(profileId), () => stageUi(),
   ];
   const wanted = args.stage !== undefined ? [Number(args.stage)] : all.map((_, i) => i);
   const stages: Stage[] = [];

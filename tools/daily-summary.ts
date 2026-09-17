@@ -24,7 +24,9 @@
  * unparseable screening-answers.yaml or submission-policy.yaml, a failed Sheet
  * push, or an unexpected throw); 2 on a bad argument. A *missing* policy or
  * screening file is a normal state and stays exit 0. A missing Sheet
- * credential, or an osascript failure, degrades to a note and stays exit 0.
+ * credential, a Sheet switched off with `sheet.enabled: false`, or an
+ * osascript failure, degrades to a note and stays exit 0; the switched-off
+ * case reports `sheet.status: "disabled"` and never builds a Google client.
  */
 
 import { readJsonIfExists as readJsonOrNull } from "./lib/fs.ts";
@@ -35,7 +37,7 @@ import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { query as auditQuery, type AuditEvent } from "./audit.ts";
-import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilters } from "./sheets-sync.ts";
+import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilters, sheetEnabled } from "./sheets-sync.ts";
 
 const TZ = "Australia/Sydney";
 const SUMMARY_DIR = repoPath("state/journal/summary");
@@ -94,8 +96,12 @@ export type DailySummary = {
     killSwitch: boolean;
   };
   markdown: string;
-  /** `failed` separates a real push failure (exit 1) from "not configured" (exit 0). */
-  sheet: { pushed: boolean; failed: boolean; note: string };
+  /**
+   * `failed` separates a real push failure (exit 1) from "not configured" or
+   * "switched off" (exit 0). `status` is the one word to report: `disabled`
+   * when `sheet.enabled: false` retires the mirror in favour of the local UI.
+   */
+  sheet: { pushed: boolean; failed: boolean; status: "pushed" | "disabled" | "not_configured" | "skipped" | "failed"; note: string };
 };
 
 // ---------- helpers ----------
@@ -532,10 +538,17 @@ function sheetRows(date: string, markdown: string): (string | number)[][] {
   return rows;
 }
 
-async function pushSheet(date: string, markdown: string): Promise<{ pushed: boolean; failed: boolean; note: string }> {
+type SheetOutcome = DailySummary["sheet"];
+
+async function pushSheet(date: string, markdown: string): Promise<SheetOutcome> {
+  // Switched off in the profile: the local UI is the surface, so there is
+  // nothing to mirror and nothing to configure. Never build a client here.
+  if (!(await sheetEnabled())) {
+    return { pushed: false, failed: false, status: "disabled", note: "Sheet disabled (sheet.enabled: false); the local UI is the approval surface" };
+  }
   await loadLocalEnv();
   // Not configured is a choice, not a failure; anything after this point is.
-  if (!authReady()) return { pushed: false, failed: false, note: "Sheet not configured (GOOGLE_APPLICATION_CREDENTIALS / SHEETS_SPREADSHEET_ID missing); summary not mirrored" };
+  if (!authReady()) return { pushed: false, failed: false, status: "not_configured", note: "Sheet not configured (GOOGLE_APPLICATION_CREDENTIALS / SHEETS_SPREADSHEET_ID missing); summary not mirrored" };
   try {
     const sheets = await sheetsClient();
     const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID!;
@@ -546,10 +559,10 @@ async function pushSheet(date: string, markdown: string): Promise<{ pushed: bool
     await applyHeadersAndFilters(sheets, spreadsheetId, { Summary: { headerCols: 3, rowCount: rows.length, columnWidths: { 0: 100, 1: 180, 2: 900 } } });
     const check = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Summary!A1:C" });
     const got = check.data.values?.length ?? 0;
-    if (got !== rows.length) return { pushed: false, failed: true, note: `Sheet Summary verification failed: ${got}/${rows.length} rows` };
-    return { pushed: true, failed: false, note: `Sheet Summary tab rewritten with ${rows.length - 1} lines` };
+    if (got !== rows.length) return { pushed: false, failed: true, status: "failed", note: `Sheet Summary verification failed: ${got}/${rows.length} rows` };
+    return { pushed: true, failed: false, status: "pushed", note: `Sheet Summary tab rewritten with ${rows.length - 1} lines` };
   } catch (e: any) {
-    return { pushed: false, failed: true, note: `Sheet push failed: ${short(e?.message ?? String(e), 160)}` };
+    return { pushed: false, failed: true, status: "failed", note: `Sheet push failed: ${short(e?.message ?? String(e), 160)}` };
   }
 }
 
@@ -571,7 +584,9 @@ export async function run(opts: { date: string; notify: boolean; json: boolean; 
   await fs.mkdir(SUMMARY_DIR, { recursive: true });
   const outPath = path.join(SUMMARY_DIR, `${opts.date}.md`);
   await fs.writeFile(outPath, markdown);
-  const sheet = opts.sheet ? await pushSheet(opts.date, markdown) : { pushed: false, failed: false, note: "Sheet push skipped (--no-sheet)" };
+  const sheet: SheetOutcome = opts.sheet
+    ? await pushSheet(opts.date, markdown)
+    : { pushed: false, failed: false, status: "skipped", note: "Sheet push skipped (--no-sheet)" };
   console.error(`[daily-summary] wrote ${path.relative(repoPath(), outPath)}; ${sheet.note}`);
   if (opts.notify) await notify(core.headline, opts.date);
   return { ...core, markdown, sheet };

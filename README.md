@@ -21,7 +21,7 @@ New here? Jump to [Getting started](#getting-started-new-person) or [Developer o
 - No unattended sends outside the one-click autopilot adapters. A Sheet `approve` on any non-autopilot channel authorises preparation only; external ATS portals and every other channel need you present for that exact package.
 - No auto-sent recruiter email. Drafts only, saved in the opportunity's archive for you to send from your own client.
 - No LinkedIn auto-comment / auto-DM. Drafts only; you send from your client.
-- No two-way Sheet sync beyond the `Action` + `Edits` columns. The Sheet is otherwise a read-only mirror.
+- No two-way Sheet sync beyond the `Action` + `Edits` columns. The Sheet is otherwise a read-only mirror, and optional: `sheet.enabled: false` retires it in favour of the local UI.
 
 ## Architecture
 
@@ -159,7 +159,8 @@ my-contracting/
 │   ├── score.ts                           ← weighted scorer (takes pre-classified input)
 │   ├── slop-killer.ts                     ← AI-slop phrase detector for drafts
 │   ├── voice-check.ts                     ← sentence length, English variant, opener patterns
-│   ├── sheets-sync.ts                     ← push state → Sheets; pull Tray Action+Edits
+│   ├── sheets-sync.ts                     ← push state → Sheets; pull Tray Action+Edits (skipped when sheet.enabled is false)
+│   ├── ui/                                ← the local approval UI (npm run ui): server, API, static assets
 │   ├── rescore-pipeline.ts                ← bulk rescore with pre-computed classifications
 │   ├── dedup-pipeline.ts                  ← one-shot URL re-canonicalisation + merge duplicates
 │   ├── url-canonical.ts                   ← strip per-impression tracking tokens from job URLs
@@ -335,9 +336,10 @@ Everything under `state/` that describes you (profile, CV, positionings, pipelin
 | 3 positionings | `resumes.yaml` has active entries | `/onboarding` proposes 3 to 6 positionings from the CV and you confirm |
 | 4 baselines | every active positioning has an approved, unchanged baseline CV | `/resume-review` renders, audits, critiques, and walks you through approval (minutes per positioning) |
 | 5 channels | enabled channels have a saved login | pick channels in `channels.yaml`; run `npm run login:seek` / `login:linkedin` yourself (a browser opens, you log in once) |
-| 6 sheet (optional) | key file readable, spreadsheet reachable | service account + JSON key, empty Sheet shared with the service-account email as Editor, two lines in `.env`; `npm run sheets:sync` creates the tabs |
+| 6 sheet (optional, off by default) | `sheet.enabled`, then key file readable and spreadsheet reachable | skipped while `sheet.enabled: false` (the local UI is the approval surface). To add the phone Tray: set `sheet.enabled: true`, then a service account + JSON key, an empty Sheet shared with the service-account email as Editor, two lines in `.env`; `npm run sheets:sync` creates the tabs |
 | 7 schedule | launchd job loaded, `HARNESS_CLI` set | `bash scripts/install-launchd.sh` (macOS); a cron line for `scripts/daily.sh` elsewhere |
 | 8 autopilot | policy parses, kill switch off, `autopilot.enabled`, channels listed | after at least one attended `/apply`, answer "turn autopilot on?" and the agent writes `submission-policy.yaml` |
+| 9 ui (informational) | UI launchd job installed and pointing here, `127.0.0.1:7788` answering | `npm run ui` when you want it, `bash scripts/install-ui-launchd.sh` to keep it running; never blocks `ready_for_autopilot` |
 
 `ready_for_autopilot: true` means the 07:00 run will import your saved SEEK jobs, hunt, draft, and send one-click applications that pass the letter-critic and the gate, and journal every send with the full letter.
 
@@ -349,7 +351,56 @@ Each stage's commands are in the table. The only things the agent cannot do for 
 
 `kill_switch: true` in `state/profile/submission-policy.yaml` halts every send, attended or not. `autopilot.enabled: false` halts only the unattended lane. Both take effect on the next run.
 
+## Local UI
+
+The local UI is the primary approval surface. It reads and writes the same SQLite pipeline the CLI does, so a decision you make in it is the decision, with no sync step and no Google account.
+
+```
+npm run ui                       # http://127.0.0.1:7788
+npm run ui -- --open             # and open a browser
+npm run ui -- --port 7799        # a different port
+```
+
+It serves the same work the Sheet Tray did: the day's summary, every row with its classification and score, the pending keyword questions, today's journal and the critic digest, plus the per-row actions (approve, reject, hold, edit). Approving a row is preparation, exactly as in the Sheet: sending still obeys the two lanes in `AGENTS.md` section 2.
+
+### From your phone
+
+The server binds `127.0.0.1` by default, so nothing off this machine can reach it. To use it from a phone:
+
+1. Put the phone and the laptop on the same network. [Tailscale](https://tailscale.com) is the safer option, because the laptop keeps the same address on any network and nothing is exposed to the LAN; a plain Wi-Fi LAN works too.
+2. Choose a long random token and export it, for example `export HARNESS_UI_TOKEN=$(openssl rand -hex 24)`. The server refuses a non-local bind without one.
+3. Start it bound to that address: `npm run ui -- --host 100.x.y.z` (your Tailscale address), or `--host 0.0.0.0` on a trusted LAN.
+4. On the phone, open `http://<that address>:7788/`, expand "API token" in the header, paste the token and save. The browser keeps it locally and sends it as a bearer header on every call.
+
+Treat the token like a password: it is the only thing between the network and your pipeline. Never put it in a journal entry, a commit or a screenshot.
+
+### Keeping it running
+
+```
+bash scripts/install-ui-launchd.sh              # render + install + load the launchd job
+bash scripts/install-ui-launchd.sh --dry-run    # print the rendered plist, change nothing
+bash scripts/install-ui-launchd.sh --port 7799  # a different port
+bash scripts/install-ui-launchd.sh --uninstall  # unload and remove it
+```
+
+It renders `templates/launchd/com.job-hunt-harness.ui.plist` with this checkout's path and installs it to `~/Library/LaunchAgents/com.job-hunt-harness.ui.plist`. `RunAtLoad` and `KeepAlive` mean it starts at login and comes back if it dies. Logs land in `state/journal/launchd/ui.log`. Re-running it is safe: the job is booted out and bootstrapped again. To bind beyond localhost from the launchd job, uncomment `HARNESS_UI_TOKEN` in the installed plist, add `--host <address>` to the command in `ProgramArguments`, and `launchctl kickstart -k gui/$UID/com.job-hunt-harness.ui`.
+
+`npm run setup:check` reports all of this as stage 9. It is informational: a UI that is not installed or not running never blocks anything.
+
+### The Google Sheet is now optional
+
+`sheet.enabled` in `state/profile/submission-policy.yaml` decides whether the Sheet mirror runs at all:
+
+```yaml
+sheet:
+  enabled: false     # the local UI is the approval surface
+```
+
+With it off, `npm run sheets:sync`, `npm run sheets:pull` and the `/daily` Sheet steps exit 0 immediately with `{"command":"push","ok":true,"skipped":"sheet.enabled=false"}`, no Google client is built and no credentials are needed; `npm run daily:summary` reports `sheet: "disabled"`; `setup:check` marks stage 6 `skipped` rather than blocked. A profile with no `sheet:` block keeps mirroring, so nothing changes for an existing setup until you say so. The two surfaces also run side by side: set `sheet.enabled: true` and you get the phone Tray as well, with the UI still primary. `post_submit.write_back_to_sheet` remains the write half and only applies while the Sheet is enabled.
+
 ## Daily mobile workflow
+
+This is the Google Sheet route, for when `sheet.enabled: true`. With the Sheet off, do the same thing in the local UI from your phone (see "From your phone" above): the rows, the actions and the effect are identical.
 
 1. Open the Google Sheet on your phone.
 2. Switch to the **Tray** tab. New rows show up overnight with: role title, company, channel, score, top match reasons, top red flags, CV variant chosen, the first 2 sentences of the cover letter, a link to the rendered PDF.

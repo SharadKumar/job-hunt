@@ -93,7 +93,7 @@
 ## Industry-specific overlay (IT / consulting / AU government)
 
 - "synergy", "synergies"
-- "stakeholder alignment" (overused — replace with the specific stakeholder + the specific alignment)
+- "stakeholder alignment" (overused; replace with the specific stakeholder and the specific alignment)
 - "operational excellence" (unless paired with a measurable lift)
 - "future-proof"
 - "digital-first" / "mobile-first" (often vacuous filler)
