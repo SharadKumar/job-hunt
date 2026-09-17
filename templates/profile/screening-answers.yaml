@@ -16,7 +16,12 @@ answers:
       - "right to work in australia"
       - "australian citizen|permanent resident"
       - "work in australia without (visa|sponsorship)"
+      - "legally authori[sz]ed to work in australia"
     answer: "TODO: your work-rights status in one sentence, e.g. 'Yes, Australian Citizen with full unrestricted right to work.'"
+    # Yes/No portals (LinkedIn) as well as SEEK's statement dropdowns.
+    select:
+      - "australian citizen|permanent resident|unrestricted"
+      - "^yes"
 
   - id: visa_sponsorship_needed
     patterns:
@@ -115,6 +120,23 @@ answers:
   #      - "years.*<platform>"
   #      - "experience.*<platform>"
   #    answer: "N+ years; most recently <one-line evidence from cv-source.md>."
+
+# Years of experience per skill. A question of the shape
+#   "How many years of work experience do you have with <X>?"
+# resolves through this map: a numeric field is filled with the number, an
+# option field takes the option whose band covers it ("5+", "more than 5",
+# "3-5", "10+"). Keys are lowercase; a subject inside a longer phrase still
+# matches ("Microsoft Azure" -> azure). A subject that is not listed here stays
+# unmatched and is parked below for you to answer: the harness never invents a
+# number. Two shapes are accepted:
+#
+#   skills_years:
+#     azure: 8
+#     excel: 15
+#     m365:
+#       years: 15
+#       aliases: ["microsoft 365", "office 365", "sharepoint"]
+skills_years: {}
 
 # Unknown questions land here automatically when the worker can't match.
 # Edit, give an answer, and the next daily run resumes the paused submissions.

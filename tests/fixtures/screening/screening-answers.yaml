@@ -1,0 +1,192 @@
+# Test fixture: the shape of state/profile/screening-answers.yaml with every
+# personal value replaced by an invented one. It carries the template's
+# patterns (including the right_to_work_au "legally authorised" pattern and its
+# select list), a skills_years map, and the thirteen unanswered questions the
+# live file had parked on 2026-09-17, anonymised.
+#
+# Nothing here describes a real person, company or rate.
+
+answers:
+  - id: right_to_work_au
+    patterns:
+      - "right to work in australia"
+      - "australian citizen|permanent resident"
+      - "work in australia without (visa|sponsorship)"
+      - "legally authori[sz]ed to work in australia"
+    answer: "Yes, Australian Citizen with full unrestricted right to work."
+    select:
+      - "australian citizen|permanent resident|unrestricted"
+      - "^yes"
+
+  - id: visa_sponsorship_needed
+    patterns:
+      - "require (visa )?sponsorship"
+      - "need sponsorship"
+    answer: "No."
+
+  - id: active_security_clearance
+    patterns:
+      - "(currently |already )?(hold|have|possess).*(active )?(baseline|nv1|nv2|pv|security clearance)"
+      - "(active|current).*(baseline|nv1|nv2|pv|security clearance)"
+      - "security clearance status"
+    answer: "No current clearance. Australian citizen, eligible for Baseline and ready to apply on engagement."
+
+  - id: notice_period
+    patterns:
+      - "notice period"
+      - "when can you start"
+      - "availability"
+    answer: "One week."
+    select:
+      - "1 week"
+      - "none, i'm ready|ready to go now"
+
+  - id: day_rate_expectation
+    patterns:
+      - "day rate"
+      - "daily rate"
+      - "contract rate expectation"
+      - "rate per day"
+    answer: "$1,400 per day plus GST through Example Delivery Pty Ltd (ABN 00 000 000 000)."
+    select:
+      - "1,?[4-5]\\d\\d|1,?500|1500"
+      - "1,?[2-3]\\d\\d|1,?300|1300|1,?200|1200"
+      - "1,?[0-1]\\d\\d|1,?000|1000"
+
+  - id: salary_expectation
+    patterns:
+      - "salary expectation"
+      - "expected salary"
+      - "expected annual"
+      - "base salary"
+      - "annual package"
+      - "remuneration expectation"
+    answer: "Contract only; day rate $1,400 plus GST. Not seeking a salaried package."
+    select:
+      - "\\$3[0-5]\\d\\s*k|\\$3[0-5]\\d,000"
+      - "\\$300k|\\$300,000"
+      - "\\$2[5-9]\\d\\s*k|\\$2[5-9]\\d,000"
+
+  - id: years_experience_generic
+    patterns:
+      - "how many years'? experience do you have as"
+      - "years of experience (do you have )?(as|in|with)"
+    answer: "More than 5 years."
+    select:
+      - "more than 5 years|more than 10 years|10\\+ years"
+      - "5 years"
+
+  - id: years_with_salesforce
+    patterns:
+      - "years.*salesforce"
+      - "experience.*salesforce"
+    answer: "8+ years across Sales Cloud and Service Cloud at two invented clients."
+
+  - id: agsva_clearance_select
+    patterns:
+      - "agsva|do you have a (security )?clearance|security clearance"
+    answer: "No current clearance; eligible for Baseline."
+    select:
+      - "no, ability to obtain|able to obtain|eligible|willing to obtain|no clearance"
+
+  - id: privacy_policy_consent
+    patterns:
+      - "agree to (the|our) privacy policy|privacy (policy|statement|collection)"
+    answer: "Yes"
+    select:
+      - "^yes$|agree|accept"
+
+  - id: remote_or_hybrid
+    patterns:
+      - "remote.*hybrid"
+      - "work arrangement"
+      - "office attendance"
+    answer: "Remote preferred; open to hybrid up to two days a week."
+
+# Years of experience per skill. Invented numbers.
+skills_years:
+  azure: 8
+  excel: 15
+  m365:
+    years: 12
+    aliases: ["microsoft 365", "office 365", "sharepoint"]
+
+unknown_questions:
+  - opportunity_id: seek-fixture0001
+    company: "Alpha Recruitment"
+    title: "Principal Delivery Manager"
+    question: "How many years of experience do you have leading complex digital delivery projects and multiple Agile squads?"
+    context: "text"
+    answer: null
+  - opportunity_id: seek-fixture0001
+    company: "Alpha Recruitment"
+    title: "Principal Delivery Manager"
+    question: "What experience do you have delivering Salesforce CRM, workflow or customer portal solutions?"
+    context: "text"
+    answer: null
+  - opportunity_id: seek-fixture0001
+    company: "Alpha Recruitment"
+    title: "Principal Delivery Manager"
+    question: "Have you managed system implementation and legacy-system decommissioning within State Government or another complex organisation?"
+    context: "text"
+    answer: null
+  - opportunity_id: seek-fixture0002
+    company: "Beta Health Fund"
+    title: "Senior Delivery Lead"
+    question: "What's your expected annual base salary?"
+    context: "$30k | $35k | $40k | $45k | $50k | $55k | $60k | $65k | $70k | $80k | $90k | $100k | $110k | $120k | $130k | $140k | $150k | $170k | $200k | $250k | $300k | $350k | $350k+"
+    answer: null
+  - opportunity_id: seek-fixture0002
+    company: "Beta Health Fund"
+    title: "Senior Delivery Lead"
+    question: "What's your expected annual base salary? "
+    context: "$30k | $35k | $40k | $45k | $50k | $55k | $60k | $65k | $70k | $80k | $90k | $100k | $110k | $120k | $130k | $140k | $150k | $170k | $200k | $250k | $300k | $350k | $350k+"
+    answer: null
+  - opportunity_id: seek-fixture0003
+    company: "Gamma Specialists"
+    title: "Scrum Master"
+    question: "Have you worked in a role which requires a sound understanding of the software development lifecycle?"
+    context: "Yes | No"
+    answer: null
+  - opportunity_id: seek-fixture0004
+    company: "Delta People"
+    title: "Enterprise Information Architect"
+    question: "Do you hold a minimum Baseline Security Clearance?"
+    context: "No | Yes"
+    answer: null
+  - opportunity_id: seek-fixture0005
+    company: "Epsilon Vision Pty Ltd"
+    title: "Applied AI Engineer"
+    question: "What's your expected day rate?"
+    context: "$200 | $300 | $400 | $500 | $600 | $700 | $800 | $900 | $1,000 | $1,250 | $1,500 | $1,500+"
+    answer: null
+  - opportunity_id: linkedin_jobs-fixture0006
+    company: "Zeta Recruitment"
+    title: "Azure Integration Lead"
+    question: "Are you legally authorized to work in Australia? Required"
+    context: "Yes | No"
+    answer: null
+  - opportunity_id: linkedin_jobs-fixture0007
+    company: "Eta Recruitment"
+    title: "Technical Project Manager"
+    question: "How many years of work experience do you have with Microsoft Excel?"
+    context: "numeric"
+    answer: null
+  - opportunity_id: linkedin_jobs-fixture0008
+    company: "Theta Technology"
+    title: "Delivery Manager, Data and Analytics"
+    question: "How many years of work experience do you have with Microsoft Azure?"
+    context: "numeric"
+    answer: null
+  - opportunity_id: linkedin_jobs-fixture0009
+    company: "Iota Consulting Pty Ltd"
+    title: "Azure Cloud Engineer"
+    question: "Select an option Yes No"
+    context: "Select an option Yes No / Please enter a valid answer"
+    answer: null
+  - opportunity_id: linkedin_jobs-fixture0010
+    company: "Kappa Infotech"
+    title: "Lead AI Engineer"
+    question: "How many years of work experience do you have with TensorFlow?"
+    context: "numeric"
+    answer: null
