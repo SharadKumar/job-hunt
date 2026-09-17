@@ -24,6 +24,15 @@
  * CLI:
  *   tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md> [--out <json>]
  *       [--model sonnet|opus|haiku] [--timeout-ms 240000] [--apply-fixes]
+ *   tsx tools/letter-critic.ts --digest [--since 14d] [--archive <dir>]
+ *
+ * The digest is the learning loop. Blocks recur on the same few themes (scope
+ * inflation on one engagement, a venture named in a letter, one client's work
+ * attributed to another) because a verdict file is read once and forgotten.
+ * `--digest` reads every verdict in the archive, keeps the `fail` findings from
+ * blocked verdicts, groups them by subject plus verb class, and prints a
+ * standing-rule candidate per theme. No model call: it is pure aggregation.
+ * Promotion of a theme into `letter-critic-rules.yaml` is an attended decision.
  *
  * Output JSON (also written to --out, default <letter-dir>/letter-critic.json):
  *   { verdict: "pass"|"block", findings: [{severity, quote, issue, fix}],
@@ -58,6 +67,23 @@ export type CriticResult = {
 export function sha256Text(text: string): string {
   return sha256(text);
 }
+
+/**
+ * An error the CLI can report as a machine-readable reason. The gate callers
+ * read the reason, not the prose, so the two failure modes stay distinct:
+ * the child could not run at all, or it ran and said something unusable.
+ */
+export class CriticError extends Error {
+  reason: string;
+  constructor(reason: string, detail: string) {
+    super(`${reason}: ${detail}`);
+    this.name = "CriticError";
+    this.reason = reason;
+  }
+}
+
+export const UNPARSEABLE = "unparseable critic output";
+export const COULD_NOT_RUN = "critic could not run";
 
 /**
  * Read an existing letter-critic.json and report whether it is a current pass
@@ -101,7 +127,12 @@ export async function loadProfileRules(profileId?: string | null): Promise<Profi
   return { neverNamed, standingRules: str(y?.standing_rules), profileFacts: str(y?.profile_facts), profileSections: str(y?.profile_sections).length ? str(y?.profile_sections) : DEFAULT_PROFILE_SECTIONS };
 }
 
-function deterministicFindings(letter: string, neverNamed: NeverNamed[]): CriticFinding[] {
+/**
+ * Mechanical, model-free checks over the letter text. Exported so the unit
+ * tests can pin the behaviour (an em dash, a never-named term, a clearance
+ * claim, a requisition-style code) without spawning a child model.
+ */
+export function deterministicFindings(letter: string, neverNamed: NeverNamed[]): CriticFinding[] {
   const out: CriticFinding[] = [];
   const lines = letter.split("\n");
   for (const line of lines) {
@@ -124,7 +155,7 @@ function deterministicFindings(letter: string, neverNamed: NeverNamed[]): Critic
   return out;
 }
 
-function requisitionCodesNotInJd(letter: string, jd: string): CriticFinding[] {
+export function requisitionCodesNotInJd(letter: string, jd: string): CriticFinding[] {
   const codes = new Set<string>();
   for (const m of letter.matchAll(/\b(?:LH|RFQ|REQ|JR|JOB|REF)[-\s]?\d{4,}\b/gi)) codes.add(m[0].replace(/\s+/g, "-").toUpperCase());
   const out: CriticFinding[] = [];
@@ -213,7 +244,7 @@ async function buildUserPrompt(letter: string, jd: string, rules: ProfileRules, 
   ].join("\n");
 }
 
-type ClaudeJson = { is_error?: boolean; subtype?: string; result?: string; structured_output?: unknown; session_id?: string; total_cost_usd?: number; duration_ms?: number };
+export type ClaudeJson = { is_error?: boolean; subtype?: string; result?: string; structured_output?: unknown; session_id?: string; total_cost_usd?: number; duration_ms?: number };
 
 async function spawnClaude(systemPrompt: string, userPrompt: string, model: string, timeoutMs: number): Promise<ClaudeJson> {
   const args = [
@@ -235,15 +266,15 @@ async function spawnClaude(systemPrompt: string, userPrompt: string, model: stri
     const child = spawn("claude", args, { env, cwd: repoPath("."), stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error(`claude -p timed out after ${timeoutMs} ms`)); }, timeoutMs);
+    const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new CriticError(COULD_NOT_RUN, `claude -p timed out after ${timeoutMs} ms`)); }, timeoutMs);
     child.stdout.on("data", (d) => { stdout += d.toString(); });
     child.stderr.on("data", (d) => { stderr += d.toString(); });
-    child.on("error", (e) => { clearTimeout(timer); reject(new Error(`could not spawn claude -p: ${e.message}`)); });
+    child.on("error", (e) => { clearTimeout(timer); reject(new CriticError(COULD_NOT_RUN, `could not spawn claude -p: ${e.message}`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
       const parsed = parseClaudeStdout(stdout);
-      if (!parsed) return reject(new Error(`claude -p exit ${code}; stdout was not JSON: ${stdout.slice(0, 300)} ${stderr.slice(0, 300)}`));
-      if (parsed.is_error) return reject(new Error(`claude -p reported an error: ${String(parsed.result).slice(0, 300)}`));
+      if (!parsed) return reject(new CriticError(UNPARSEABLE, `claude -p exit ${code}; stdout was not JSON: ${stdout.slice(0, 300)} ${stderr.slice(0, 300)}`));
+      if (parsed.is_error) return reject(new CriticError(COULD_NOT_RUN, `claude -p reported an error: ${String(parsed.result).slice(0, 300)}`));
       resolve(parsed);
     });
     child.stdin.on("error", () => { /* child closed early; the close handler reports */ });
@@ -276,6 +307,25 @@ export function parseVerdictText(text: string): { verdict: string; findings: Cri
   } catch { return null; }
 }
 
+/**
+ * Pull the model's verdict out of a `claude -p` envelope: structured output
+ * first, then the free-text result. Anything else is unusable and must close
+ * the gate, so this throws rather than returning a nullish "no opinion".
+ * Exported so the tests can exercise the malformed-output path without a spawn.
+ */
+export function verdictFromRaw(raw: ClaudeJson): { verdict: string; findings: CriticFinding[] } {
+  let parsed: { verdict: string; findings: CriticFinding[] } | null = null;
+  if (raw.structured_output && typeof raw.structured_output === "object") {
+    const so = raw.structured_output as Record<string, unknown>;
+    parsed = { verdict: String(so.verdict ?? ""), findings: Array.isArray(so.findings) ? (so.findings as CriticFinding[]) : [] };
+  }
+  if ((!parsed || !["pass", "block"].includes(parsed.verdict)) && typeof raw.result === "string") parsed = parseVerdictText(raw.result);
+  if (!parsed || !["pass", "block"].includes(parsed.verdict)) {
+    throw new CriticError(UNPARSEABLE, `no pass/block verdict in claude -p output: ${String(raw.result ?? "").slice(0, 300)}`);
+  }
+  return parsed;
+}
+
 function normaliseFinding(f: unknown): CriticFinding | null {
   if (!f || typeof f !== "object") return null;
   const o = f as Record<string, unknown>;
@@ -304,15 +354,7 @@ export async function critiqueLetter(opts: CritiqueOpts): Promise<CriticResult> 
   const userPrompt = await buildUserPrompt(letter, jd, rules, opts.profileId);
   const raw = await spawnClaude(systemPrompt(rules.standingRules), userPrompt, model, opts.timeoutMs ?? 240_000);
 
-  let parsed: { verdict: string; findings: CriticFinding[] } | null = null;
-  if (raw.structured_output && typeof raw.structured_output === "object") {
-    const so = raw.structured_output as Record<string, unknown>;
-    parsed = { verdict: String(so.verdict ?? ""), findings: Array.isArray(so.findings) ? (so.findings as CriticFinding[]) : [] };
-  }
-  if (!parsed && typeof raw.result === "string") parsed = parseVerdictText(raw.result);
-  if (!parsed || !["pass", "block"].includes(parsed.verdict)) {
-    throw new Error(`letter-critic could not parse a verdict from claude -p output: ${String(raw.result ?? "").slice(0, 300)}`);
-  }
+  const parsed = verdictFromRaw(raw);
   for (const f of parsed.findings) {
     const n = normaliseFinding(f);
     if (n) findings.push(n);
@@ -335,14 +377,219 @@ export async function critiqueLetter(opts: CritiqueOpts): Promise<CriticResult> 
   };
 }
 
+// ---------------------------------------------------------------------------
+// Digest: turn a fortnight of block verdicts into standing-rule candidates.
+// ---------------------------------------------------------------------------
+
+export type DigestTheme = {
+  key: string;
+  count: number;
+  opportunity_ids: string[];
+  sample: string;
+  proposed_rule: string;
+};
+
+export type Digest = {
+  since: string;
+  verdicts: number;
+  blocked: number;
+  themes: DigestTheme[];
+};
+
+/** Verb classes the grouper recognises, in precedence order for a tie. */
+export const VERB_CLASSES = ["inflate", "conflate", "misattribut", "invent", "omit"] as const;
+export type VerbClass = (typeof VERB_CLASSES)[number] | "other";
+
+// Words that start a critic sentence or name the critic's own machinery. They
+// are capitalised but they are not the subject of the finding, so a candidate
+// proper-noun phrase beginning with one of these is skipped.
+const NOT_A_SUBJECT = new Set([
+  "a", "an", "and", "any", "as", "at", "but", "by", "claim", "conflates", "corpus", "costed", "delivered",
+  "describes", "even", "every", "facts", "for", "from", "he", "his", "however", "if", "in", "inflates",
+  "inflation", "invented", "invents", "is", "it", "its", "jd", "led", "letter", "managed", "misattributed",
+  "misattributes", "misattribution", "neither", "no", "none", "nor", "not", "nothing", "of", "omits", "on",
+  "only", "or", "outcome", "profile", "reads", "represented", "rule", "rules", "scope", "standing",
+  "states", "stating", "such", "that", "the", "their", "there", "these", "this", "those", "to", "took",
+  "unsupported", "when", "where", "which", "while", "with", "without",
+]);
+
+/** True when any slash or dot separated part of a word is critic vocabulary. */
+function isGeneric(word: string): boolean {
+  return word.toLowerCase().split(/[/.'\u2019]+/).filter(Boolean).some((part) => NOT_A_SUBJECT.has(part));
+}
+
+/** Lower-case connectors allowed inside a multi-word proper-noun phrase. */
+const PHRASE_CONNECTORS = new Set(["of", "and", "for", "de", "la"]);
+
+// The stem each class is recognised by, so "inflation", "inflated" and
+// "inflates" all land in one bucket, and the noun a rule candidate reads with.
+const CLASS_STEMS: Record<Exclude<VerbClass, "other">, { stem: string; noun: string }> = {
+  inflate: { stem: "inflat", noun: "inflation" },
+  conflate: { stem: "conflat", noun: "conflation" },
+  misattribut: { stem: "misattribut", noun: "misattribution" },
+  invent: { stem: "invent", noun: "invention" },
+  omit: { stem: "omit", noun: "omission" },
+};
+
+/** The verb class of a finding: the earliest recognised stem wins. */
+export function verbClass(issue: string): VerbClass {
+  const lower = issue.toLowerCase();
+  let best: VerbClass = "other";
+  let bestAt = Infinity;
+  for (const cls of VERB_CLASSES) {
+    const at = lower.indexOf(CLASS_STEMS[cls].stem);
+    if (at >= 0 && at < bestAt) { best = cls; bestAt = at; }
+  }
+  return best;
+}
+
+/**
+ * The subject of a finding: an explicit standing-rule reference when the critic
+ * cited one, otherwise the first proper-noun phrase that is not the critic's
+ * own vocabulary. Falls back to "general" so nothing is silently dropped.
+ */
+export function themeSubject(issue: string): string {
+  const rule = issue.match(/standing\s+rule\s*#?\s*(\d+)/i);
+  if (rule) return `standing-rule-${rule[1]}`;
+  const tokens = issue.split(/\s+/);
+  // Strip surrounding punctuation and any possessive, so "JD's" is still the
+  // generic word "jd" and "Treasury'" is still "Treasury".
+  const clean = (t: string | undefined) => (t ?? "")
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .replace(/[^A-Za-z0-9&.$+]+$/, "")
+    .replace(/['\u2019]s$/i, "");
+  for (let i = 0; i < tokens.length; i++) {
+    // A word opening a quotation is the corpus speaking, not the finding's subject.
+    if (/^["'\u2018\u201c]/.test(tokens[i])) continue;
+    const head = clean(tokens[i]);
+    if (!/^[A-Z]/.test(head)) continue;
+    if (isGeneric(head)) continue;
+    const phrase = [head];
+    for (let j = i + 1; j < tokens.length && phrase.length < 4; j++) {
+      const next = clean(tokens[j]);
+      if (!next || isGeneric(next) && !PHRASE_CONNECTORS.has(next.toLowerCase())) break;
+      if (PHRASE_CONNECTORS.has(next.toLowerCase())) {
+        if (!/^[A-Z]/.test(clean(tokens[j + 1]))) break;
+        phrase.push(next);
+        continue;
+      }
+      if (!/^[A-Z]/.test(next)) break;
+      phrase.push(next);
+    }
+    return phrase.join(" ").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  return "general";
+}
+
+/** `<subject>:<verb class>`, the grouping key. */
+export function themeKey(issue: string): string {
+  return `${themeSubject(issue)}:${verbClass(issue)}`;
+}
+
+/** `14d`, `36h`, `2w`, or an ISO date. Returns the cutoff instant. */
+export function parseSince(since: string, now: Date = new Date()): Date {
+  const rel = since.trim().match(/^(\d+)\s*([dhw])$/i);
+  if (rel) {
+    const n = Number(rel[1]);
+    const ms = rel[2].toLowerCase() === "h" ? 3_600_000 : rel[2].toLowerCase() === "w" ? 604_800_000 : 86_400_000;
+    return new Date(now.getTime() - n * ms);
+  }
+  const abs = new Date(since);
+  if (Number.isNaN(abs.getTime())) throw new Error(`cannot read --since '${since}'; use 14d, 36h, 2w or an ISO date`);
+  return abs;
+}
+
+const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+const yamlScalar = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** A one-line `standing_rules:` candidate in the profile YAML's shape. */
+export function proposedRule(subject: string, cls: VerbClass, count: number, sample: CriticFinding): string {
+  const verb = cls === "other" ? "an unsupported claim" : CLASS_STEMS[cls].noun;
+  const fix = oneLine(sample.fix || "").slice(0, 140);
+  const body = oneLine(
+    `${subject}: blocked ${count} ${count === 1 ? "letter" : "letters"} on ${verb}. `
+    + `Say only what cv-source.md supports about it, in the corpus's own scope and verb. `
+    + (fix ? `Permitted wording: ${fix}` : "State the permitted wording here before promoting this rule."),
+  );
+  return `- ${yamlScalar(body)}`;
+}
+
+/** Every `<archive>/*\/letter-critic.json`, newest first, with its directory id. */
+async function readVerdicts(archiveDir: string): Promise<{ id: string; result: CriticResult }[]> {
+  let entries: string[] = [];
+  try { entries = (await fs.readdir(archiveDir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name); }
+  catch (e: any) { throw new Error(`cannot read archive ${archiveDir}: ${e.message}`); }
+  const out: { id: string; result: CriticResult }[] = [];
+  for (const id of entries.sort()) {
+    const p = path.join(archiveDir, id, "letter-critic.json");
+    let text: string;
+    try { text = await fs.readFile(p, "utf8"); } catch { continue; }
+    try { out.push({ id, result: JSON.parse(text) as CriticResult }); } catch { /* a corrupt verdict is not a theme */ }
+  }
+  return out;
+}
+
+export async function buildDigest(opts: { archiveDir: string; since: string; now?: Date }): Promise<Digest> {
+  const now = opts.now ?? new Date();
+  const cutoff = parseSince(opts.since, now);
+  const all = await readVerdicts(opts.archiveDir);
+  const inWindow = all.filter(({ result }) => {
+    const at = new Date(result?.checked_at ?? "");
+    return !Number.isNaN(at.getTime()) && at.getTime() >= cutoff.getTime();
+  });
+
+  type Bucket = { subject: string; cls: VerbClass; count: number; ids: Set<string>; sample: CriticFinding };
+  const buckets = new Map<string, Bucket>();
+  let blocked = 0;
+  for (const { id, result } of inWindow) {
+    if (result?.verdict !== "block") continue;
+    blocked++;
+    for (const f of result.findings ?? []) {
+      if (f?.severity !== "fail") continue;
+      const issue = String(f.issue ?? "");
+      const subject = themeSubject(issue);
+      const cls = verbClass(issue);
+      const key = `${subject}:${cls}`;
+      const b = buckets.get(key) ?? { subject, cls, count: 0, ids: new Set<string>(), sample: f };
+      b.count++;
+      b.ids.add(id);
+      buckets.set(key, b);
+    }
+  }
+
+  const themes: DigestTheme[] = [...buckets.entries()]
+    .map(([key, b]) => ({
+      key,
+      count: b.count,
+      opportunity_ids: [...b.ids].sort(),
+      sample: oneLine(String(b.sample.issue ?? "")).slice(0, 240),
+      proposed_rule: proposedRule(b.subject, b.cls, b.count, b.sample),
+    }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+
+  return { since: cutoff.toISOString(), verdicts: inWindow.length, blocked, themes };
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const a: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith("--")) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
   }
+  if (a.digest) {
+    const archiveDir = a.archive ? path.resolve(a.archive) : repoPath("state/pipeline/archive");
+    const since = a.since && a.since !== "true" ? a.since : "14d";
+    try {
+      console.log(JSON.stringify(await buildDigest({ archiveDir, since })));
+    } catch (e: any) {
+      console.error(`[letter-critic] ERROR: ${e?.message ?? e}`);
+      process.exit(2);
+    }
+    return;
+  }
   if (!a.letter) {
     console.error("Usage: tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md> [--out <json>] [--model sonnet] [--timeout-ms 240000] [--apply-fixes]");
+    console.error("       tsx tools/letter-critic.ts --digest [--since 14d] [--archive <dir>]");
     process.exit(2);
   }
   if (a["apply-fixes"]) console.error("[letter-critic] --apply-fixes is reserved; the critic never edits a letter. Ignoring.");
@@ -352,7 +599,11 @@ async function main() {
     result = await critiqueLetter({ letterPath: a.letter, jdPath: a.jd, model: a.model, timeoutMs: a["timeout-ms"] ? Number(a["timeout-ms"]) : undefined });
   } catch (e: any) {
     // Fail loudly. Do not write a verdict file: a stale pass must not survive
-    // a broken run, and a missing file is a closed gate.
+    // a broken run, and a missing file is a closed gate. The reason is machine
+    // readable so a caller can tell "the child never ran" from "the child said
+    // something unusable"; both close the gate, only one is worth a retry.
+    const reason = e instanceof CriticError ? e.reason : COULD_NOT_RUN;
+    console.log(JSON.stringify({ verdict: "error", reason, detail: String(e?.message ?? e).slice(0, 400) }));
     console.error(`[letter-critic] ERROR: ${e?.message ?? e}`);
     process.exit(2);
   }
