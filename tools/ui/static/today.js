@@ -5,10 +5,11 @@
  * did, including the full text of anything it sent. This screen only reads it.
  */
 
-import { fetchInto, h, panel, richMarkdown } from "./app.js";
+import { fetchInto, h, pageHeader, panel, richMarkdown } from "./app.js";
 
 export async function viewToday(view) {
-  view.append(h("h1", { text: "Today" }));
+  const date = h("p", { class: "page-count" });
+  view.append(pageHeader({ title: "Today", lede: date }));
   const host = h("div", {});
   host.append(h("p", { class: "empty", text: "Loading the journal." }));
   view.append(host);
@@ -19,6 +20,6 @@ export async function viewToday(view) {
     host.append(h("p", { class: "empty", text: "No entry for today yet. The morning run writes one when it finishes." }));
     return;
   }
-  if (data.date) view.insertBefore(h("p", { class: "page-count", text: data.date }), host);
+  if (data.date) date.textContent = data.date;
   host.append(panel("Journal", h("div", { class: "prose" }, richMarkdown(markdown))));
 }

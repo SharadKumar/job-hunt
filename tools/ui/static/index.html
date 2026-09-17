@@ -5,9 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="referrer" content="no-referrer" />
-    <title>Job Hunt</title>
+    <title>🚀 Job Hunt</title>
     <link rel="stylesheet" href="app.css" />
-    <link rel="icon" href="data:," />
+    <!-- The favicon is the wordmark's rocket, drawn inline: a data URL, so the
+         tab icon costs no request and nothing is fetched off this machine. The
+         svg namespace is percent-encoded because no absolute http URL, encoded
+         or not, may appear in this file. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http%3A//www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Ctext%20y='26'%20font-size='26'%3E🚀%3C/text%3E%3C/svg%3E" />
   </head>
   <body>
     <!--
@@ -17,7 +21,7 @@
     -->
     <header class="top">
       <div class="wrap top-inner">
-        <a class="brand" href="#/home">Job Hunt</a>
+        <a class="brand" href="#/home" aria-label="Job Hunt"><span class="rocket" aria-hidden="true">🚀</span> Job Hunt</a>
         <nav class="nav" aria-label="Views">
           <a href="#/home" data-nav="home">Home</a>
           <a href="#/applications" data-nav="applications">Applications</a>

@@ -141,6 +141,7 @@ console.log(`  ✓ all ${generated.length} Codex agent wrappers match the canoni
 // JSON export instead of the store, and a dash the voice rules ban.
 
 async function walk(dir: string, ext: string): Promise<string[]> {
+  if (/-workspace$/.test(dir)) return []; // skill-creator eval workspaces hold fixture roots, not prompts
   const out: string[] = [];
   let entries;
   try {

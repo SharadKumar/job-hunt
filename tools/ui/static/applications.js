@@ -7,14 +7,14 @@
  */
 
 import {
-  $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, render, statusLabel, toast, when,
+  $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, pageHeader, render, statusLabel, toast, when,
 } from "./app.js";
 
 /** Application tabs, in the order the person works them. Sent is capped at 30 rows.
  * `label` is the short name, `long` is how the filter column says it. */
 export const TABS = [
-  { key: "needs", label: "Needs you", long: "Needs you", status: "manual_action_needed", action: "retry" },
-  { key: "waiting", label: "Waiting", long: "Waiting for you", status: "awaiting_approval", action: "approve" },
+  { key: "needs", label: "Blocked", long: "Blocked", status: "manual_action_needed", action: "retry" },
+  { key: "waiting", label: "To approve", long: "To approve", status: "awaiting_approval", action: "approve" },
   { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted", action: "approve" },
   { key: "parked", label: "Parked", long: "Parked", status: "parked", action: "retry" },
   { key: "sent", label: "Sent", long: "Sent", status: "submitted", limit: 30 },
@@ -22,8 +22,8 @@ export const TABS = [
 
 /** What each tab says when it is empty: direction, not a shrug. */
 const EMPTY = {
-  needs: "Nothing needs you. The morning run adds rows here when a letter is blocked or a question is unanswered.",
-  waiting: "Nothing is waiting on a decision. Prepared packages land here before they go out.",
+  needs: "Nothing is blocked. The morning run adds rows here when a letter is blocked or a question is unanswered.",
+  waiting: "Nothing is waiting on your yes. Prepared packages land here before they go out.",
   shortlisted: "Nothing is shortlisted. The hunt adds roles here once they fit and nothing blocks them.",
   parked: "Nothing is parked. Roles that do not fit, or cannot be done from Sydney, end up here.",
   sent: "Nothing has been sent yet. Submitted applications appear here, most recent first.",
@@ -148,10 +148,8 @@ function visibleRows(rows) {
 export async function viewApplications(view, which) {
   if (which && TABS.some((t) => t.key === which)) appState.tab = which;
   const tab = TABS.find((t) => t.key === appState.tab) || TABS[0];
-  view.append(h("p", { class: "lede",
-    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." }));
-  const head = h("div", { class: "page-head" }, h("div", {},
-    h("h1", { text: tab.long }), h("p", { class: "page-count", id: "row-count", text: "Loading rows." })));
+  const count = h("p", { class: "page-count", id: "row-count",
+    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." });
   const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
   toggle.addEventListener("click", () => {
     appState.filtersOpen = !appState.filtersOpen;
@@ -162,7 +160,11 @@ export async function viewApplications(view, which) {
     sort.append(h("option", { value, selected: appState.sort === value, text: label }));
   }
   sort.addEventListener("change", () => { appState.sort = sort.value; render(); });
-  head.append(h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort));
+  const head = pageHeader({
+    title: tab.long,
+    lede: count,
+    aside: h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort),
+  });
   const layout = h("div", { class: "layout" });
   const list = h("div", { class: "cards" });
   list.append(h("p", { class: "empty", text: "Loading rows." }));

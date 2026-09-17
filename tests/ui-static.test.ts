@@ -207,6 +207,39 @@ test("a keyword term is recorded on its own, and the batch controls are gone", (
   }
 });
 
+test("a term is a decision row, not a stack of radios", () => {
+  assert.match(keywords, /class: "options segmented"/, "the four answers must be a segmented control");
+  assert.match(keywords, /class: "seg"/, "each answer is one segment");
+  assert.match(keywords, /class: "term-row" \}, options/, "the answers and the two buttons share one row");
+  assert.match(css, /\.options\.segmented \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/,
+    "four equal segments in one row on a desktop");
+  assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*?\.options\.segmented \{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
+    "two by two on a phone");
+  assert.match(css, /\.seg \{[\s\S]*?border: 2px solid var\(--line\);/, "a segment carries a 2 px border slot");
+  assert.match(css, /\.seg\.on \{ border-color: var\(--ink\); \}/, "the chosen segment is outlined in ink");
+  assert.match(keywords, /label\.classList\.toggle\("on", label\.querySelector\("input"\)\.checked\)/,
+    "picking an answer must mark its segment");
+  assert.match(keywords, /class: "context clamp"/, "the context is clamped to two lines");
+  assert.match(css, /-webkit-line-clamp: 2;/, "and the clamp is two lines");
+  assert.match(keywords, /text: "more"/, "a long context must offer to open");
+  assert.match(css, /\.term-actions \{ display: flex;[^}]*\}/, "Record and Skip sit on one row");
+});
+
+test("the term list says what a term is, not that it was asked once", () => {
+  assert.match(keywords, /const CATEGORIES = \["tool", "method", "certification", "concept"\]/,
+    "the list must name the four categories it will print");
+  assert.match(keywords, /categoryOf\s*=\s*\(item\)/, "the category must come off the term, or be omitted");
+  assert.match(keywords, /mustHave\s*=\s*\(item\)/, "a must-have term must be marked");
+  assert.match(keywords, /\(item\.count \?\? 0\) > 1/, "the count must only show when it is more than one");
+  assert.match(keywords, /\["Must have", shown\.filter/, "the list must lead with the must-have group");
+  assert.match(keywords, /\["Other", shown\.filter/, "and follow it with the rest");
+  assert.match(keywords, /class: "kw-group eyebrow"/, "each group carries a small heading");
+  assert.match(css, /\.must \{[\s\S]*?background: var\(--green\);/, "must-have is a green dot");
+  assert.match(css, /@media \(min-width: 900px\) \{\s*\.kw-layout \{ grid-template-columns: 240px/,
+    "the term list must be 240 px on a desktop");
+  assert.match(css, /\.kw-list \{ position: sticky; top: 88px; \}/, "and it must stay in view while the cards scroll");
+});
+
 test("an unsure answer skips the term after a short window", () => {
   assert.match(keywords, /PENDING_SKIP_MS\s*=\s*400/, "the mis-click window must be 400 ms");
   assert.match(keywords, /setTimeout\(\(\) => handlers\.onSkip\(item\.term\), PENDING_SKIP_MS\)/,
@@ -272,15 +305,39 @@ test("the header carries an autopilot switch against the policy API", () => {
   assert.ok(app.includes("policy/autopilot"), "the switch must post to /api/policy/autopilot");
   assert.match(app, /reason: "ui toggle"/, "a policy change must carry the reason");
   assert.match(app, /guarded\(button, on \? "Turn off" : "Turn on"/, "the switch must arm before it posts");
-  assert.match(app, /Autopilot \$\{on \? "on" : "off"\}/, "the switch must say whether autopilot is on");
+  // The dot is the state, so the label is one word and the state lives in the
+  // accessible name instead of being said twice.
+  assert.match(app, /text: resting,/, "the switch must be labelled by the resting word");
+  assert.match(app, /const resting = "Autopilot";/, "the switch must read just Autopilot");
+  assert.match(app, /"aria-label": `Autopilot \$\{on \? "on" : "off"\}\. Press to turn \$\{on \? "off" : "on"\}\.`/,
+    "the accessible name must state the state and what a press does");
+  assert.ok(!/text: `Autopilot \$\{/.test(app), "the visible label must not repeat the on or off word");
   assert.match(css, /\.switch\.on::before \{ background: var\(--green\)/, "the on state must be green");
+  assert.match(css, /\.switch\.off::before \{ background: var\(--red\)/, "the off state must be red");
+  assert.match(css, /\.switch\.unknown::before \{ background: var\(--grey\)/, "an unreadable policy must be a grey dot");
 });
 
 test("a missing policy API degrades to a disabled switch", () => {
   assert.ok(app.includes("policy API unavailable"), "app.js must say when the policy API is not there");
   assert.match(app, /error\.status === 404\) policyAvailable = false/, "a 404 must mark the policy API unavailable");
-  assert.match(app, /class: "switch off", disabled: true/, "the fallback switch must be disabled");
+  assert.match(app, /class: "switch unknown", disabled: true/, "the fallback switch must be disabled");
   assert.ok(home.includes("policy API"), "Home must say so too rather than guess the lane");
+});
+
+test("the cog is a bare icon and the header gaps are on the scale", () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const cog = /\.nav \.cog \{([^}]*)\}/.exec(rules);
+  assert.ok(cog, "app.css must style the cog");
+  assert.ok(!/border:\s*1px/.test(cog![1]), "the cog must carry no border: the switch is the only bordered control up here");
+  assert.match(cog![1], /border: 0;/, "the cog's border must be explicitly removed");
+  assert.match(cog![1], /background: none;/, "and it must have no fill");
+  assert.match(cog![1], /color: var\(--grey\);/, "the cog icon is grey at rest");
+  assert.match(cog![1], /width: 36px;\s*height: 36px;/, "the cog keeps a 36 px hit area");
+  assert.match(rules, /\.nav \.cog:hover \{ color: var\(--ink\)/, "hover takes the cog to ink");
+  assert.match(rules, /\.nav \.cog:focus-visible \{ color: var\(--ink\)/, "so does keyboard focus");
+  assert.match(rules, /\.nav \{[^}]*gap: 24px;/, "the nav spaces its links 24 px apart");
+  assert.match(cog![1], /margin-left: -8px;/, "the cog pulls back to 16 px from the switch");
+  assert.match(rules, /\.switch-slot \{ align-self: center;/, "the switch is centred like the links");
 });
 
 test("the kill switch lives on Settings, armed and in red", () => {
@@ -306,7 +363,7 @@ test("the counts sentence under the header is gone", () => {
 
 test("Home is a dashboard of cards, each linking to its screen", () => {
   for (const title of [
-    "Needs you", "Sent today", "Waiting for you", "Resumes", "Keywords",
+    "Blocked", "Sent today", "To approve", "Resumes", "Keywords",
     "Recurring critic themes", "Today's run",
   ]) {
     assert.ok(home.includes(`"${title}"`), `Home is missing the card: ${title}`);
@@ -322,6 +379,47 @@ test("Home is a dashboard of cards, each linking to its screen", () => {
   assert.match(home, /slice\(0, 12\)/, "the run card must show the first twelve lines of the summary");
   assert.match(home, /Read today/, "the run card must link to Today");
   assert.match(applications, /TABS\.some\(\(t\) => t\.key === which\)/, "a Home link must open the right applications tab");
+});
+
+test("the Home cards are packed, not laid out on a grid of rows", () => {
+  // The bug this fixes: a two-column grid sized each row to its tallest card,
+  // so a short card left a hole beside a tall one. A multi-column flow packs
+  // them, provided no card is allowed to break across a column.
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(rules, /\.home-grid \{ column-count: 1; column-gap: var\(--gutter\); \}/,
+    "the home grid must be a single column flow by default");
+  assert.match(rules, /@media \(min-width: 720px\) \{\s*\.home-grid \{ column-count: 2; \}\s*\}/,
+    "two columns start at 720 px, so a phone stays on one");
+  assert.ok(!/\.home-grid \{[^}]*display: grid/.test(rules), "the home grid must not still be a css grid");
+  assert.match(rules, /\.home-card \{[^}]*break-inside: avoid/, "a card must never split across columns");
+  assert.match(rules, /\.home-card \{[^}]*-webkit-column-break-inside: avoid/, "and the webkit spelling must be there too");
+  assert.match(rules, /\.home-card \{[^}]*margin-bottom: 24px/, "the gap between packed cards must be 24 px");
+});
+
+test("the Home cards are in priority order", () => {
+  // What is stuck first, then what waits on a decision, then the backlog,
+  // then the record of what already happened.
+  const call = /grid\.append\(\n([\s\S]*?)\n  \);/.exec(home);
+  assert.ok(call, "home.js must append the cards in one call");
+  const order = [...call![1].matchAll(/(\w+Card)\s*\(/g)].map((m) => m[1]);
+  assert.deepEqual(
+    order,
+    ["needsCard", "waitingCard", "keywordsCard", "sentCard", "resumesCard", "digestCard", "todayCard"],
+    "the Home cards are out of priority order",
+  );
+});
+
+test("the run card renders markdown rather than printing the source", () => {
+  assert.ok(
+    home.includes("richMarkdown"),
+    "home.js must use the shared markdown renderer from app.js",
+  );
+  assert.match(app, /export function richMarkdown\s*\(/, "app.js must export the shared renderer");
+  assert.ok(src["today.js"].includes("richMarkdown"), "Today must use the same renderer as Home");
+  assert.ok(
+    !/h\("pre", \{ class: "home-journal"/.test(home),
+    "the run card must not print the journal as raw preformatted source",
+  );
 });
 
 test("Home says which lane is in force, once, at the top", () => {
@@ -388,9 +486,17 @@ test("no em dash and no en dash in the html, the css or any module", () => {
   }
 });
 
-test("the product is named Job Hunt", () => {
-  assert.match(html, /<title>Job Hunt<\/title>/, "the document title must be Job Hunt");
-  assert.match(html, /class="brand"[^>]*>Job Hunt</, "the wordmark must read Job Hunt");
+test("the product is named Job Hunt, under a rocket", () => {
+  assert.match(html, /<title>\u{1F680} Job Hunt<\/title>/u, "the document title must be the rocket then Job Hunt");
+  assert.match(html, /class="brand"[^>]*aria-label="Job Hunt"/, "the wordmark keeps Job Hunt as its accessible name");
+  assert.match(html, /<span class="rocket" aria-hidden="true">\u{1F680}<\/span> Job Hunt</u,
+    "the rocket sits before the name and is hidden from a screen reader");
+  assert.match(css, /\.brand \.rocket \{ font-size: 18px/, "the rocket must be 18 px so it sits on the wordmark's baseline");
+  assert.match(css, /\.brand \{[^}]*font-size: 20px[^}]*font-weight: 600/, "the wordmark stays 20 px and 600");
+  const icon = /<link[^>]+rel="icon"[^>]+href="([^"]+)"/.exec(html);
+  assert.ok(icon, "index.html must carry a favicon link");
+  assert.ok(icon![1].startsWith("data:image/svg+xml,"), "the favicon must be an inline svg data URL, not a file");
+  assert.ok(icon![1].includes("%F0%9F%9A%80") || /\u{1F680}/u.test(icon![1]), "the favicon must draw the rocket");
   assert.ok(applications.includes("Job Hunt drafts and sends applications overnight."), "the applications lede must name Job Hunt");
   assert.ok(!/\bHarness\b/.test(html), "index.html must not still call the product Harness");
 });
@@ -400,7 +506,76 @@ test("the stylesheet handles dark mode and phone width", () => {
   assert.match(css, /@media\s*\(min-width/, "app.css must have at least one responsive breakpoint");
   assert.match(css, /:focus-visible/, "app.css must keep a visible focus ring for keyboard use");
   assert.match(html, /name="viewport"/, "index.html must set a viewport for phone width");
-  assert.match(css, /\.home-grid \{ grid-template-columns: repeat\(2/, "Home must go to two columns on a desktop");
+  assert.match(css, /@media \(min-width: 720px\) \{\s*\.home-grid \{ column-count: 2; \}/,
+    "Home must go to two columns on a desktop and stay single column under 720 px");
+});
+
+test("every screen draws its title through the one page header", () => {
+  // Titles, ledes and top margins used to be set per screen and drifted.
+  for (const name of ["home.js", "applications.js", "row.js", "resumes.js", "keywords.js", "today.js", "digest.js", "settings.js"]) {
+    assert.match(src[name], /pageHeader\(\{/, `${name} must draw its title through pageHeader`);
+  }
+  assert.match(app, /export function pageHeader\s*\(/, "app.js must own the page header");
+  assert.ok(app.includes("pageHeader"), "app.js must hand pageHeader to the views it injects helpers into");
+  assert.ok(!/class: "page-head"/.test(front), "the old one-off page head must be gone");
+  for (const name of MODULES.filter((m) => m !== "app.js")) {
+    assert.ok(!/h\("h1"/.test(src[name]), `${name} must not build its own h1`);
+  }
+  assert.match(css, /\.page-header \{[\s\S]*?margin: 32px 0 24px;/,
+    "the header must carry 32 px above it and 24 px before the first card");
+  assert.match(css, /\.page-header \.lede, \.page-header \.page-count \{ grid-column: 1 \/ -1; \}/,
+    "the lede must run the full width under the title");
+  assert.match(css, /\.lede \{\s*margin: 4px 0 0;/, "the lede must sit 4 px under the title");
+  assert.match(css, /\.page-aside \{ justify-self: end;/, "the aside must be right aligned on the desktop");
+  assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*?\.page-aside \{ justify-self: start; order: 1;/,
+    "on a phone the aside must drop below the lede");
+  // The row detail is the only screen with a back link, and it goes above the title.
+  assert.match(src["row.js"], /back: h\("a", \{ href: "#\/applications"/, "the row detail back link belongs to the header");
+  assert.match(css, /\.page-header \.backlink \{ grid-column: 1 \/ -1; \}/, "the back link sits above the title");
+  assert.match(css, /\.backlink \{ margin: 0 0 8px;/, "the back link must sit 8 px above the title");
+});
+
+test("the active nav link is underlined on the header rule", () => {
+  assert.match(css, /\.nav a \{[\s\S]*?border-bottom: 2px solid transparent;[\s\S]*?margin-bottom: -1px;/,
+    "a nav link must carry a 2 px underline slot that overlaps the header rule");
+  assert.match(css, /\.nav a\[aria-current="page"\] \{ font-weight: 500; border-bottom-color: var\(--ink\); \}/,
+    "the active link must be ink underlined and 500");
+  assert.match(css, /\.nav a:hover \{ text-decoration: none; border-bottom-color: var\(--grey\); \}/,
+    "hover must show a grey underline rather than a text underline");
+  assert.match(css, /\.nav \.cog \{\s*align-self: center;/, "the cog stays on the links' vertical centre");
+  assert.match(css, /\.switch-slot \{ align-self: center;/, "so does the autopilot switch");
+  assert.match(css, /@media \(max-width: 639px\) \{[\s\S]*?flex-wrap: nowrap;[\s\S]*?overflow-x: auto;/,
+    "on a phone the nav must scroll sideways in one line instead of wrapping");
+});
+
+test("the type scale and the spacing scale hold across the stylesheet", () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // 12 eyebrow, 13 meta, 15 body, 17 card title, 26 page title. 18 and 20 are
+  // the wordmark and its rocket, the one pair the brief fixes outside the scale.
+  const SCALE = new Set([12, 13, 15, 17, 26, 18, 20]);
+  for (const [, value] of rules.matchAll(/font-size:\s*(\d+)px/g)) {
+    assert.ok(SCALE.has(Number(value)), `app.css uses a font size outside the scale: ${value}px`);
+  }
+  const SPACING = new Set([0, 1, 4, 8, 12, 14, 16, 20, 24, 32]);
+  for (const [, decl] of rules.matchAll(/(?:^|[\s{;])(?:margin|padding|gap|column-gap|row-gap)[a-z-]*:\s*([^;]+);/g)) {
+    for (const [, value] of decl.matchAll(/(\d+)px/g)) {
+      assert.ok(SPACING.has(Number(value)), `app.css uses a spacing value outside the scale: ${value}px in "${decl.trim()}"`);
+    }
+  }
+  assert.match(rules, /\.card \{[^}]*padding: 20px/, "a card is padded 20 px everywhere");
+  assert.match(rules, /\.cards \{ display: grid; gap: 24px; \}/, "cards are 24 px apart");
+});
+
+test("every button is the same height and the same side padding", () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(rules, /button, \.btn \{[\s\S]*?height: 36px;\s*padding: 0 14px;/,
+    "primary, secondary and destructive buttons must share one height and one padding");
+  assert.match(rules, /\.switch \{ border-radius: 8px; \}/, "the header switch must take the same metrics rather than its own");
+});
+
+test("an empty or failed panel is the same dashed box everywhere", () => {
+  assert.match(css, /\.empty, \.error \{[\s\S]*?border: 1px dashed var\(--line\);/,
+    "empty and error states must share one dashed box");
 });
 
 test("the type is the system sans stack the board design asks for", () => {
@@ -425,7 +600,7 @@ test("the palette is the one the brief fixes", () => {
 });
 
 test("the five application tabs are named as the person names them", () => {
-  const labels = ["Needs you", "Waiting", "Shortlisted", "Parked", "Sent"];
+  const labels = ["Blocked", "To approve", "Shortlisted", "Parked", "Sent"];
   let at = -1;
   for (const label of labels) {
     const found = applications.indexOf(`"${label}"`);
@@ -467,8 +642,11 @@ test("the buttons carry the three weights and the armed states", () => {
 
 test("a status reaches the page as words, not as a key", () => {
   assert.match(app, /export function statusLabel\s*\(/, "app.js must have one statusLabel helper");
-  assert.match(app, /manual_action_needed:\s*"needs you"/, "manual_action_needed must read as needs you");
-  assert.match(app, /awaiting_approval:\s*"waiting for you"/, "awaiting_approval must read as waiting for you");
+  // "Needs you" and "Waiting for you" read as the same thing, so the two
+  // statuses are named for what they actually are.
+  assert.match(app, /manual_action_needed:\s*"blocked"/, "manual_action_needed must read as blocked");
+  assert.match(app, /awaiting_approval:\s*"to approve"/, "awaiting_approval must read as to approve");
+  assert.ok(!/"needs you"|"waiting for you"/i.test(front), "the old ambiguous labels must be gone from every module");
   assert.match(app, /replace\(\/_\/g, " "\)/, "an unmapped status must fall back to the key with spaces");
   assert.ok(
     !/\$\{item\.from \|\| "new"\}/.test(rowJs),
@@ -535,7 +713,13 @@ test("the resume card is styled as the board asks", () => {
   const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
   assert.match(rules, /\.stamp\.approved \{ color: var\(--green\)/, "an approved stamp must be green");
   assert.match(rules, /\.stamp\.missing \{ color: var\(--red\)/, "a missing render must be red");
-  assert.match(rules, /\.page-img \{[^}]*height:\s*120px/, "a page thumbnail must be 120 px tall");
+  assert.match(rules, /\.page-img \{[^}]*height:\s*96px/, "a page thumbnail must be 96 px tall");
+  assert.match(rules, /@media \(min-width: 900px\) \{\s*\.resume-grid \{ grid-template-columns: repeat\(2/,
+    "two positionings sit side by side on a desktop");
+  assert.match(rules, /\.resume-body \{ display: grid; grid-template-columns: auto minmax\(0, 1fr\)/,
+    "a resume card puts the pages beside the verdicts");
+  assert.match(rules, /\.resume h2 \.stamp \{ margin-left: auto; \}/, "the stamp sits hard right on the title row");
+  assert.match(resumesJs, /pages\.slice\(0, 4\)/, "a card shows at most four page thumbnails");
   assert.match(rules, /\.page\.low \{ border-color: var\(--red\)/, "a low-fill page must be outlined red");
   assert.match(rules, /\.chip\.good \.dot \{ background: var\(--green\)/, "a passing gate chip must carry a green dot");
 });

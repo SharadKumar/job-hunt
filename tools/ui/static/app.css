@@ -93,62 +93,77 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--line);
 }
 
+/* The bar stretches its children, so a nav link is as tall as the bar and its
+   2 px underline lands exactly on the bar's own hairline (margin-bottom: -1px
+   pulls the link over the rule). Everything that is not a link, the wordmark,
+   the switch and the cog, is centred back. */
 .top-inner {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 16px;
   min-height: 64px;
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: 600;
   text-decoration: none;
   letter-spacing: -0.01em;
 }
 .brand:hover { text-decoration: none; }
+.brand .rocket { font-size: 18px; line-height: 1; }
 
 .nav {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 24px;
   justify-content: flex-end;
 }
 
 .nav a {
+  display: flex;
+  align-items: center;
   text-decoration: none;
   font-size: 15px;
-  padding: 4px 0;
+  font-weight: 400;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
 }
-.nav a:hover { text-decoration: underline; }
-.nav a[aria-current="page"] { font-weight: 600; }
+.nav a:hover { text-decoration: none; border-bottom-color: var(--grey); }
+.nav a[aria-current="page"] { font-weight: 500; border-bottom-color: var(--ink); }
 
-.cog {
+/* The cog is a bare icon, not a second button: the autopilot switch is the one
+   bordered control up here, so the two stop reading as a pair. The gap is
+   24 px everywhere except switch to cog, which the -8 px pulls back to 16. */
+.nav .cog {
+  align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--line);
+  margin-left: -8px;
+  margin-bottom: 0;
+  border: 0;
+  background: none;
   border-radius: 8px;
-  color: var(--ink);
+  color: var(--grey);
 }
-.cog:hover { background: var(--hover); text-decoration: none; }
-.cog[aria-current="page"] { border-color: var(--ink); }
+.nav .cog:hover { color: var(--ink); background: none; text-decoration: none; }
+.nav .cog:focus-visible { color: var(--ink); }
+.nav .cog[aria-current="page"] { color: var(--ink); }
 
 /* The autopilot switch: a button that says the lane it is in. Green dot on,
    grey dot off, and the armed state turns the whole control green as every
    other two-press control does. */
-.switch-slot { display: inline-flex; align-items: center; gap: 8px; }
+.switch-slot { align-self: center; display: inline-flex; align-items: center; gap: 8px; }
 
-.switch {
-  font-size: 14px;
-  padding: 7px 14px 7px 12px;
-  border-radius: 8px;
-}
+.switch { border-radius: 8px; }
 
 .switch::before {
   content: "";
@@ -162,6 +177,8 @@ a:hover { text-decoration: underline; }
 }
 
 .switch.on::before { background: var(--green); }
+.switch.off::before { background: var(--red); }
+.switch.unknown::before { background: var(--grey); }
 .switch.armed::before { background: #ffffff; }
 .switch-note { max-width: 240px; }
 
@@ -170,7 +187,8 @@ a:hover { text-decoration: underline; }
 .token-fields input {
   font: inherit;
   width: min(100%, 420px);
-  padding: 10px 12px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
@@ -191,11 +209,21 @@ a:hover { text-decoration: underline; }
 
 /* On a phone the wordmark takes its own line and the nav sits under it, with
    the settings cog still hard right. */
+/* On a phone the wordmark takes its own line and the nav keeps to one line
+   under it, scrolling sideways rather than wrapping into a second row. */
 @media (max-width: 639px) {
-  .top-inner { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; gap: 10px; }
+  .top-inner { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; gap: 8px; }
   .brand { flex: 1 0 100%; white-space: nowrap; }
-  .nav { width: 100%; justify-content: flex-start; gap: 16px; }
-  .nav .cog { margin-left: auto; }
+  .nav {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 16px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { white-space: nowrap; }
 }
 
 .alarm { color: var(--red); font-weight: 600; }
@@ -204,24 +232,35 @@ a:hover { text-decoration: underline; }
 
 .view {
   display: block;
-  padding-top: 8px;
-  padding-bottom: 72px;
+  padding-top: 0;
+  padding-bottom: 32px;
   outline: none;
 }
 
-.lede {
-  margin: 4px 0 20px;
-  color: var(--grey);
-  max-width: var(--measure);
+/* One header for every screen: 32 px of air above it, the title, whatever the
+   screen puts on the title's baseline, the lede 4 px under the title, and
+   24 px before the first card. Nothing else sets the top of a screen. */
+.page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  margin: 32px 0 24px;
 }
 
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+.page-header .backlink { grid-column: 1 / -1; }
+.page-header h1 { grid-column: 1; }
+.page-header .lede, .page-header .page-count { grid-column: 1 / -1; }
+.page-aside { justify-self: end; display: flex; align-items: center; gap: 8px; }
+
+@media (max-width: 719px) {
+  .page-header { grid-template-columns: minmax(0, 1fr); }
+  .page-aside { justify-self: start; order: 1; margin-top: 12px; }
+}
+
+.lede {
+  margin: 4px 0 0;
+  color: var(--grey);
+  max-width: var(--measure);
 }
 
 h1 {
@@ -239,7 +278,7 @@ h2 {
 
 h3 { margin: 0; font-size: 15px; font-weight: 600; }
 
-.page-count { margin: 4px 0 0; color: var(--grey); font-size: 14px; }
+.page-count { margin: 4px 0 0; color: var(--grey); font-size: 13px; max-width: var(--measure); }
 
 .eyebrow {
   margin: 0 0 8px;
@@ -250,16 +289,17 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; }
   letter-spacing: 0.06em;
 }
 
-.sorter { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--grey); }
+.sorter { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--grey); }
 
 select, .field {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ink);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 10px;
+  height: 36px;
+  padding: 0 12px;
 }
 
 /* --- Cards -------------------------------------------------------------- */
@@ -271,7 +311,7 @@ select, .field {
   padding: 20px;
 }
 
-.cards { display: grid; gap: 16px; }
+.cards { display: grid; gap: 24px; }
 
 .job:hover { background: var(--hover); }
 
@@ -291,13 +331,13 @@ select, .field {
 
 .score { color: var(--green); font-weight: 600; white-space: nowrap; }
 
-.job-meta { margin: 4px 0 0; color: var(--grey); font-size: 14px; }
+.job-meta { margin: 4px 0 0; color: var(--grey); font-size: 13px; }
 
-.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
 .pill {
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 8px;
   background: var(--pill);
   color: var(--pill-ink);
@@ -322,18 +362,25 @@ select, .field {
 
 /* --- Buttons ------------------------------------------------------------ */
 
+/* One button size everywhere: 36 px tall, 14 px of side padding, whatever the
+   weight. Primary, secondary, destructive and the header switch all sit on the
+   same line without anyone having to nudge a margin. */
 button, .btn {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
-  padding: 9px 16px;
+  height: 36px;
+  padding: 0 14px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink);
   cursor: pointer;
   text-decoration: none;
-  display: inline-block;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 button:hover, .btn:hover { background: var(--hover); text-decoration: none; }
@@ -379,15 +426,15 @@ button[disabled] { opacity: 0.45; cursor: default; }
   border-bottom: 1px solid var(--line);
 }
 
-.filters { display: grid; gap: 20px; padding-top: 16px; }
+.filters { display: grid; gap: 16px; padding-top: 16px; }
 
-.filter-group { display: grid; gap: 6px; }
+.filter-group { display: grid; gap: 4px; }
 
 .choice {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: 8px;
+  font-size: 15px;
   padding: 4px 0;
   cursor: pointer;
 }
@@ -397,9 +444,10 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .filters input[type="number"] {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   width: 100%;
-  padding: 8px 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
@@ -409,22 +457,22 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .filters-toggle { display: none; }
 
 @media (max-width: 899px) {
-  .filters-toggle { display: inline-block; }
+  .filters-toggle { display: inline-flex; }
   .filter-card[hidden] { display: none; }
 }
 
 /* --- Row detail --------------------------------------------------------- */
 
-.backlink { margin: 0 0 16px; color: var(--grey); font-size: 14px; }
+.backlink { margin: 0 0 8px; color: var(--grey); font-size: 13px; }
 
-.detail-meta { margin: 8px 0 0; color: var(--grey); }
+.detail-meta { margin: 0; color: var(--grey); }
 .detail-meta a { color: var(--ink); }
 
 .detail-reason { margin: 12px 0 0; max-width: var(--measure); }
 
 .stats {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin: 24px 0;
 }
@@ -434,7 +482,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .stat.bad .value { color: var(--red); }
 .stat .note { margin: 4px 0 0; font-size: 13px; color: var(--grey); }
 
-.columns { display: grid; gap: 16px; }
+.columns { display: grid; gap: 24px; }
 
 @media (min-width: 900px) {
   .columns { grid-template-columns: 3fr 2fr; align-items: start; }
@@ -449,15 +497,15 @@ button[disabled] { opacity: 0.45; cursor: default; }
   overflow: auto;
   white-space: pre-wrap;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--grey);
 }
 
-.stack { display: grid; gap: 16px; }
+.stack { display: grid; gap: 24px; }
 
 .findings, .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.findings li { padding-left: 14px; border-left: 2px solid var(--line); }
-.history li { border-top: 1px solid var(--line); padding-top: 12px; font-size: 14px; }
+.findings li { padding-left: 12px; border-left: 2px solid var(--line); }
+.history li { border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; }
 .history li:first-child { border-top: 0; padding-top: 0; }
 .history .at { color: var(--grey); }
 
@@ -471,9 +519,9 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .action-fields input, .action-fields textarea {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
@@ -484,33 +532,103 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 /* --- Keywords, today, digest -------------------------------------------- */
 
+/* A question is a decision row, not a stack of radios: term, context, four
+   answers side by side, then Record and Skip. About 140 px tall, so four of
+   them are on screen at once. */
 .term { border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 0 0 16px; }
 .term legend {
   float: left;
   width: 100%;
   padding: 0;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   font-size: 17px;
   font-weight: 600;
 }
-.term .context, .term .options { clear: both; }
-.term .context { margin: 0 0 12px; color: var(--grey); font-size: 14px; }
 
-.options { display: grid; gap: 8px; }
-.options label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; }
-.options input { margin: 0; accent-color: var(--ink); }
+.term-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.term-head .kind { font-size: 13px; font-weight: 400; color: var(--grey); }
+.term .context, .term .options, .term .more { clear: both; }
+.term .context { margin: 0; color: var(--grey); font-size: 13px; }
+
+/* Two lines of context, and a bare toggle for the rest of it. */
+.context.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.more {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  color: var(--grey);
+  text-decoration: underline;
+}
+.more:hover { background: none; color: var(--ink); }
+
+/* A green dot beside a term a plan calls must-have. */
+.must {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+  background: var(--green);
+}
+
+.term-row { display: flex; align-items: stretch; gap: 8px; margin: 12px 0 0; }
+
+.options.segmented {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+@media (max-width: 719px) {
+  .term-row { flex-wrap: wrap; }
+  .options.segmented { flex: 1 0 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .term-actions { width: 100%; justify-content: space-between; }
+}
+
+.seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.seg:hover { background: var(--hover); }
+.seg.on { border-color: var(--ink); }
+.seg:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.seg input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
 
 /* The keyword drain: the whole pending list on the left, the bundle of four on
    the right, so the person can see how much is left and jump about in it. */
-.kw-layout { margin-top: 16px; }
+.kw-layout { margin-top: 0; }
+
+@media (min-width: 900px) {
+  .kw-layout { grid-template-columns: 240px minmax(0, 1fr); }
+  .kw-list { position: sticky; top: 88px; }
+}
 
 .kw-list h2 { margin: 0 0 12px; font-size: 17px; }
 
 .kw-list input[type="search"] {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   width: 100%;
-  padding: 8px 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
@@ -527,12 +645,13 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .kw-term {
   font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 4px;
+  height: auto;
+  padding: 4px;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -542,12 +661,16 @@ button[disabled] { opacity: 0.45; cursor: default; }
 }
 
 .kw-term:hover { background: var(--hover); }
-.kw-term .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kw-term .tally { margin-left: auto; color: var(--grey); font-size: 13px; }
+.kw-term .name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-term .kind { color: var(--grey); font-size: 13px; }
+.kw-term .must { flex: 0 0 auto; }
+.kw-term .tally { color: var(--grey); font-size: 13px; }
+.kw-group { margin: 12px 0 4px; }
+.kw-group:first-child { margin-top: 0; }
 .kw-term .mark { width: 12px; color: var(--grey); }
 .kw-term .mark.done { color: var(--green); }
 
-.progress-line { margin: 0 0 8px; color: var(--grey); font-size: 14px; }
+.progress-line { margin: 0 0 8px; color: var(--grey); font-size: 13px; }
 
 .bar {
   height: 6px;
@@ -562,7 +685,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .terms-toggle { display: none; margin: 0 0 16px; }
 
 @media (max-width: 899px) {
-  .terms-toggle { display: inline-block; }
+  .terms-toggle { display: inline-flex; }
   .kw-list[hidden] { display: none; }
 }
 
@@ -576,10 +699,10 @@ button[disabled] { opacity: 0.45; cursor: default; }
   padding: 12px;
   border-radius: 8px;
 }
-.prose ul { padding-left: 20px; }
+.prose ul { padding-left: 16px; }
 
 .digest-count { color: var(--green); font-weight: 600; margin-right: 8px; }
-.sample { margin: 8px 0 0; color: var(--grey); font-size: 14px; }
+.sample { margin: 8px 0 0; color: var(--grey); font-size: 13px; }
 .proposed > div { flex: 1 1 320px; max-width: var(--measure); }
 
 .proposed {
@@ -598,13 +721,35 @@ button[disabled] { opacity: 0.45; cursor: default; }
    gates as dots, and the files. No render or approve control lives here;
    AGENTS.md section 5 keeps both with resume-writer and the person. */
 
-.resume h2 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+/* Two positionings to a row on a desktop, one under 900 px. A card is a title
+   row, a positioning line, a two column body (pages left, verdicts right) and
+   the files, which keeps it near 320 px tall so the row does not stagger. */
+.resume-grid { grid-template-columns: minmax(0, 1fr); }
 
-.stamp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 16px; }
+@media (min-width: 900px) {
+  .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.resume-grid > p { grid-column: 1 / -1; }
+
+.resume h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
+.resume h2 .stamp { margin-left: auto; }
+.resume-positioning { margin: 0 0 16px; }
+
+.resume-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start; }
+.resume-facts { display: grid; gap: 8px; align-content: start; }
+
+/* On a phone the two columns would squeeze the chips into a ribbon, so the
+   pages go above the verdicts instead. */
+@media (max-width: 719px) {
+  .resume-body { grid-template-columns: minmax(0, 1fr); }
+}
+.resume-facts .chips, .resume-facts .critic-line, .resume-facts .covers, .resume-facts p { margin: 0; }
+.resume-files { margin: 16px 0 0; }
 
 .stamp {
   display: inline-block;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--pill);
@@ -617,7 +762,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .stamp.stale { color: var(--amber); border-color: var(--amber); }
 .stamp.missing { color: var(--red); border-color: var(--red); }
 
-.pages { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; }
+.pages { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; align-content: start; }
 .page-fig { margin: 0; display: grid; gap: 4px; justify-items: center; }
 
 .page {
@@ -629,17 +774,17 @@ button[disabled] { opacity: 0.45; cursor: default; }
 }
 
 .page.low { border-color: var(--red); }
-.page-img { display: block; height: 120px; width: auto; }
+.page-img { display: block; height: 96px; width: auto; }
 .page-fig figcaption { font-size: 12px; }
 .page-fig .bad { color: var(--red); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 4px 8px;
   border-radius: 8px;
   background: var(--pill);
   color: var(--pill-ink);
@@ -651,11 +796,11 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .chip.warn .dot { background: var(--amber); }
 .chip.bad .dot { background: var(--red); }
 
-.critic-line { margin: 0 0 12px; }
+.critic-line { margin: 0 0 8px; }
 .critic-line.bad { color: var(--red); }
 .critic-line.warn { color: var(--amber); }
 
-.covers { display: grid; gap: 8px; margin: 0 0 12px; }
+.covers { display: grid; gap: 8px; margin: 0 0 8px; }
 .covers .cover p { margin: 0 0 4px; }
 .covers .bar { margin: 0; max-width: 320px; }
 
@@ -666,20 +811,28 @@ button[disabled] { opacity: 0.45; cursor: default; }
    A dashboard of cards, each a summary of one screen and a link into it.
    Nothing here acts: Home reads, the screen it links to decides. */
 
-.home-grid { display: grid; gap: 16px; align-items: start; }
+/* The cards are very different heights, so a grid row leaves a hole beside the
+   short one. A multi-column flow packs them instead: each card stays whole
+   (break-inside: avoid) and the next one starts straight underneath. */
+.home-grid { column-count: 1; column-gap: var(--gutter); }
 
-@media (min-width: 900px) {
-  .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 720px) {
+  .home-grid { column-count: 2; }
 }
 
-.home-card { display: flex; flex-direction: column; }
-.home-card h2 { margin-bottom: 12px; }
+.home-card {
+  display: block;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin-bottom: 24px;
+}
+.home-card h2 { margin-bottom: 16px; }
 .home-line { margin: 0 0 8px; }
 .home-big { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
 
 .home-row {
   margin: 0 0 12px;
-  padding-top: 10px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
@@ -693,17 +846,24 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .home-row-title:hover { text-decoration: underline; }
 
 .home-actions { margin: 12px 0 0; }
-.home-more { margin: auto 0 0; padding-top: 12px; font-size: 14px; }
+.home-more { margin: 16px 0 0; font-size: 13px; }
 
 .home-journal {
   margin: 0;
   max-height: 260px;
   overflow: auto;
-  white-space: pre-wrap;
-  font: inherit;
   font-size: 13px;
   color: var(--grey);
 }
+
+.home-journal h2,
+.home-journal h3 { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.home-journal h2:first-child,
+.home-journal h3:first-child { margin-top: 0; }
+.home-journal p { margin: 0 0 8px; }
+.home-journal ul { margin: 0 0 8px; padding-left: 20px; }
+.home-journal li { margin: 0 0 4px; }
+.home-journal pre { margin: 0 0 8px; overflow: auto; }
 
 /* --- Safety ------------------------------------------------------------- */
 
@@ -711,15 +871,16 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .safety p:first-child { margin-top: 0; }
 .kill { border-color: var(--red); }
 
-/* One term, one decision: the two buttons sit under the answers. */
-.term-actions { margin: 16px 0 0; }
+/* One term, one decision: Record goes live beside the answers, Skip sits at the
+   right of the same row. */
+.term-actions { display: flex; align-items: center; gap: 8px; margin: 0; flex: 0 0 auto; }
 
 /* --- Empty, error, toast ------------------------------------------------ */
 
 .empty, .error {
   margin: 0;
   padding: 20px;
-  border: 1px solid var(--line);
+  border: 1px dashed var(--line);
   border-radius: 12px;
   color: var(--grey);
 }
@@ -737,7 +898,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
   border-radius: 8px;
   background: var(--ink);
   color: var(--page);
-  font-size: 14px;
+  font-size: 15px;
   z-index: 20;
 }
 

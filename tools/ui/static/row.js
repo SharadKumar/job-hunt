@@ -8,7 +8,7 @@
  */
 
 import { ACTIONS, actionButton } from "./applications.js";
-import { APPLY_METHODS, asText, eyebrow, fetchInto, h, panel, paragraphs, render, statusLabel, when } from "./app.js";
+import { APPLY_METHODS, asText, eyebrow, fetchInto, h, pageHeader, panel, paragraphs, render, statusLabel, when } from "./app.js";
 
 /** One small card in the stats row: a label, a verdict, and a quiet note. */
 function stat(label, value, tone, note) {
@@ -92,11 +92,13 @@ function actionBar(row, onDone) {
 export async function viewRow(view, id) {
   view.append(h("p", { class: "empty", text: "Loading the row." }));
   const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
-  if (!data) return view.prepend(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })));
+  if (!data) return view.prepend(pageHeader({ title: "Row", back: h("a", { href: "#/applications", text: "Applications" }) }));
   const row = data.row || {};
   const pkg = data.package || {};
-  view.append(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })),
-    h("h1", { text: row.title || "Untitled role" }));
+  view.append(pageHeader({
+    title: row.title || "Untitled role",
+    back: h("a", { href: "#/applications", text: "Applications" }),
+  }));
   const facts = [
     row.company, row.location, row.classification?.work_arrangement || row.workArrangement,
     APPLY_METHODS[row.applyMethod] || row.applyMethod,

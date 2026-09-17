@@ -455,6 +455,8 @@ export async function getKeywordsPending(
   return {
     terms: matched.slice(offset, offset + limit).map((g) => ({
       term: g.term,
+      category: g.category ?? null,
+      evidence_hint: g.evidence_hint ?? null,
       count: g.count,
       resumes: g.resumes,
       context: groupContext(g),

@@ -6,7 +6,7 @@
  * rule to the clipboard and writes nothing.
  */
 
-import { fetchInto, h, toast } from "./app.js";
+import { fetchInto, h, pageHeader, toast } from "./app.js";
 
 function copyButton(text) {
   const button = h("button", { type: "button", class: "btn", text: "Copy rule" });
@@ -18,15 +18,15 @@ function copyButton(text) {
 }
 
 export async function viewDigest(view) {
-  view.append(h("h1", { text: "Digest" }));
+  const count = h("p", { class: "page-count", text: "Loading the digest." });
+  view.append(pageHeader({ title: "Digest", lede: count }));
   const host = h("div", { class: "cards" });
   host.append(h("p", { class: "empty", text: "Loading the digest." }));
   view.append(host);
   const data = await fetchInto(host, "critic/digest?since=14d", "Could not load the critic digest.");
   if (!data) return;
   const themes = data.themes || [];
-  view.insertBefore(h("p", { class: "page-count",
-    text: `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.` }), host);
+  count.textContent = `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.`;
   if (!themes.length) {
     host.append(h("p", { class: "empty", text: "No recurring themes in this window. Nothing to promote into the editorial rules." }));
     return;

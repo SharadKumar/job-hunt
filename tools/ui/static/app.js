@@ -36,10 +36,10 @@ export const ROUTES = ["home", "applications", "queue", "row", "resumes", "keywo
  * "manual_action_needed to manual_action_needed" and learns anything. */
 const STATUS_LABELS = {
   discovered: "discovered", shortlisted: "shortlisted", drafted: "drafted",
-  awaiting_approval: "waiting for you", approved: "approved", submission_pending: "sending",
+  awaiting_approval: "to approve", approved: "approved", submission_pending: "sending",
   submitted: "sent", responded: "responded", interview: "interview", offered: "offered",
   won: "won", rejected: "rejected", withdrawn: "withdrawn", parked: "parked",
-  awaiting_external: "waiting on them", manual_action_needed: "needs you",
+  awaiting_external: "waiting on them", manual_action_needed: "blocked",
 };
 
 /** A status the map has not met yet still reads as words, not as a key. */
@@ -89,6 +89,24 @@ export function panel(title, body) {
   const card = h("section", { class: "card" });
   card.append(h("h2", { text: title }), body);
   return card;
+}
+
+/**
+ * The one page header. Every screen draws its title through this, so the top of
+ * every screen has the same shape: an optional grey back link, the 26 px title,
+ * an optional aside (a sort control, a filter toggle, a primary button) on the
+ * title's baseline, and an optional lede under it.
+ *
+ * `lede` and `aside` take a node as readily as a string, because a screen that
+ * updates its count line keeps the node it passed in and writes to it.
+ */
+export function pageHeader({ title, lede, aside, back } = {}) {
+  const head = h("header", { class: "page-header" });
+  if (back) head.append(h("p", { class: "backlink" }, back));
+  head.append(h("h1", { text: title || "" }));
+  if (aside) head.append(h("div", { class: "page-aside" }, aside));
+  if (lede) head.append(lede instanceof Node ? lede : h("p", { class: "lede", text: lede }));
+  return head;
 }
 
 /** Local time, short. Falls back to the raw string when it is not a date. */
@@ -344,17 +362,20 @@ function autopilotSwitch(onChange) {
   clear(slot);
   if (!policyAvailable || !policy) {
     slot.append(h("button", {
-      type: "button", class: "switch off", disabled: true,
+      type: "button", class: "switch unknown", disabled: true,
       title: "policy API unavailable", "aria-label": "Autopilot, policy API unavailable",
       text: "Autopilot unavailable",
     }));
     return;
   }
+  // The dot carries the state, so the label is just the word. A screen reader
+  // gets the state and the consequence in the aria-label instead.
   const on = policy.autopilot_enabled === true;
-  const resting = `Autopilot ${on ? "on" : "off"}`;
+  const resting = "Autopilot";
   const button = h("button", {
     type: "button", class: on ? "switch on" : "switch off", "aria-pressed": on ? "true" : "false",
-    "aria-label": resting, title: on ? "Turn autopilot off" : "Turn autopilot on", text: resting,
+    "aria-label": `Autopilot ${on ? "on" : "off"}. Press to turn ${on ? "off" : "on"}.`,
+    title: on ? "Turn autopilot off" : "Turn autopilot on", text: resting,
   });
   const note = h("span", { class: "switch-note grey small" });
   guarded(button, on ? "Turn off" : "Turn on", async () => {
@@ -403,7 +424,7 @@ export async function render() {
   await Promise.all([loadSummary(), loadPolicy()]);
   if (mine !== renderToken) return;
   autopilotSwitch(() => render());
-  const ui = { h, panel, fetchInto };
+  const ui = { h, panel, fetchInto, pageHeader };
   try {
     if (route === "row") {
       if (id) await viewRow(view, id);

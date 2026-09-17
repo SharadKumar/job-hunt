@@ -8,7 +8,7 @@
  * page, so nobody has to guess whether the machine is sending this morning.
  */
 
-import { api, getPolicy, getSummary, h, isPolicyAvailable, localDay, render } from "./app.js";
+import { api, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown } from "./app.js";
 
 /** The hour scripts/install-launchd.sh puts the daily run at. */
 const RUN_SCHEDULE = "The daily run is at 07:00.";
@@ -42,12 +42,13 @@ function standing() {
     + `Kill switch ${policy.kill_switch ? "on" : "off"}. ${RUN_SCHEDULE}`;
 }
 
-/** Top five rows that need the person, with the reason each is stuck. */
+/** Top five rows the run could not finish, with the reason each is stuck. */
 function needsCard(result) {
-  if (result.status !== "fulfilled") return card("Needs you", "#/applications/needs", "Open Applications", failure("Could not load the rows that need you."));
+  if (result.status !== "fulfilled") return card("Blocked", "#/applications/needs", "Open Applications", failure("Could not load the blocked rows."));
   const rows = result.value.rows || [];
   const body = h("div", {});
-  if (!rows.length) body.append(line("Nothing needs you.", "home-line grey"));
+  body.append(line("The run could not finish these: a blocked letter, an unanswered question or an external portal.", "home-line grey"));
+  if (!rows.length) body.append(line("Nothing is blocked.", "home-line grey"));
   for (const row of rows.slice(0, 5)) {
     const item = h("div", { class: "home-row" });
     item.append(h("a", { class: "home-row-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
@@ -55,7 +56,7 @@ function needsCard(result) {
     item.append(h("p", { class: "grey small", text: row.reason || "No reason recorded." }));
     body.append(item);
   }
-  return card("Needs you", "#/applications/needs", rows.length > 5 ? `See all ${rows.length}` : "Open Applications", body);
+  return card("Blocked", "#/applications/needs", rows.length > 5 ? `See all ${rows.length}` : "Open Applications", body);
 }
 
 /** What went out today, by title. The count is the summary's own figure. */
@@ -78,14 +79,14 @@ function sentCard(result) {
   return card("Sent today", "#/applications/sent", "Open Sent", body);
 }
 
-/** How many prepared packages are waiting on a decision. */
+/** How many prepared packages are waiting on the person to say yes. */
 function waitingCard() {
   const summary = getSummary();
   const count = summary ? (summary.counts || {}).awaiting_approval ?? 0 : 0;
   const body = h("div", {});
   body.append(h("p", { class: "home-big", text: String(count) }));
-  body.append(line(count === 1 ? "package is waiting for you." : "packages are waiting for you.", "home-line grey"));
-  return card("Waiting for you", "#/applications/waiting", "Open Waiting", body);
+  body.append(line("Packages ready to send once you say yes.", "home-line grey"));
+  return card("To approve", "#/applications/waiting", "Open To approve", body);
 }
 
 /** One line per positioning: what it is, its stamp, and the critic's verdict. */
@@ -133,19 +134,20 @@ function digestCard(result) {
   return card("Recurring critic themes", "#/digest", "Open Digest", body);
 }
 
-/** The head of today's journal: the first dozen lines, as written. */
+/** The head of today's journal: the first dozen lines, read as markdown.
+ * Same renderer as the Today screen, so a heading is a heading here too and
+ * nobody has to read `## What the run did` as raw source. */
 function todayCard(result) {
   if (result.status !== "fulfilled") return card("Today's run", "#/today", "Read today", failure("Could not load today's summary."));
   const markdown = String(result.value.markdown || "").trim();
   const body = h("div", {});
   if (!markdown) body.append(line("No entry for today yet. The morning run writes one when it finishes.", "home-line grey"));
-  else body.append(h("pre", { class: "home-journal", text: markdown.split("\n").slice(0, 12).join("\n") }));
+  else body.append(h("div", { class: "home-journal" }, richMarkdown(markdown.split("\n").slice(0, 12).join("\n"))));
   return card("Today's run", "#/today", "Read today", body);
 }
 
 export async function viewHome(view) {
-  view.append(h("h1", { text: "Home" }));
-  view.append(h("p", { class: "lede", text: standing() }));
+  view.append(pageHeader({ title: "Home", lede: standing() }));
   const grid = h("div", { class: "home-grid" });
   grid.append(h("p", { class: "empty", text: "Loading the dashboard." }));
   view.append(grid);
@@ -160,8 +162,17 @@ export async function viewHome(view) {
   ]);
   const [needs, sent, resumes, keywords, digest, journal] = results;
   while (grid.firstChild) grid.firstChild.remove();
-  grid.append(needsCard(needs), sentCard(sent), waitingCard(), resumesCard(resumes),
-    keywordsCard(keywords), digestCard(digest), todayCard(journal));
+  // Reading order is priority order: what is stuck, what is waiting on a
+  // decision, then the backlog, then what has already happened.
+  grid.append(
+    needsCard(needs),
+    waitingCard(),
+    keywordsCard(keywords),
+    sentCard(sent),
+    resumesCard(resumes),
+    digestCard(digest),
+    todayCard(journal),
+  );
   if (results.every((r) => r.status === "rejected")) {
     view.append(h("p", { class: "home-actions" },
       h("button", { type: "button", class: "btn", text: "Try again", onClick: () => render() })));

@@ -10,7 +10,7 @@
  * lands the moment it is made and the freed slot fills from the queue behind it.
  */
 
-import { api, clear, errorBox, h, panel, render, toast } from "./app.js";
+import { api, clear, errorBox, h, pageHeader, panel, render, toast } from "./app.js";
 
 /* AGENTS.md section 9: four fixed answers and no others, recommended first.
  * The labels are verbatim; the values are what POST /api/keywords/record wants. */
@@ -46,23 +46,51 @@ const saveKeywordSession = (state) => {
   try { sessionStorage.setItem(KEYWORD_SESSION, JSON.stringify(state)); } catch { /* private mode: memory only */ }
 };
 
+/** The context line: which positioning asked, which advert it came from, and
+ * the hint the ledger holds, if it holds one. */
+function contextOf(item) {
+  return [
+    item.count === 1 ? "seen once" : `seen ${item.count} times`,
+    (item.resumes || []).join(", "),
+    item.context,
+    item.evidence_hint,
+  ].filter(Boolean).join(". ");
+}
+
 /**
- * One question: the term, what it was asked against, the four answers, and the
- * two buttons that resolve it. Record is black and stays disabled until an
- * answer other than "Unsure / keep pending" is picked; Skip puts the term to
- * the back of the pass. 1 to 4 pick an answer while the focus is in the card.
+ * One question as a decision row: the term, the context under it, the four
+ * answers as a segmented control, and the two buttons that resolve it. Record
+ * is black and stays disabled until an answer other than "Unsure / keep
+ * pending" is picked; Skip puts the term to the back of the pass. 1 to 4 pick
+ * an answer while the focus is in the card.
  */
 function termCard(item, handlers) {
-  const set = h("fieldset", { class: "term" }, h("legend", { text: item.term }));
-  const facts = [item.count === 1 ? "seen once" : `seen ${item.count} times`,
-    (item.resumes || []).join(", "), item.context].filter(Boolean);
-  set.append(h("p", { class: "context", text: facts.join(". ") }));
-  const options = h("div", { class: "options" });
-  for (const option of KEYWORD_OPTIONS) {
-    options.append(h("label", {}, h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
-      h("span", { text: option.label })));
+  const set = h("fieldset", { class: "term" });
+  const head = h("legend", { class: "term-head" }, h("span", { class: "term-name", text: item.term }));
+  if (mustHave(item)) head.append(h("span", { class: "must", "aria-label": "must have", title: "must-have on a plan" }));
+  const kind = categoryOf(item);
+  if (kind) head.append(h("span", { class: "kind", text: kind }));
+  set.append(head);
+
+  const text = contextOf(item);
+  const context = h("p", { class: "context clamp", text });
+  set.append(context);
+  // Long context is clamped to two lines rather than pushing the answers down.
+  if (text.length > 90) {
+    const more = h("button", { type: "button", class: "more", text: "more" });
+    more.addEventListener("click", () => {
+      more.textContent = context.classList.toggle("clamp") ? "more" : "less";
+    });
+    set.append(more);
   }
-  set.append(options);
+
+  const options = h("div", { class: "options segmented" });
+  for (const option of KEYWORD_OPTIONS) {
+    const label = h("label", { class: "seg" },
+      h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
+      h("span", { text: option.label }));
+    options.append(label);
+  }
 
   const problem = h("div", {});
   const record = h("button", { type: "button", class: "btn primary", text: "Record", disabled: true });
@@ -75,6 +103,9 @@ function termCard(item, handlers) {
   options.addEventListener("change", () => {
     clearTimeout(pendingTimer);
     const answer = answerOf();
+    for (const label of options.querySelectorAll(".seg")) {
+      label.classList.toggle("on", label.querySelector("input").checked);
+    }
     record.disabled = !answer || answer === "pending";
     // The mis-click window: another answer inside it cancels the departure.
     if (answer === "pending") pendingTimer = setTimeout(() => handlers.onSkip(item.term), PENDING_SKIP_MS);
@@ -100,17 +131,31 @@ function termCard(item, handlers) {
       problem.append(errorBox(failure, "Could not record this answer. Nothing was written.", null));
     }
   });
-  set.append(h("div", { class: "action-buttons term-actions" }, record, skip), problem);
+  // One row: the four answers, then Record, then Skip on the right of it.
+  set.append(h("div", { class: "term-row" }, options, h("div", { class: "term-actions" }, record, skip)), problem);
   return set;
 }
 
+/** The four words the ledger uses for what a term is. Anything else, or a term
+ * the API does not classify, shows no word rather than a guessed one. */
+const CATEGORIES = ["tool", "method", "certification", "concept"];
+
+const categoryOf = (item) => {
+  const raw = String(item.category ?? item.kind ?? "").trim().toLowerCase();
+  return CATEGORIES.includes(raw) ? raw : "";
+};
+
+/** True when any plan behind the term calls it must-have. The ledger may say so
+ * on the term or on the pending rows it groups. */
+const mustHave = (item) => item.must_have === true || item.tier === "must_have"
+  || (item.plans || []).some((plan) => plan && (plan.must_have === true || plan.tier === "must_have"));
+
 export async function viewKeywords(view) {
-  view.append(h("h1", { text: "Keywords" }));
   const count = h("p", { class: "page-count", text: "Loading pending terms." });
   const layout = h("div", { class: "layout kw-layout" });
   const left = h("aside", { class: "card kw-list", id: "kw-list" });
   const right = h("div", { class: "stack" });
-  view.append(count, layout);
+  view.append(pageHeader({ title: "Keywords", lede: count }), layout);
   let terms = [];
   const load = async () => {
     const data = await api("keywords/pending?all=1");
@@ -149,6 +194,30 @@ export async function viewKeywords(view) {
   search.addEventListener("input", () => paintList());
   left.append(heading, search, list);
 
+  /** One row in the left list: the term, what kind of thing it is, a green dot
+   * when a plan calls it must-have, and the count only when it says something
+   * (almost every pending term is asked once, so a column of 1s is noise). */
+  function termRow(item) {
+    const done = decided.has(item.term), put = skipped.has(item.term);
+    const button = h("button", {
+      type: "button", class: "kw-term",
+      title: done ? "Decided this session" : put ? "Skipped this session" : item.term,
+    },
+      h("span", { class: done ? "mark done" : put ? "mark put" : "mark", text: done ? "\u2713" : put ? "\u2022" : "" }),
+      h("span", { class: "name", text: item.term }));
+    if (mustHave(item)) button.append(h("span", { class: "must", title: "must-have on a plan", "aria-label": "must have" }));
+    const kind = categoryOf(item);
+    if (kind) button.append(h("span", { class: "kind", text: kind }));
+    if ((item.count ?? 0) > 1) button.append(h("span", { class: "tally", text: String(item.count) }));
+    // Jumping moves the window to start at that term, wherever the pass had it.
+    button.addEventListener("click", () => {
+      const at = state.pass.indexOf(item.term);
+      if (at < 0) return;
+      state.cursor = at; listOpen = false; repaint();
+    });
+    return h("li", {}, button);
+  }
+
   function paintList() {
     heading.textContent = toggle.textContent = `All terms (${terms.length})`;
     left.hidden = !listOpen && window.innerWidth < 900;
@@ -156,18 +225,15 @@ export async function viewKeywords(view) {
     const needle = search.value.trim().toLowerCase();
     const shown = needle ? terms.filter((t) => t.term.toLowerCase().includes(needle)) : terms;
     if (!shown.length) return list.append(h("li", { class: "grey small", text: needle ? "No term matches that search." : "Nothing pending." }));
-    for (const item of shown) {
-      const done = decided.has(item.term), put = skipped.has(item.term);
-      const button = h("button", { type: "button", class: "kw-term", title: done ? "Decided this session" : put ? "Skipped this session" : item.term },
-        h("span", { class: done ? "mark done" : put ? "mark put" : "mark", text: done ? "✓" : put ? "•" : "" }),
-        h("span", { class: "name", text: item.term }), h("span", { class: "tally", text: String(item.count) }));
-      // Jumping moves the window to start at that term, wherever the pass had it.
-      button.addEventListener("click", () => {
-        const at = state.pass.indexOf(item.term);
-        if (at < 0) return;
-        state.cursor = at; listOpen = false; repaint();
-      });
-      list.append(h("li", {}, button));
+    const byTerm = (a, b) => a.term.localeCompare(b.term);
+    const groups = [
+      ["Must have", shown.filter((item) => mustHave(item)).sort(byTerm)],
+      ["Other", shown.filter((item) => !mustHave(item)).sort(byTerm)],
+    ];
+    for (const [label, items] of groups) {
+      if (!items.length) continue;
+      list.append(h("li", { class: "kw-group eyebrow", text: label }));
+      for (const item of items) list.append(termRow(item));
     }
   }
 

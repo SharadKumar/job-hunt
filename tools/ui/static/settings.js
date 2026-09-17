@@ -8,7 +8,7 @@
  */
 
 import {
-  api, clear, getPolicy, guarded, h, isPolicyAvailable, loadPolicy, panel, readToken, render, toast, writeToken,
+  api, clear, getPolicy, guarded, h, isPolicyAvailable, loadPolicy, pageHeader, panel, readToken, render, toast, writeToken,
 } from "./app.js";
 
 /** The ways to run this UI, best first. */
@@ -92,7 +92,7 @@ function browserCard() {
 }
 
 export function viewSettings(view) {
-  view.append(h("h1", { text: "Settings" }));
+  view.append(pageHeader({ title: "Settings", lede: "The token, the kill switch and how to reach this page." }));
   const stack = h("div", { class: "stack" });
   stack.append(tokenCard(), safetyCard(), browserCard());
   stack.append(panel("About", h("div", {},

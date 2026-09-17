@@ -65,45 +65,54 @@ function fileButton(label, href, h) {
   return h("a", { class: "btn", href, target: "_blank", rel: "noopener", text: label });
 }
 
+/**
+ * One positioning, as a card that fits beside another at 1280: a title row with
+ * the stamp hard right, the positioning under it, then the pages on the left of
+ * the body and everything the gates say on the right, and the files in a row.
+ */
 function resumeCard(item, h) {
   const card = h("article", { class: "card resume" });
-  card.append(h("h2", {}, h("span", { text: item.label || item.id }), h("span", { class: "grey small", text: item.id })));
-  if (item.positioning) card.append(h("p", { class: "measure", text: item.positioning }));
 
   const stamp = item.stamp || { kind: "missing", text: "No render" };
-  const stampRow = h("p", { class: "stamp-row" },
-    h("span", { class: `stamp ${stamp.kind}`, text: stamp.text }));
-  if (item.last_render_at) stampRow.append(h("span", { class: "grey small", text: `rendered ${String(item.last_render_at).slice(0, 10)}` }));
-  card.append(stampRow);
+  card.append(h("h2", {},
+    h("span", { text: item.label || item.id }),
+    h("span", { class: "grey small", text: item.id }),
+    h("span", { class: `stamp ${stamp.kind}`, text: stamp.text })));
+  if (item.positioning) card.append(h("p", { class: "resume-positioning grey small", text: item.positioning }));
+
+  const body = h("div", { class: "resume-body" });
 
   const pages = item.pages || [];
-  if (pages.length) {
-    const strip = h("div", { class: "pages" });
-    for (const page of pages) strip.append(pageThumb(page, h));
-    card.append(strip);
-  } else {
-    card.append(h("p", { class: "grey small", text: "No rendered pages on disk." }));
-  }
+  const left = h("div", { class: "pages" });
+  // Four pages is every CV this pipeline renders; a fifth would only make the
+  // card taller than the one beside it.
+  if (pages.length) for (const page of pages.slice(0, 4)) left.append(pageThumb(page, h));
+  else left.append(h("p", { class: "grey small", text: "No rendered pages on disk." }));
+  body.append(left);
 
+  const right = h("div", { class: "resume-facts" });
   const gates = item.gates || [];
   if (gates.length) {
     const row = h("div", { class: "chips" });
     for (const gate of gates) row.append(gateChip(gate, h));
-    card.append(row);
+    right.append(row);
   }
-
   const criticTone = toneFor(item.critic && item.critic.verdict);
-  card.append(h("p", { class: criticTone ? `critic-line ${criticTone}` : "critic-line grey", text: criticLine(item.critic) }));
+  right.append(h("p", { class: criticTone ? `critic-line ${criticTone}` : "critic-line grey", text: criticLine(item.critic) }));
 
   const keywords = item.keywords || {};
-  card.append(h("div", { class: "covers" },
+  right.append(h("div", { class: "covers" },
     coverageBar("must-have", keywords.must_have, h),
     coverageBar("renderable", keywords.renderable, h)));
-
-  card.append(h("p", { class: "grey small", text: cloudLine(item.clouds) }));
+  right.append(h("p", { class: "grey small", text: cloudLine(item.clouds) }));
+  if (item.last_render_at) {
+    right.append(h("p", { class: "grey small", text: `rendered ${String(item.last_render_at).slice(0, 10)}` }));
+  }
+  body.append(right);
+  card.append(body);
 
   const files = item.files || {};
-  card.append(h("div", { class: "action-buttons" },
+  card.append(h("div", { class: "action-buttons resume-files" },
     fileButton("Open PDF", files.pdf, h),
     fileButton("Open DOCX", files.docx, h),
     fileButton("Markdown", files.md, h)));
@@ -116,17 +125,17 @@ function resumeCard(item, h) {
  * kept in the shape so the screen can grow a panel without a new argument.
  */
 export async function viewResumes(view, ui) {
-  const { h, fetchInto } = ui;
-  view.append(h("h1", { text: "Resumes" }));
-  const host = h("div", { class: "cards" });
+  const { h, fetchInto, pageHeader } = ui;
+  const count = h("p", { class: "page-count", text: "Loading the positionings." });
+  view.append(pageHeader({ title: "Resumes", lede: count }));
+  const host = h("div", { class: "cards resume-grid" });
   host.append(h("p", { class: "empty", text: "Loading the positionings." }));
   view.append(host);
   const data = await fetchInto(host, "resumes", "Could not load the resumes.");
   if (!data) return;
   const items = data.resumes || [];
   const approved = items.filter((item) => item.stamp && item.stamp.kind === "approved").length;
-  view.insertBefore(h("p", { class: "page-count",
-    text: `${items.length} ${items.length === 1 ? "positioning" : "positionings"}, ${approved} approved` }), host);
+  count.textContent = `${items.length} ${items.length === 1 ? "positioning" : "positionings"}, ${approved} approved`;
   if (!items.length) {
     host.append(h("p", { class: "empty", text: "No positionings yet. Run /onboarding, then /resume-review." }));
     return;
