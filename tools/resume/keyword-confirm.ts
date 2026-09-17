@@ -345,33 +345,30 @@ export function parseAnswerFile(text: string): AnswerEntry[] {
   });
 }
 
+export type RecordedAnswer = { term: string; status: KeywordConfirmStatus; rows: number; resumes: string[] };
+
+export type AppliedAnswers = {
+  recorded: RecordedAnswer[];
+  skipped_already_answered: { term: string; status: string }[];
+  unmatched: string[];
+};
+
 /**
- * Batch record. The drain loop asks 4 terms per structured question, writes the
- * answers to one temp YAML and lands them here in a single pass, because 200+
- * pending terms is never going to be drained one CLI call per term.
+ * Land a batch of validated answers in the ledger. Extracted from
+ * `cmdRecordFile` so a caller that already has the answers in memory (the
+ * local web UI's POST /api/keywords/record) writes them through exactly this
+ * path rather than round-tripping a temp YAML through the CLI. Entries whose
+ * `status` is null are the caller's to reject first; this function trusts it.
  *
- * Only `pending` rows move. A row already answered (or already at the requested
- * status, which is what "Unsure / keep pending" means) is reported under
- * `skipped_already_answered`, so a second run of the same file is a no-op.
+ * Only `pending` rows move, and the ledger is written once, at the end.
  */
-export async function cmdRecordFile(args: Record<string, string>): Promise<number> {
-  const paths = resolvePaths(args);
-  let entries: AnswerEntry[];
-  try {
-    entries = parseAnswerFile(await fs.readFile(args.file, "utf8"));
-  } catch (error) {
-    console.error(`Cannot read ${args.file}: ${(error as Error).message}`);
-    return 2;
-  }
-  const invalid = entries.filter((e) => !e.status).map((e) => ({ term: e.term, answer: e.answer }));
-  if (invalid.length) {
-    for (const bad of invalid) console.error(`Invalid answer for ${JSON.stringify(bad.term)}: ${JSON.stringify(bad.answer)}. Use one of: Confirm and update source | Not applicable | Bring in as familiarity | Unsure / keep pending (aliases: confirm|na|familiarity|pending).`);
-    console.log(JSON.stringify({ ledger: paths.ledger, recorded: [], skipped_already_answered: [], unmatched: [], invalid }, null, 2));
-    return 2;
-  }
-  const rows = await readLedger(paths.ledger);
-  const origin: "attended" | "daily" = args.origin === "daily" ? "daily" : "attended";
-  const recorded: { term: string; status: KeywordConfirmStatus; rows: number; resumes: string[] }[] = [];
+export async function applyAnswerEntries(
+  entries: AnswerEntry[],
+  opts: { ledger: string; origin?: "attended" | "daily"; dryRun?: boolean },
+): Promise<AppliedAnswers> {
+  const rows = await readLedger(opts.ledger);
+  const origin: "attended" | "daily" = opts.origin === "daily" ? "daily" : "attended";
+  const recorded: RecordedAnswer[] = [];
   const skipped: { term: string; status: string }[] = [];
   const unmatched: string[] = [];
   for (const entry of entries) {
@@ -396,19 +393,56 @@ export async function cmdRecordFile(args: Record<string, string>): Promise<numbe
       resumes: [...new Set(targets.map((r) => r.resume_id).filter((id): id is string => Boolean(id)))],
     });
   }
-  if (recorded.length && args["dry-run"] !== "true") await writeLedger(paths.ledger, rows);
+  if (recorded.length && !opts.dryRun) await writeLedger(opts.ledger, rows);
+  return { recorded, skipped_already_answered: skipped, unmatched };
+}
+
+/** The one line a batch owes the reader afterwards: a confirmed term is still unrenderable. */
+export function recordNextStep(recorded: RecordedAnswer[]): string | null {
+  return recorded.some((r) => r.status === "confirmed")
+    ? "Confirmed terms authorise nothing yet. Run `keyword-confirm apply-patch` per confirmed term; the term stays unrenderable until cv-source.md carries the fact."
+    : null;
+}
+
+/**
+ * Batch record. The drain loop asks 4 terms per structured question, writes the
+ * answers to one temp YAML and lands them here in a single pass, because 200+
+ * pending terms is never going to be drained one CLI call per term.
+ *
+ * Only `pending` rows move. A row already answered (or already at the requested
+ * status, which is what "Unsure / keep pending" means) is reported under
+ * `skipped_already_answered`, so a second run of the same file is a no-op.
+ */
+export async function cmdRecordFile(args: Record<string, string>): Promise<number> {
+  const paths = resolvePaths(args);
+  let entries: AnswerEntry[];
+  try {
+    entries = parseAnswerFile(await fs.readFile(args.file, "utf8"));
+  } catch (error) {
+    console.error(`Cannot read ${args.file}: ${(error as Error).message}`);
+    return 2;
+  }
+  const invalid = entries.filter((e) => !e.status).map((e) => ({ term: e.term, answer: e.answer }));
+  if (invalid.length) {
+    for (const bad of invalid) console.error(`Invalid answer for ${JSON.stringify(bad.term)}: ${JSON.stringify(bad.answer)}. Use one of: Confirm and update source | Not applicable | Bring in as familiarity | Unsure / keep pending (aliases: confirm|na|familiarity|pending).`);
+    console.log(JSON.stringify({ ledger: paths.ledger, recorded: [], skipped_already_answered: [], unmatched: [], invalid }, null, 2));
+    return 2;
+  }
+  const applied = await applyAnswerEntries(entries, {
+    ledger: paths.ledger,
+    origin: args.origin === "daily" ? "daily" : "attended",
+    dryRun: args["dry-run"] === "true",
+  });
   console.log(JSON.stringify({
     action: "record-file",
     ledger: paths.ledger,
     file: args.file,
     dry_run: args["dry-run"] === "true",
-    recorded,
-    skipped_already_answered: skipped,
-    unmatched,
+    recorded: applied.recorded,
+    skipped_already_answered: applied.skipped_already_answered,
+    unmatched: applied.unmatched,
     invalid,
-    next_step: recorded.some((r) => r.status === "confirmed")
-      ? "Confirmed terms authorise nothing yet. Run `keyword-confirm apply-patch` per confirmed term; the term stays unrenderable until cv-source.md carries the fact."
-      : null,
+    next_step: recordNextStep(applied.recorded),
   }, null, 2));
   return 0;
 }

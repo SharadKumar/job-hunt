@@ -81,7 +81,8 @@
     "resume:fit-apply": "tsx tools/resume/resume-fit-apply.ts",
     "resume:jsonresume": "tsx tools/resume/jsonresume.ts",
     "resume:index": "tsx tools/resume/resume-index.ts",
-    "resume:serve": "tsx tools/resume/resume-serve.ts"
+    "resume:serve": "tsx tools/resume/resume-serve.ts",
+    "ui": "tsx tools/ui/server.ts"
   },
   "dependencies": {
     "@googleapis/sheets": "^9.0.0",
