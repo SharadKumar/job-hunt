@@ -11,10 +11,10 @@ import { exists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
-import { loadProfile, type ProfileFrontmatter } from "../profile.ts";
+import { loadProfile, resolveLocale, type ProfileFrontmatter } from "../profile.ts";
 import { resolveProfileContext, type ProfileContext } from "../profile-context.ts";
 import { loadResolvedResumes, type ResolvedResume } from "../resumes.ts";
-import { discoverProfiles, loadMetadataStatus, profileIdFromArg, type ProfileRef } from "../profile-team.ts";
+import { discoverProfiles, loadMetadataStatus, type ProfileRef } from "../profile-team.ts";
 import type { ResumeContent } from "../../templates/resume/_interface.ts";
 import { loadComposition } from "../resume/lib/composition-io.ts";
 import { repoPath, repoRoot } from "../repo-root.ts";
@@ -131,16 +131,15 @@ export function slug(value: string): string {
 }
 
 function formatGeneratedAt(date: Date, frontmatter?: ProfileFrontmatter | null): string {
-  const locale = frontmatter?.locale?.english_variant || "en-AU";
-  const timeZone = frontmatter?.location?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const parts = new Intl.DateTimeFormat(locale, {
+  const { language, timezone } = resolveLocale(frontmatter);
+  const parts = new Intl.DateTimeFormat(language, {
     day: "numeric",
     month: "short",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZone,
+    timeZone: timezone,
     timeZoneName: "short",
   }).formatToParts(date);
   const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
@@ -153,13 +152,12 @@ export function formatShortDate(value: unknown, frontmatter?: ProfileFrontmatter
   if (!value) return "Not generated";
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return "Date unavailable";
-  const locale = frontmatter?.locale?.english_variant || "en-AU";
-  const timeZone = frontmatter?.location?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  return new Intl.DateTimeFormat(locale, {
+  const { language, timezone } = resolveLocale(frontmatter);
+  return new Intl.DateTimeFormat(language, {
     day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone,
+    timeZone: timezone,
   }).format(date);
 }
 
@@ -332,10 +330,6 @@ async function resolveArtefacts(resumeDir: string, metadata: Record<string, unkn
     provenance_json: meta.provenance_json ?? scanned.provenance_json,
     pngs: scanned.pngs,
   };
-}
-
-function countPlacement(composition: ResumeContent | null, placement: "feature" | "mention"): number {
-  return composition?.experiences?.filter((experience) => experience.placement === placement).length ?? 0;
 }
 
 export function marketGapCount(composition: ResumeContent | null, key: keyof NonNullable<ResumeContent["market_alignment"]>): number {

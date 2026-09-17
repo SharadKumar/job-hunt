@@ -21,14 +21,9 @@ import {
   type TermChip,
 } from "./model.ts";
 import {
-  gateLabel,
   joinList,
-  longDate,
-  nextMove,
-  pageCountOf,
   readinessSentences,
   railState,
-  shortHumanDate,
   stateClass,
   upperFirst,
   verdictWords,

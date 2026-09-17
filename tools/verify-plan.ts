@@ -109,11 +109,9 @@ async function checkArtefacts(checks: Check[]): Promise<void> {
     "tools/resume/resume-lint-ats.ts", "tools/resume/resume-evaluate.ts",
     "tools/profile.ts",
     "tools/channels/_interface.ts", "tools/channels/seek.ts",
-    // Channels (stubs are fine, but must exist)
+    // Channels with an adapter (see HUNT_SCRIPTS in _interface.ts)
     "tools/channels/linkedin-jobs.ts", "tools/channels/linkedin-posts.ts",
-    "tools/channels/hays.ts", "tools/channels/talenza.ts", "tools/channels/paxus.ts",
-    "tools/channels/robert-half.ts", "tools/channels/peoplebank.ts",
-    "tools/channels/hn-who-is-hiring.ts", "tools/channels/wellfound.ts",
+    "tools/channels/hn-who-is-hiring.ts",
     "tools/channels/seek-submit.ts",
     // Scripts
     "scripts/daily.sh", "scripts/install-launchd.sh", "scripts/login-channel.ts",

@@ -32,8 +32,8 @@ PIPELINE  N total
 
 CHANNELS
   seek: 5 new in last 24h
-  linkedin_jobs: STUB (not yet implemented)
-  hays: STUB
+  linkedin_jobs: 3 new in last 24h
+  hays: no adapter for hays
 
 RECENT
   - 2 drafts queued overnight

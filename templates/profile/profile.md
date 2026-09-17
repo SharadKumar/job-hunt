@@ -29,8 +29,13 @@ location:
   country: AU                          # ISO country code
   timezone: Australia/Sydney           # IANA tz; drives the daily scheduler and locale defaults
 locale:
+  # Everything user-facing reads these. Leave the block out entirely and the
+  # harness applies exactly these values as defaults.
   english_variant: en-AU               # en-AU | en-GB | en-US; drives spelling checks in voice-check
   date_format: DD/MM/YYYY
+  timezone: Australia/Sydney           # IANA tz for dates and times in the daily summary and reports
+  language: en-AU                      # BCP-47 tag for date/number formatting and <html lang>
+  currency: AUD                        # ISO 4217; assumed for day rates that state no currency
 cv_source_dir: ~/Documents/Resume     # directory holding your master CV .docx (see cv/meta.yaml)
 linkedin_url: https://www.linkedin.com/in/your-handle/
 github_url: https://github.com/your-handle

@@ -7,6 +7,7 @@
  */
 
 import path from "node:path";
+import { LOCALE_DEFAULTS, resolveLocale, type ResolvedLocale } from "../profile.ts";
 import { attr, escapeHtml, highlightCode, inferCodeLanguage } from "./highlight.ts";
 import {
   formatShortDate,
@@ -19,6 +20,13 @@ import {
   type TeamReportModel,
   type TemplateReport,
 } from "./model.ts";
+
+/**
+ * Locale for the page currently being rendered. Both entry points set it before
+ * they build anything, and rendering is a single synchronous pass, so the deep
+ * panels can read it without threading a parameter through every helper.
+ */
+let pageLocale: ResolvedLocale = LOCALE_DEFAULTS;
 
 function statusClass(status: unknown): string {
   const s = String(status ?? "missing");
@@ -63,11 +71,6 @@ function generatedList(title: string, items: string[] | undefined): string {
   return `<h4>${escapeHtml(title)}</h4>${list(items)}`;
 }
 
-function link(outPath: string, filePath: string | null, label: string): string {
-  if (!filePath) return `<span class="missing">${escapeHtml(label)} missing</span>`;
-  return `<a href="${attr(relativeLink(outPath, filePath))}">${escapeHtml(label)}</a>`;
-}
-
 function fileSizeLabel(content: string | null): string {
   if (content === null) return "missing";
   const bytes = Buffer.byteLength(content);
@@ -87,18 +90,6 @@ function resumeLongName(resume: ResumeReport): string {
 function maybeIframe(outPath: string, filePath: string | null, title: string): string {
   if (!filePath) return `<div class="empty">No ${escapeHtml(title)} available.</div>`;
   return `<iframe title="${attr(title)}" src="${attr(relativeLink(outPath, filePath))}"></iframe>`;
-}
-
-function artefactLinks(outPath: string, resume: ResumeReport): string {
-  return `<div class="links">
-    ${link(outPath, resume.artefacts.pdf, "PDF")}
-    ${link(outPath, resume.artefacts.html, "HTML")}
-    ${link(outPath, resume.artefacts.docx, "DOCX")}
-    ${link(outPath, resume.artefacts.md, "Markdown")}
-    ${link(outPath, resume.artefacts.composition_json, "Composition JSON")}
-    ${link(outPath, resume.artefacts.provenance_json, "Provenance JSON")}
-    ${link(outPath, resume.metadata ? resume.metadata_path : null, "Metadata JSON")}
-  </div>`;
 }
 
 function primaryArtefactActions(outPath: string, resume: ResumeReport, compact = false): string {
@@ -226,54 +217,6 @@ function marketSummary(resume: ResumeReport): string {
   </div>${codeBlock(alignment, "json")}`;
 }
 
-function resumeCard(model: ProfileReportModel, resume: ResumeReport): string {
-  const status = resume.metadata?.approval_status ?? resume.render_status.render_status ?? "missing";
-  const generated = model.generated.resume_notes?.[resume.id] ?? model.generated.resume_notes?.[resume.id];
-  const health = resumeHealth(resume);
-  return `<article class="card resume-card" id="resume-${attr(slug(resume.id))}" data-resume-card data-status="${attr(String(status))}" data-resume-text="${attr(`${resume.id} ${resume.label} ${resume.template} ${resume.preferred_channels.join(" ")}`.toLowerCase())}">
-    <header>
-      <div>
-        <h3>${escapeHtml(resume.label)}</h3>
-        <p class="muted">${escapeHtml(resumeLongName(resume))}</p>
-      </div>
-      <div class="badges">
-        ${badge("Status", status, statusClass(status))}
-        ${badge("Template", resume.template)}
-        ${resume.format_label ? badge("Format", resume.format_label) : ""}
-        ${badge("Source", resume.source)}
-        ${badge("Active", resume.active ? "yes" : "no", resume.active ? "good" : "warn")}
-      </div>
-    </header>
-    <div class="resume-snapshot">
-      <div class="status-tile ${attr(health.className)}">
-        <span>Readiness</span>
-        <strong>${escapeHtml(health.label)}</strong>
-        <small>${escapeHtml(health.reasons.join(" · "))}</small>
-      </div>
-      <div>
-        ${compositionSummary(resume)}
-      </div>
-    </div>
-    ${resume.warnings.length ? `<div class="warning">${list(resume.warnings)}</div>` : ""}
-    ${generated ? `<section class="generated-block"><h4>Generated resume-specific notes</h4>${generatedText(generated.narrative)}${generatedList("Risks", generated.risks)}${generatedList("Next actions", generated.next_actions)}</section>` : ""}
-    ${primaryArtefactActions(model.out_path, resume)}
-    <section class="report-subsection"><h4>Artefacts</h4>${artefactLinks(model.out_path, resume)}</section>
-    <details><summary>PDF preview</summary>${maybeIframe(model.out_path, resume.artefacts.pdf, `${resume.id} PDF`)}</details>
-    <details><summary>Generated HTML preview</summary>${maybeIframe(model.out_path, resume.artefacts.html, `${resume.id} HTML`)}</details>
-    <details><summary>Page PNG previews</summary>${pngPreview(model.out_path, resume)}</details>
-    <details><summary>Resume inputs</summary>
-      <h4>Should</h4>${list(resume.should)}
-      <h4>Could</h4>${list(resume.could)}
-      <h4>Flagged</h4>${list(resume.flagged)}
-      <h4>Preferred channels</h4>${list(resume.preferred_channels)}
-      <h4>Rate band</h4>${codeBlock(resume.rate_band, "json")}
-      <h4>Notes</h4><p>${escapeHtml(resume.notes ?? "")}</p>
-    </details>
-    <details><summary>Metadata</summary>${codeBlock(resume.metadata ?? { missing: resume.metadata_path }, "json")}</details>
-    <details><summary>Composition JSON</summary>${resume.composition_raw ? codeBlock(resume.composition_raw, "json") : `<div class="empty">No composition JSON available.</div>`}</details>
-  </article>`;
-}
-
 function resumeSnapshotPanel(model: ProfileReportModel, resume: ResumeReport): string {
   const generated = model.generated.resume_notes?.[resume.id] ?? model.generated.resume_notes?.[resume.id];
   return `<div class="snapshot-flow">
@@ -333,12 +276,12 @@ function rateBandPanel(rateBand: unknown): string {
   }
 
   const value = rateBand as Record<string, unknown>;
-  const currency = String(value.currency ?? "AUD");
+  const currency = String(value.currency ?? pageLocale.currency);
   const billingUnit = String(value.billing_unit ?? "day");
   const gstHandling = String(value.gst_handling ?? "");
   const formatRate = (amount: unknown): string => {
     if (typeof amount !== "number") return "—";
-    return `${currency} ${new Intl.NumberFormat("en-AU").format(amount)}`;
+    return `${currency} ${new Intl.NumberFormat(pageLocale.language).format(amount)}`;
   };
 
   const terms = [billingUnit ? `per ${billingUnit}` : "", gstHandling].filter(Boolean).join(" · ");
@@ -611,19 +554,6 @@ function templatesMasterDetail(templates: TemplateReport[], outPath: string, pro
   </div>`;
 }
 
-function resumeControls(): string {
-  return `<div class="card controls">
-    <label>Search resumes <input type="search" data-resume-search placeholder="Resume, template, channel…"></label>
-    <label>Status <select data-status-filter>
-      <option value="">All statuses</option>
-      <option value="approved">Approved</option>
-      <option value="stale">Stale</option>
-      <option value="fresh">Fresh</option>
-      <option value="missing">Missing</option>
-    </select></label>
-  </div>`;
-}
-
 function resumeSummaryCards(model: ProfileReportModel, namespace = "", openTab: string | null = "resumes"): string {
   return `<div class="resume-grid">${model.resumes.map((resume) => {
     const health = resumeHealth(resume);
@@ -677,7 +607,7 @@ function pageShell(title: string, generatedAt: string, body: string, template?: 
       .replaceAll("{{BODY}}", body);
   }
   return `<!doctype html>
-<html lang="en-AU">
+<html lang="${attr(pageLocale.language)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -860,6 +790,7 @@ function pageShell(title: string, generatedAt: string, body: string, template?: 
 }
 
 export function renderProfileReportHtml(model: ProfileReportModel, template?: string): string {
+  pageLocale = resolveLocale(model.frontmatter);
   const topTabs = pageTabs([
     { id: "overview", label: "Overview", html: profileOverview(model) },
     { id: "resumes", label: "Resumes", count: model.resumes.length, html: positioningsMasterDetail(model) },
@@ -867,21 +798,6 @@ export function renderProfileReportHtml(model: ProfileReportModel, template?: st
     { id: "templates", label: "Templates", count: model.templates.length, html: templatesMasterDetail(model.templates, model.out_path, [model]) },
   ]);
   return pageShell(`Profile Report — ${model.profile.label}`, model.generated_at_label, topTabs.panels, template, model.profile.label, "Profile Report", model.google_sheet_url, topTabs.nav);
-}
-
-function matrixTable(model: TeamReportModel): string {
-  const rows = model.matrix.map((row) => `<tr>
-    <td>${escapeHtml(row.profile)}</td>
-    <td>${escapeHtml(row.id)}</td>
-    <td>${escapeHtml(row.label)}</td>
-    <td>${escapeHtml(row.template)}</td>
-    <td>${escapeHtml(row.format_label ?? "")}</td>
-    <td>${escapeHtml(row.render_status)}</td>
-    <td>${escapeHtml(row.active)}</td>
-    <td>${escapeHtml(row.source)}</td>
-    <td>${escapeHtml(row.last_render_at)}</td>
-  </tr>`).join("");
-  return `<div class="card"><table><thead><tr><th>Profile</th><th>Resume</th><th>Label</th><th>Template</th><th>Format</th><th>Status</th><th>Active</th><th>Source</th><th>Last render</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function profileNamespace(profile: ProfileReportModel): string {
@@ -944,18 +860,6 @@ function teamOverview(model: TeamReportModel): string {
     </section>
     <section class="overview-resumes" aria-label="Profiles">${teamProfileCards(model)}</section>
   </div>`;
-}
-
-function resumeCoverage(model: TeamReportModel): string {
-  const coverage = new Map<string, { label: string; profiles: string[] }>();
-  for (const row of model.matrix) {
-    const id = String(row.id);
-    const entry = coverage.get(id) ?? { label: String(row.label ?? id), profiles: [] };
-    entry.profiles.push(String(row.profile));
-    coverage.set(id, entry);
-  }
-  const rows = [...coverage.entries()].map(([id, entry]) => `<tr><td>${escapeHtml(id)}</td><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.profiles.join(", "))}</td><td>${entry.profiles.length}</td></tr>`).join("");
-  return `<div class="card"><table><thead><tr><th>Resume</th><th>Label</th><th>Profiles</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function coverageMatrix(model: TeamReportModel): string {
@@ -1061,6 +965,7 @@ function teamConfiguration(model: TeamReportModel): string {
 }
 
 export function renderTeamReportHtml(model: TeamReportModel, template?: string): string {
+  pageLocale = resolveLocale(model.profiles[0]?.frontmatter);
   const topTabs = pageTabs([
     { id: "bench", label: "Bench", html: teamOverview(model) },
     { id: "coverage", label: "Coverage", html: coverageMatrix(model) },

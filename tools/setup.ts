@@ -32,6 +32,7 @@ import { execFile } from "node:child_process";
 import net from "node:net";
 import { promisify } from "node:util";
 import YAML from "yaml";
+import { huntScriptFor } from "./channels/_interface.ts";
 import { repoPath } from "./repo-root.ts";
 import { resolveProfileContext } from "./profile-context.ts";
 
@@ -188,6 +189,11 @@ async function stageChannels(profileId: string | null): Promise<Stage> {
   const enabled = Object.entries(channels).filter(([, v]: any) => v?.enabled).map(([k]) => k);
   checks.push({ id: "channels_enabled", ok: enabled.length > 0, detail: enabled.length ? enabled.join(", ") : "none enabled", fix: "enable seek and/or linkedin_jobs in channels.yaml" });
   for (const id of enabled) {
+    const adapter = huntScriptFor(id);
+    if (!adapter.ok) {
+      checks.push({ id: `adapter:${id}`, ok: false, detail: adapter.reason, fix: `disable ${id} in channels.yaml or write tools/channels/${id}.ts` });
+      continue;
+    }
     const paths = sessions[id];
     if (!paths) { checks.push({ id: `session:${id}`, ok: true, detail: "no login needed" }); continue; }
     const ok = paths.some((p) => existsSync(repoPath(p)));

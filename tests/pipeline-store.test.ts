@@ -23,7 +23,7 @@ process.env.PIPELINE_DB = path.join(tempRoot, "pipeline.db");
 process.env.AUDIT_DIR = path.join(tempRoot, "audit");
 
 const {
-  upsert, upsertMany, patch, setStatus, remove, get, list, load, save, exportJson, migrate,
+  upsert, upsertMany, patch, setStatus, remove, get, list, load, save,
 } = await import("../tools/pipeline.ts");
 const { openStore } = await import("../tools/pipeline-store.ts");
 

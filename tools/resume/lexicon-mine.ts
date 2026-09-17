@@ -27,7 +27,6 @@ import { readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import YAML from "yaml";
 import { getResume } from "../resumes.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { normalise, stem, STOPWORDS, phraseInText, tokenInText, buildStemSet } from "./keyword-lexicon.ts";

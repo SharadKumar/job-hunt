@@ -260,7 +260,7 @@ export function rewriteDesiredChars(text: string, cal: KindCalibration): string 
   const base = text.replace(MEASURED_SENTENCE, "").trimEnd();
   const seq = bandSequence(cal);
   let index = 0;
-  const rewritten = base.replace(/(\d+)\s*-\s*(\d+)(\s*chars)/g, (match, _a, _b, tail) => {
+  const rewritten = base.replace(/(\d+)\s*-\s*(\d+)(\s*chars)/g, (_match, _a, _b, tail) => {
     const band = seq[index] ?? seq[seq.length - 1];
     index += 1;
     return `${band[0]}-${band[1]}${tail}`;

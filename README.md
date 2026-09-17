@@ -172,7 +172,8 @@ my-contracting/
 │   │   ├── seek.ts, seek-submit.ts        ← Seek.com.au scrape + (planned) Quick Apply
 │   │   ├── linkedin-jobs.ts, -posts.ts    ← LinkedIn (logged-in via persisted Chrome profile)
 │   │   ├── hn-who-is-hiring.ts            ← Algolia HN search API (no login)
-│   │   ├── hays / talenza / paxus / robert-half / peoplebank / wellfound  ← AU recruiters (stubs to be fleshed)
+│   │   │                                    (hays / talenza / paxus / robert-half / peoplebank /
+│   │   │                                     wellfound are ids in channels.yaml with no adapter yet)
 │   │   └── README.md                      ← how to add a channel
 │   ├── cv/                                ← INPUT-side: parser for the master CV
 │   │   └── markdownify-cv.ts              ← .docx → state/profile/cv-source.md

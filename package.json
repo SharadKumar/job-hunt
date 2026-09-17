@@ -86,7 +86,6 @@
     "ui": "tsx tools/ui/server.ts"
   },
   "dependencies": {
-    "@googleapis/sheets": "^9.0.0",
     "docx": "^9.7.0",
     "googleapis": "^144.0.0",
     "mammoth": "^1.8.0",

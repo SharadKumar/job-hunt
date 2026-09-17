@@ -130,10 +130,7 @@ function check(text: string, banlist: { phrases: { phrase: string; category: str
     hits.push({ phrase: "stacked ellipses", position: text.indexOf("..."), category: "punctuation", weight: 5 });
   }
 
-  // Smart-quote / straight-quote mixing
-  const hasSmart = /["“”]/.test(text);
-  const hasStraight = /"/.test(text);
-  // Note: "" is U+201C/201D vs U+0022. Quick check:
+  // Smart-quote / straight-quote mixing. Note: U+201C/201D vs U+0022.
   if (/[“”]/.test(text) && /\"/.test(text)) {
     hits.push({ phrase: "smart/straight quote mixing", position: 0, category: "punctuation", weight: 3 });
   }

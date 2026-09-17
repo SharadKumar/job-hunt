@@ -43,3 +43,25 @@ export interface HuntChannel {
   /** Submit a single opportunity. May not exist; if so, it lands in the manual queue. */
   submit?: (opportunity: Opportunity, pkg: SubmitPackage) => Promise<SubmitResult>;
 }
+
+/**
+ * Channel ids with a hunt adapter under tools/channels/, mapped to the npm
+ * script that runs it. A channel enabled in channels.yaml without an entry here
+ * has no scraper: report it, do not improvise one.
+ */
+export const HUNT_SCRIPTS: Readonly<Record<string, string>> = Object.freeze({
+  seek: "hunt:seek",
+  linkedin_jobs: "hunt:linkedin-jobs",
+  linkedin_posts: "hunt:linkedin-posts",
+  hn_who_is_hiring: "hunt:hn",
+});
+
+export type HuntAdapterLookup =
+  | { ok: true; script: string }
+  | { ok: false; reason: string };
+
+/** Resolve a channel id to its hunt script, or say plainly that none exists. */
+export function huntScriptFor(channel: ChannelId): HuntAdapterLookup {
+  const script = HUNT_SCRIPTS[channel];
+  return script ? { ok: true, script } : { ok: false, reason: `no adapter for ${channel}` };
+}

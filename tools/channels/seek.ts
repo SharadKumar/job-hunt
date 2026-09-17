@@ -21,7 +21,6 @@
  */
 
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import YAML from "yaml";
 import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
 import { keywordsForChannel } from "../resumes.ts";

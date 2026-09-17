@@ -19,7 +19,6 @@
 import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import { classifyJdRegex, type Classification } from "./classify-jd.ts";
 
 export type Role = {

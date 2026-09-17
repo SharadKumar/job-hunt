@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { load, setStatus } from "../tools/pipeline.ts";
+import { load } from "../tools/pipeline.ts";
 
 const original = await load();
 const role = original.find((item) => item.status === "awaiting_external");

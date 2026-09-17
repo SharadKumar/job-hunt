@@ -48,7 +48,6 @@
  */
 
 import { sha256 } from "../lib/hash.ts";
-import { repoPath } from "../repo-root.ts";
 import { get as getOpportunity } from "../pipeline.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -69,7 +68,7 @@ import type { ResumeContent } from "../../templates/resume/_interface.ts";
 import { computeAtsComposite, type AtsCompositeOptions } from "./ats-composite.ts";
 import {
   STOPWORDS, parseArgs, normalise, stem, buildStemSet, tokenInText, phraseInText, phraseInTextLoose,
-  claimFields, lineNumbersContaining, lineNumbersMatchingLoose,
+  claimFields, lineNumbersMatchingLoose,
   type KeywordPlan, type KeywordTerm, type KeywordQuestion, type KeywordCategory, type KeywordStatus,
   type KeywordSignal, type KeywordGap,
   type KeywordCloudKind,

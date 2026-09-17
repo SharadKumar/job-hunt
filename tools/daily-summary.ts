@@ -17,7 +17,8 @@
  * Usage:
  *   tsx tools/daily-summary.ts [--date YYYY-MM-DD] [--notify] [--json] [--no-sheet]
  *
- * Dates are interpreted in Australia/Sydney. Read-only against state except
+ * Dates are interpreted in the profile's locale timezone (`locale.timezone` in
+ * profile.md, default Australia/Sydney). Read-only against state except
  * for the summary file.
  *
  * Exit codes: 0 clean; 1 when the brief cannot be trusted (a present but
@@ -38,8 +39,11 @@ import { repoPath } from "./repo-root.ts";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { query as auditQuery, type AuditEvent } from "./audit.ts";
 import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilters, sheetEnabled } from "./sheets-sync.ts";
+import { loadLocale } from "./profile.ts";
 
-const TZ = "Australia/Sydney";
+// Resolved once at load: every date in the brief is a calendar day in this zone.
+const LOCALE = await loadLocale();
+const TZ = LOCALE.timezone;
 const SUMMARY_DIR = repoPath("state/journal/summary");
 const JOURNAL_DIR = repoPath("state/journal");
 const ARCHIVE_DIR = repoPath("state/pipeline/archive");
@@ -106,15 +110,17 @@ export type DailySummary = {
 
 // ---------- helpers ----------
 
-function sydneyDate(iso: string | Date): string {
+/** Calendar date (YYYY-MM-DD) of an instant in the profile's timezone. */
+function localDate(iso: string | Date): string {
+  // en-CA is the ISO-shaped format, not a locale preference; it stays fixed.
   return new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 }
 
-function sydneyTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-AU", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+function localTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(LOCALE.language, { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-/** UTC bounds of a Sydney calendar day, used to filter ISO timestamps. */
+/** UTC bounds of a local calendar day, used to filter ISO timestamps. */
 function dayBounds(date: string): { start: string; end: string } {
   // Probe: build a UTC guess and adjust by the zone offset at that instant.
   const guess = new Date(`${date}T00:00:00Z`);
@@ -150,7 +156,7 @@ async function readJsonIfExists<T>(p: string): Promise<T | null> {
 }
 
 function parseArgs(argv: string[]): { date: string; notify: boolean; json: boolean; sheet: boolean } {
-  const out = { date: sydneyDate(new Date()), notify: false, json: false, sheet: true };
+  const out = { date: localDate(new Date()), notify: false, json: false, sheet: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--date" && argv[i + 1]) out.date = argv[++i];
@@ -194,7 +200,7 @@ async function gatherSent(rows: Opportunity[], date: string, submittedEvents: Au
   for (const e of submittedEvents) if (e.role_id) actorById.set(e.role_id, e.actor);
   const out: SentRow[] = [];
   for (const r of rows) {
-    if (!r.submittedAt || sydneyDate(r.submittedAt) !== date) continue;
+    if (!r.submittedAt || localDate(r.submittedAt) !== date) continue;
     const dir = path.join(ARCHIVE_DIR, r.id);
     const critic = await readJsonIfExists<{ findings?: { severity: string }[] }>(path.join(dir, "letter-critic.json"));
     out.push({
@@ -422,7 +428,7 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   }
 
   // Movement
-  const discoveredToday = rows.filter((r) => r.history[0] && sydneyDate(r.history[0].at) === date).length;
+  const discoveredToday = rows.filter((r) => r.history[0] && localDate(r.history[0].at) === date).length;
   const queue = rows.filter((r) => r.status === "shortlisted")
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
     .map((r) => ({ id: r.id, title: r.title, company: r.company, location: r.location ?? "", score: r.score ?? null }));
@@ -434,13 +440,13 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   }
   // A row with no history is malformed but must not crash the brief.
   const exited = rows
-    .filter((r) => (r.status === "rejected" || r.status === "withdrawn") && r.history.at(-1) && sydneyDate(r.history.at(-1)!.at) === date)
+    .filter((r) => (r.status === "rejected" || r.status === "withdrawn") && r.history.at(-1) && localDate(r.history.at(-1)!.at) === date)
     .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, reason: short(r.history.at(-1)?.reason ?? "", 110) }));
 
   // Responses
   const responses = rows
     .filter((r) => r.status === "responded" || r.status === "interview" || r.status === "offered")
-    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, at: sydneyDate(r.responseAt ?? r.history.at(-1)?.at ?? r.submittedAt ?? new Date().toISOString()) }));
+    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, at: localDate(r.responseAt ?? r.history.at(-1)?.at ?? r.submittedAt ?? new Date().toISOString()) }));
 
   const numbers = {
     sentToday: sent.length,
@@ -481,7 +487,7 @@ export function renderMarkdown(s: Omit<DailySummary, "markdown" | "sheet">): str
   for (const r of s.sent) {
     const bits = [`${r.actor}`, r.resume || "no resume file"];
     if (r.criticWarns != null) bits.push(`critic warns ${r.criticWarns}`);
-    L.push(`- ${sydneyTime(r.submittedAt)} ${r.title} at ${r.company}${r.location ? ` (${r.location})` : ""}. ${bits.join(", ")}.${r.confirmation ? ` ${r.confirmation}.` : ""}`);
+    L.push(`- ${localTime(r.submittedAt)} ${r.title} at ${r.company}${r.location ? ` (${r.location})` : ""}. ${bits.join(", ")}.${r.confirmation ? ` ${r.confirmation}.` : ""}`);
   }
   L.push("");
 
