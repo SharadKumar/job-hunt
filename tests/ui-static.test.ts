@@ -936,7 +936,11 @@ test("a decision says what it does, and the notes field waits to be wanted", () 
   assert.match(applications, /if \(action\.title\) button\.setAttribute\("title", action\.title\)/,
     "a decision button must put its explanation in the title");
   assert.match(rowJs, /function decisionFields\(\)/, "the two fields belong to one helper");
-  assert.ok(rowJs.includes('h("span", { class: "field-label", text })'), "both fields must be visibly labelled");
+  assert.ok(
+    rowJs.includes('h("span", { class: "field-label", text: help ? `${text} (${help})` : text })'),
+    "both fields must be visibly labelled, and the label and its aside must read on one line",
+  );
+  assert.ok(!/class: "field-help"/.test(rowJs), "the aside must not stack under the label as a second line");
   assert.ok(rowJs.includes('"Reason", "goes into the history"'), "the reason field must say where it goes");
   assert.ok(rowJs.includes('"Notes for the next run", "edits to the letter or package"'),
     "the notes field must say who reads it");
@@ -1159,6 +1163,49 @@ test("the Runs screen lists runs newest first and opens one at a time", () => {
   assert.match(runsJs, /Sent unattended \(\$\{letters\.length\}\)/, "the letters an unattended run sent must be named as such");
   assert.match(runsJs, /exit \$\{run\.exit_code\}/, "a nonzero exit must be shown, not hidden");
   assert.match(runsJs, /export function duration\s*\(/, "a run must say how long it took");
+});
+
+test("a run that is still going is said in amber, not red, and not as no log", () => {
+  // The 07:00 run was in progress and Home called it "did not finish" in red
+  // and "no log". A run that has not finished is not a run that failed.
+  assert.match(home, /export const RUNNING_COLOUR = "color: var\(--amber\);";/,
+    "home.js must own the one colour a run in progress is said in");
+  assert.match(home, /#B45309/, "and it must name the amber the person sees, so it can be checked");
+  assert.match(css, /--amber: #b45309;/, "the amber token must be the colour the card asks for");
+  assert.match(home, /export function soFar\(seconds\)/, "home.js must say how long a run has been going");
+  assert.ok(home.includes("`${minutes} min so far`"), "a run in progress is read in minutes, not in seconds");
+
+  // The Harness card.
+  assert.match(home, /else if \(last\.running\) \{/, "the Harness card must branch on the running state first");
+  assert.ok(
+    home.includes('const said = `Running now${started ? `, started ${started}` : ""}${going ? `, ${going}` : ""}`;'),
+    "the Harness card must say Running now, when it started and how long it has been going",
+  );
+  assert.ok(
+    home.includes('h("p", { class: "home-line" }, h("span", { style: RUNNING_COLOUR, text: said }))'),
+    "and the whole line must be amber, not red",
+  );
+  assert.match(home, /if \(health\.next_run\) body\.append\(line\(`Next run/, "the Next run line must stay");
+
+  // The Latest run card.
+  assert.match(home, /if \(run && run\.running\) \{/, "the Latest run card must branch on the running state too");
+  assert.ok(home.includes('h("span", { style: RUNNING_COLOUR, text: `running now${going ? `, ${going}` : ""}` })'),
+    "and say it in the same amber as the card above it");
+  assert.ok(home.includes('const missing = run.has_log ? "no summary yet" : "no log";'),
+    "a log that exists with no summary yet must not be reported as no log");
+  assert.ok(home.includes('return card("Latest run", "#/runs", "Open Runs", body);'),
+    "the Latest run card still opens the Runs screen");
+
+  // The Runs screen row.
+  assert.match(runsJs, /function runningPill\(run\)/, "a running row must have its own pill");
+  assert.ok(runsJs.includes('h("span", { class: "run-exit", style: RUNNING_COLOUR },'),
+    "the running pill must be amber, not the grey no-log pill");
+  assert.ok(runsJs.includes("background:var(--amber)"), "and it must carry an amber dot");
+  assert.ok(runsJs.includes("going ? `running, ${going}` : \"running\""),
+    "the row must read running, N min so far");
+  assert.match(runsJs, /if \(run\.running\) return runningPill\(run\);/, "the running state must win over the exit pill");
+  assert.ok(runsJs.includes('run.note || (run.has_log ? "no finish line" : "no log")'),
+    "a finished-looking row with a log must not claim there is no log");
 });
 
 test("the resume card is styled as the board asks", () => {

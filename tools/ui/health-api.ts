@@ -57,6 +57,15 @@ const PLIST_NAME = "com.job-hunt-harness.daily.plist";
 
 const DAY_MS = 86_400_000;
 
+/**
+ * How long a log with no finish line is still read as a run in progress. The
+ * wrapper writes to the log all the way through, so a log touched inside this
+ * window belongs to a run that is still going, and an older one to a run that
+ * was killed before it could write its finish line. Same window as the runs
+ * API, for the same reason.
+ */
+const RUN_LIVE_MS = 3 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
@@ -67,10 +76,13 @@ export type LastRun = {
   /** null when the log has no "finished" line: the run was killed or is still going. */
   exit_code: number | null;
   started_at: string | null;
+  /** null while the run is still going, because it has not finished. */
   finished_at: string | null;
+  /** The wall time of a finished run, or how long a running one has been going. */
   duration_seconds: number | null;
   /** Repo-relative, so the UI can name the file without leaking a home path. */
   log: string;
+  /** Whether the log is still being written to, so nothing about it is final. */
   running: boolean;
 };
 
@@ -146,8 +158,15 @@ const isoOrNull = (value: string | undefined): string | null => {
   return Number.isNaN(at.getTime()) ? null : at.toISOString();
 };
 
-/** The newest `YYYY-MM-DD.log` in the launchd log dir, and what it says. */
-export async function readLastRun(logDir: string): Promise<LastRun | null> {
+/**
+ * The newest `YYYY-MM-DD.log` in the launchd log dir, and what it says.
+ *
+ * A log with a start line and no finish line is two different runs depending on
+ * when it was last written to: one still going, one killed. The mtime is what
+ * tells them apart, and getting that wrong is what had Home calling the 07:00
+ * run a failure at 07:24 while it was still working.
+ */
+export async function readLastRun(logDir: string, now: Date = new Date()): Promise<LastRun | null> {
   const names = (await fsp.readdir(logDir).catch(() => []))
     .filter((name) => /^\d{4}-\d{2}-\d{2}\.log$/.test(name))
     .sort();
@@ -164,9 +183,16 @@ export async function readLastRun(logDir: string): Promise<LastRun | null> {
 
   // The wrapper writes both stamps itself, so they are the truth. File times
   // are the fallback for a run that was killed before it could write one.
+  const nowMs = now.getTime();
+  const touched = stat ? stat.mtime.getTime() : nowMs;
+  const running = !finished && Boolean(started) && nowMs - touched <= RUN_LIVE_MS;
+
   const startedAt = isoOrNull(started?.[1]) ?? (stat ? stat.birthtime.toISOString() : null);
-  const finishedAt = finished ? isoOrNull(finished[1]) : stat ? stat.mtime.toISOString() : null;
-  const durationMs = startedAt && finishedAt ? Date.parse(finishedAt) - Date.parse(startedAt) : NaN;
+  const finishedAt = finished ? isoOrNull(finished[1]) : running ? null : stat ? stat.mtime.toISOString() : null;
+  // A run in progress has no end, so the clock it is measured against is now:
+  // what the card says is how long it has been going, not how long it took.
+  const endMs = running ? nowMs : finishedAt ? Date.parse(finishedAt) : Number.NaN;
+  const durationMs = startedAt ? endMs - Date.parse(startedAt) : Number.NaN;
 
   return {
     date: name.replace(/\.log$/, ""),
@@ -175,7 +201,7 @@ export async function readLastRun(logDir: string): Promise<LastRun | null> {
     finished_at: finishedAt,
     duration_seconds: Number.isFinite(durationMs) && durationMs >= 0 ? Math.round(durationMs / 1000) : null,
     log: relativeToRepo(file),
-    running: !finished,
+    running,
   };
 }
 
@@ -282,7 +308,7 @@ export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth
   const plistPath = opts.plistPath ?? path.join(os.homedir(), "Library", "LaunchAgents", PLIST_NAME);
 
   const [lastRun, policy, rows, plist, ids] = await Promise.all([
-    readLastRun(logDir),
+    readLastRun(logDir, now),
     getPolicy({ profileId: opts.profileId ?? null }),
     listOpportunities({}),
     fsp.readFile(plistPath, "utf8").catch(() => null),

@@ -16,7 +16,7 @@
  * from here so the applications board says the same thing.
  */
 
-import { api, dayStamp, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown, shortDate } from "./app.js";
+import { api, clockTime, dayStamp, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown, shortDate } from "./app.js";
 
 /** The hour scripts/install-launchd.sh puts the daily run at. */
 const RUN_SCHEDULE = "The daily run is at 07:00.";
@@ -194,6 +194,27 @@ export function duration(seconds) {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
+/**
+ * How long a run in progress has been going, in the units someone watching it
+ * thinks in. A run that is still working is read in minutes, never in seconds:
+ * "24 min so far" is the answer to the question being asked, and "24m 07s"
+ * pretends to a precision that a moving number does not have.
+ */
+export function soFar(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return "under a minute so far";
+  if (minutes < 60) return `${minutes} min so far`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min so far`;
+}
+
+/**
+ * The colour a run in progress is said in: the amber token, #B45309 in light
+ * mode. A run that is still going is not a failure, and red said it was. The
+ * style is inline because no stylesheet in this package owns these two spans.
+ */
+export const RUNNING_COLOUR = "color: var(--amber);";
+
 /** A day and time the way the person reads it: "Thu 18 Sep, 07:00". */
 export function dayTime(iso, withTime) {
   return dayStamp(iso, withTime);
@@ -219,7 +240,14 @@ function healthCard(result) {
 
   const last = health.last_run;
   if (!last) body.append(line("No run has been logged yet.", "home-line grey"));
-  else {
+  else if (last.running) {
+    // The run happening right now is not last night's verdict, and it is not
+    // red: it has not failed, it has not finished, it is working.
+    const started = clockTime(last.started_at);
+    const going = soFar(last.duration_seconds);
+    const said = `Running now${started ? `, started ${started}` : ""}${going ? `, ${going}` : ""}`;
+    body.append(h("p", { class: "home-line" }, h("span", { style: RUNNING_COLOUR, text: said })));
+  } else {
     const clean = last.exit_code === 0;
     const took = duration(last.duration_seconds);
     const verdict = last.exit_code === null
@@ -359,12 +387,22 @@ function digestCard(result) {
 function latestRunCard(runs, journal) {
   const body = h("div", {});
   const run = runs.status === "fulfilled" ? (runs.value.runs || [])[0] : null;
-  if (run) {
+  if (run && run.running) {
+    // Same state as the Harness card, said the same way, because the two cards
+    // are read one under the other and must not disagree about this morning.
+    const going = soFar(run.duration_s ?? run.duration_seconds);
+    body.append(h("p", { class: "home-line" },
+      h("span", { text: `${shortDate(run.date) || run.date}: ` }),
+      h("span", { style: RUNNING_COLOUR, text: `running now${going ? `, ${going}` : ""}` })));
+  } else if (run) {
     const bits = [];
     if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
     if (typeof run.blocked === "number") bits.push(`${run.blocked} blocked`);
     const clean = run.exit_code === 0;
-    const exit = run.exit_code === null || run.exit_code === undefined ? "no log" : `exit ${run.exit_code}`;
+    // "no log" is only true when there is no log. A log that is there and a
+    // summary that is not yet written is a different thing, and says so.
+    const missing = run.has_log ? "no summary yet" : "no log";
+    const exit = run.exit_code === null || run.exit_code === undefined ? missing : `exit ${run.exit_code}`;
     const took = duration(run.duration_s ?? run.duration_seconds);
     body.append(h("p", { class: "home-line" },
       h("span", { text: `${shortDate(run.date) || run.date}: ` }),

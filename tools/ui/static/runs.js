@@ -12,11 +12,31 @@
  */
 
 import { api, clear, errorBox, fetchInto, h, pageHeader, panel, richMarkdown } from "./app.js";
+import { RUNNING_COLOUR, soFar } from "./home.js";
+
+/**
+ * A run in progress, in the amber the Harness card uses, with a dot rather
+ * than an exit pill: there is no exit code yet, and a grey "no log" pill over
+ * a log that is being written to this minute is simply false. The dot carries
+ * its own box because the stylesheet only shapes `.dot` inside a chip.
+ */
+function runningPill(run) {
+  const going = soFar(run.duration_s);
+  return h("span", { class: "run-exit", style: RUNNING_COLOUR },
+    h("span", {
+      class: "dot",
+      "aria-hidden": "true",
+      style: "display:inline-block;width:8px;height:8px;border-radius:8px;background:var(--amber);margin-right:6px;vertical-align:middle;",
+    }),
+    going ? `running, ${going}` : "running");
+}
 
 /** A run that exited nonzero is red, a clean one green, an unknown one grey. */
 function exitPill(run) {
+  if (run.running) return runningPill(run);
   if (run.exit_code === null || run.exit_code === undefined) {
-    return h("span", { class: "run-exit grey", text: "no log" });
+    // "no log" when there is none, and the log's own reason when there is one.
+    return h("span", { class: "run-exit grey", text: run.note || (run.has_log ? "no finish line" : "no log") });
   }
   const ok = run.exit_code === 0;
   return h("span", {
@@ -41,6 +61,9 @@ function runLine(run) {
   const bits = [];
   if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
   if (typeof run.blocked === "number") bits.push(`${run.blocked} blocked`);
+  // A run that is still going has no wall time and no summary yet, and the
+  // pill beside this line already says how long it has been working.
+  if (run.running) return bits.join(", ");
   const took = duration(run.duration_s);
   if (took) bits.push(`took ${took}`);
   if (!run.has_summary) bits.push("no summary written");

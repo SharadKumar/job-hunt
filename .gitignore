@@ -52,3 +52,4 @@ state/leak-terms.txt
 
 # skill-creator eval workspaces (fixture roots, run outputs)
 .claude/skills/*-workspace/
+!tests/fixtures/**/*.log
