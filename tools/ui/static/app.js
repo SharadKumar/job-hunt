@@ -63,6 +63,36 @@ const KEYWORD_OPTIONS = [
 /** AGENTS.md section 9: never ask more than four at a time. */
 const KEYWORD_BUNDLE = 4;
 
+/**
+ * Pipeline status in plain words. The raw keys are machinery: nobody reads
+ * "manual_action_needed to manual_action_needed" and learns anything. One map,
+ * used everywhere a status reaches the page.
+ */
+const STATUS_LABELS = {
+  discovered: "discovered",
+  shortlisted: "shortlisted",
+  drafted: "drafted",
+  awaiting_approval: "waiting for you",
+  approved: "approved",
+  submission_pending: "sending",
+  submitted: "sent",
+  responded: "responded",
+  interview: "interview",
+  offered: "offered",
+  won: "won",
+  rejected: "rejected",
+  withdrawn: "withdrawn",
+  parked: "parked",
+  awaiting_external: "waiting on them",
+  manual_action_needed: "needs you",
+};
+
+/** A status the map has not met yet still reads as words, not as a key. */
+function statusLabel(status) {
+  if (!status) return "";
+  return STATUS_LABELS[status] || String(status).replace(/_/g, " ");
+}
+
 /** Apply method in plain words, the way the person would say it out loud. */
 const APPLY_METHODS = {
   quick_apply: "quick apply",
@@ -492,7 +522,9 @@ function gateStrip(row, pkg) {
       strip.append(gate(`${label} ${passed ? "pass" : "fail"}`, !passed));
     }
   }
-  strip.append(gate(row.status === "submitted" ? "Gate passed" : "Gate waiting", false));
+  strip.append(gate(row.status === "submitted"
+    ? "Gate passed"
+    : `Gate waiting, ${statusLabel(row.status)}`, false));
   return strip;
 }
 
@@ -525,8 +557,13 @@ function historyBlock(history) {
   const ul = h("ul", { class: "history" });
   for (const item of [...entries].reverse()) {
     const li = h("li", {});
-    li.append(h("span", { class: "at", text: `${when(item.at)}  ` }), `${item.from || "new"} to ${item.to || "unknown"}`);
-    if (item.reason) li.append(h("div", { class: "slate", text: item.reason }));
+    const from = item.from ? statusLabel(item.from) : "new";
+    li.append(h("span", { class: "at", text: `${when(item.at)}  ` }), `${from} to ${statusLabel(item.to) || "unknown"}`);
+    // A field_update entry is an enrichment pass, not a decision: say which
+    // fields moved and keep the raw machinery off the page.
+    const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
+    if (fields) li.append(h("div", { class: "slate", text: `updated ${fields[1].trim() || "some fields"}` }));
+    else if (item.reason) li.append(h("div", { class: "slate", text: item.reason }));
     ul.append(li);
   }
   block.append(ul);
@@ -550,7 +587,7 @@ function actionBar(row, onDone) {
         if (reason.value.trim()) body.reason = reason.value.trim();
         if (edits.value.trim()) body.edits = edits.value.trim();
         const result = await api(`rows/${encodeURIComponent(row.id)}/action`, { method: "POST", body });
-        toast(`${action.label}: the row is now ${result.status_after}.`);
+        toast(`${action.label}: the row is now ${statusLabel(result.status_after)}.`);
         onDone();
       } catch (error) {
         // 409 means the pipeline state machine refused the transition. Show the
@@ -597,11 +634,13 @@ async function viewRow(view, id) {
     APPLY_METHODS[row.applyMethod] || row.applyMethod,
     typeof row.score === "number" ? `score ${Math.round(row.score)}` : null,
     row.userSaved ? "saved by you" : null,
+    statusLabel(row.status) || null,
   ].filter(Boolean);
   const line = h("p", { class: "dossier-line", text: `${facts.join(", ")}. ` });
   if (row.url) line.append(h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
   view.append(line);
-  if (row.reason) view.append(h("p", { class: "dossier-reason", text: row.reason }));
+  const reasonLine = data.reason || row.reason;
+  if (reasonLine) view.append(h("p", { class: "dossier-reason", text: reasonLine }));
 
   view.append(gateStrip(row, pkg));
 

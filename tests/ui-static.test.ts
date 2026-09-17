@@ -220,6 +220,17 @@ test("the row detail carries the gate strip", () => {
   }
 });
 
+test("a status reaches the page as words, not as a key", () => {
+  assert.match(js, /function statusLabel\s*\(/, "app.js must have one statusLabel helper");
+  assert.match(js, /manual_action_needed:\s*"needs you"/, "manual_action_needed must read as needs you");
+  assert.match(js, /awaiting_approval:\s*"waiting for you"/, "awaiting_approval must read as waiting for you");
+  assert.match(js, /replace\(\/_\/g, " "\)/, "an unmapped status must fall back to the key with spaces");
+  assert.ok(
+    !/\$\{item\.from \|\| "new"\}/.test(js),
+    "the history must not print a raw status key",
+  );
+});
+
 test("the stylesheet keeps to the flat, unshouted house style", () => {
   // Prose in a comment must not satisfy or break the check, so read the rules only.
   const css = read(CSS_PATH).replace(/\/\*[\s\S]*?\*\//g, "");

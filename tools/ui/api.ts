@@ -7,8 +7,7 @@
  * handlers directly (tests/ui-api.test.ts does exactly that).
  *
  * Nothing here re-implements a decision another tool already owns:
- *   - row ordering and the one-line `reason` come from the Sheet mirror
- *     (`reasonFor` in tools/sheets-sync.ts),
+ *   - row ordering follows the Sheet mirror's status rank,
  *   - a Tray action is applied by `applyTrayAction` in tools/sheets-sync.ts,
  *     so the UI and the Sheet pull move rows the same way and queue the same
  *     approval-queue.json entries,
@@ -25,7 +24,7 @@ import path from "node:path";
 
 import { get as getOpportunity, list as listOpportunities, type Opportunity, type PipelineStatus } from "../pipeline.ts";
 import { store } from "../pipeline-store.ts";
-import { applyTrayAction, reasonFor, TRAY_ACTIONS } from "../sheets-sync.ts";
+import { applyTrayAction, TRAY_ACTIONS } from "../sheets-sync.ts";
 import { buildDigest } from "../letter-critic.ts";
 import {
   answerToStatus,
@@ -44,6 +43,8 @@ import { repoPath } from "../repo-root.ts";
 /** Dates in the person's own day, not the machine's. */
 const DEFAULT_TIME_ZONE = "Australia/Sydney";
 const DEFAULT_ROW_LIMIT = 200;
+/** Same one-line budget the Sheet mirror keeps, so a reason reads the same in both. */
+const REASON_MAX = 160;
 const DEFAULT_KEYWORD_LIMIT = 20;
 const MAX_ROW_LIMIT = 2000;
 
@@ -119,7 +120,7 @@ export type RowSummary = {
   applyMethod: string | null;
   userSaved: boolean;
   workArrangement: string | null;
-  reason: string;
+  reason: string | null;
   updated_at: string | null;
   first_seen_at: string | null;
   draftDir: string | null;
@@ -208,6 +209,26 @@ function timestampsOf(row: Opportunity): { first_seen_at: string | null; updated
   return { first_seen_at: stamps[0] ?? null, updated_at: stamps[stamps.length - 1] ?? null };
 }
 
+/**
+ * The one line that says why a row is where it is.
+ *
+ * A patch writes a history entry like `field_update: draftDir [seed]`, which is
+ * machinery, not a reason: taking the last reason outright would show the
+ * person plumbing instead of "letter-critic blocked: scope wording". So the
+ * pick is the most recent entry that carries a reason, is not a `field_update`,
+ * and actually moved the row; a row with a single history entry (the insert)
+ * may still speak for itself. Then notes, then the park reason, then nothing.
+ */
+export function displayReason(row: Opportunity): string | null {
+  const history = row.history ?? [];
+  const candidates = history.filter((h) => (h?.reason ?? "").trim() && !/^field_update/.test(h.reason!.trim()));
+  const moved = [...candidates].reverse().find((h) => h.from !== h.to);
+  const only = history.length === 1 ? candidates[0] : undefined;
+  const text = ((moved ?? only)?.reason ?? row.notes ?? row.parkedReason ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.length > REASON_MAX ? `${text.slice(0, REASON_MAX - 1)}…` : text;
+}
+
 async function readTextIfExists(file: string): Promise<string | null> {
   try {
     return await fsp.readFile(file, "utf8");
@@ -266,7 +287,7 @@ function toRowSummary(row: Opportunity): RowSummary {
     applyMethod: row.applyMethod ?? null,
     userSaved: row.userSaved === true,
     workArrangement: row.classification?.work_arrangement ?? row.workArrangement ?? null,
-    reason: reasonFor(row),
+    reason: displayReason(row),
     updated_at,
     first_seen_at,
     draftDir: row.draftDir ?? null,
@@ -329,10 +350,15 @@ export async function readPackage(draftDir: string | undefined | null): Promise<
   return { jd, cover_letter: coverLetter, metadata, letter_critic: letterCritic, confirmation };
 }
 
-export async function getRowDetail(id: string, _ctx: ApiContext = {}): Promise<{ row: Opportunity; package: PackageFiles }> {
+export async function getRowDetail(
+  id: string,
+  _ctx: ApiContext = {},
+): Promise<{ row: Opportunity; reason: string | null; package: PackageFiles }> {
   const row = await getOpportunity(id);
   if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
-  return { row, package: await readPackage(row.draftDir) };
+  // The same one line the queue shows, picked the same way: the stored row has
+  // no `reason` column of its own.
+  return { row, reason: displayReason(row), package: await readPackage(row.draftDir) };
 }
 
 // ---------------------------------------------------------------------------

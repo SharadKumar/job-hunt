@@ -80,7 +80,7 @@ const manualId = await seed("Solution Architect", "Acme Federal", ["manual_actio
 }, "letter-critic blocked: scope wording");
 
 const shortlistedId = await seed("Delivery Lead", "Harbour Super", ["shortlisted"], { score: 71, location: "Sydney NSW" });
-const submittedId = await seed("Principal Consultant", "Ridgeline", [
+await seed("Principal Consultant", "Ridgeline", [
   "shortlisted", "drafted", "awaiting_approval", "approved", "submitted",
 ], { score: 64 });
 const awaitingId = await seed("Integration Architect", "Borden Rail", ["shortlisted", "drafted", "awaiting_approval"], { score: 90 });
@@ -162,7 +162,19 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   fs.writeFileSync(path.join(draftDir, "letter-critic.json"), JSON.stringify({ verdict: "block", findings: [] }));
   await patch(manualId, { draftDir }, "test");
 
+  // The patch just wrote a `field_update: draftDir [test]` history entry. That
+  // is machinery, not a reason, so the queue must still show the last thing
+  // that actually happened to the row.
+  const patched = (await api.getRows({ status: "manual_action_needed" }, ctx)).rows.find((r) => r.id === manualId)!;
+  assert.equal(
+    patched.reason,
+    "letter-critic blocked: scope wording",
+    "a field_update is skipped for the earlier status-change reason",
+  );
+  assert.ok(patched.draftDir, "and the patched field itself is surfaced");
+
   const detail = await api.getRowDetail(manualId, ctx);
+  assert.equal(detail.reason, patched.reason, "the row detail picks the reason the same way");
   assert.equal(detail.row.id, manualId);
   assert.equal(detail.row.description, "JD for Solution Architect", "the full row carries the JD");
   assert.ok(detail.row.history.length >= 2, "and its history");
