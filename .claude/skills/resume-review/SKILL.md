@@ -34,24 +34,31 @@ If one or more resumes have `market_alignment.confirmation_needed` or `market_al
 Baselines render from `cv-source.md`, so unanswered keyword questions are the cheapest quality win available before any render. Start here:
 
 ```
-npm run resume:keyword-confirm -- pending --group-by term
+npm run resume:keyword-confirm -- pending --group-by term --format table --limit 20
 ```
 
-That groups outstanding `kind: keyword` rows by term across resumes and opportunities (queued by unattended `/daily` runs and by earlier "Unsure / keep pending" answers), busiest term first. If the count is 0, say so and go to step 1.
+That prints one aligned line per outstanding `kind: keyword` term across resumes and opportunities (queued by unattended `/daily` runs and by earlier "Unsure / keep pending" answers), busiest term first, with the resumes it is open under and the JD context it was asked against. If the count is 0, say so and go to step 1. There are hundreds of them, so drain in bundles; never one CLI call per term.
 
-Otherwise drain them in batches of **at most 4** per `AskUserQuestion`, highest `count` first, with exactly these four reusable options:
+Otherwise drain the screen in bundles of **at most 4 terms per `AskUserQuestion`**, highest `count` first, one question per term even when several opportunities queued it, with exactly these four reusable options in this order:
 - `Confirm and update source (Recommended)`
-- `Bring in as familiarity` — the user did not deliver it but can credibly prepare and speak to it; recorded as `--status familiarity`, it renders once in a familiarity-framed skills line and is listed under `interview_prep_terms`, never as delivered work
 - `Not applicable`
+- `Bring in as familiarity`: the user did not deliver it but can credibly prepare and speak to it; it renders once in a familiarity-framed skills line and is listed under `interview_prep_terms`, never as delivered work
 - `Unsure / keep pending`
 
-Question text = the row's `question` plus its `evidence_hint`. One question per term even when several opportunities queued it. Then, per answer:
-- Record it: `npm run resume:keyword-confirm -- record --plan <plan-path> --term "<term>" --status confirmed|not_applicable|familiarity|pending --origin attended` (use the plan the row came from, or regenerate one with `npm run resume:keywords -- --resume <id> --proactive`).
-- On `Confirm and update source`, show the proposed bullet and ask `Apply this wording (Recommended)` / `Edit wording` / `Skip`, then `npm run resume:keyword-confirm -- apply-patch --term "<term>" --resume <id> --role-heading "<heading substring>" --bullet "<final text>"` (add `--skills` for a Skills-section fact). It prints the diff it applied. Remind the user the master `.docx` must carry the same fact.
-- `Bring in as familiarity` records `--status familiarity`: a term the user did not deliver but can credibly prepare and speak to. No source patch. The re-run plan marks it `preppable` with `render_as: "familiarity"`, so resume-writer renders it once in a familiarity-framed skills line ("Familiar with ...", "Working knowledge of ...", "Prepared on ...") and lists it under `interview_prep_terms`. It is answered, so it is never re-asked.
-- A confirmed term that was never patched stays unrenderable; do not treat the ledger row as permission.
+Question text = the row's `question` plus its `evidence_hint`. Then:
 
-Any resume whose `cv-source.md` changed here is now stale — expect it in the `STALE` bucket in step 1 and re-render it.
+1. Write the whole screen's answers to one temp YAML (`/tmp/keyword-answers-<date>-<n>.yaml`), a `term: answer` line each (`note:` per term optional), and record them in one pass:
+
+   ```
+   TMPDIR=/tmp npm run resume:keyword-confirm -- record --file /tmp/keyword-answers-<date>-<n>.yaml --origin attended
+   ```
+
+   The four exact labels and the short aliases `confirm|na|familiarity|pending` are both accepted. It records every matching pending row across resumes, prints `{ recorded, skipped_already_answered, unmatched, invalid }`, and a re-run of the same file changes nothing. Read `unmatched` and `invalid` rather than assuming the batch landed.
+2. Re-run the table and repeat until pending is 0 or the user stops. Ask after each screen whether to keep going.
+3. A confirmed term authorises nothing until `cv-source.md` carries the fact (AGENTS.md section 9). So for each `Confirm and update source`, show the proposed bullet and ask `Apply this wording (Recommended)` / `Edit wording` / `Skip`, then `npm run resume:keyword-confirm -- apply-patch --term "<term>" --resume <id> --role-heading "<heading substring>" --bullet "<final text>"` (add `--skills` for a Skills-section fact). It prints the diff it applied. Remind the user the master `.docx` must carry the same fact.
+4. `Bring in as familiarity` needs no source patch. The re-run plan marks the term `preppable` with `render_as: "familiarity"`, so resume-writer renders it once in a familiarity-framed skills line ("Familiar with ...", "Working knowledge of ...", "Prepared on ...") and lists it under `interview_prep_terms`. It is answered, so it is never re-asked.
+
+Any resume whose `cv-source.md` changed here is now stale, so expect it in the `STALE` bucket in step 1 and re-render it.
 
 ### 1. Status snapshot
 
