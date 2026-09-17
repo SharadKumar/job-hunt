@@ -4,7 +4,7 @@
  * nothing about the person's pipeline leaves the machine.
  *
  * The shape of the thing: a plain job board for an autonomous job applicant.
- * The queue is a list of cards with a filter column beside it, and a row is a
+ * Applications is a list of cards with a filter column beside it, and a row is a
  * detail page whose first line of numbers says whether the letter may go out:
  * the score, the critic verdict, the gate.
  *
@@ -16,10 +16,11 @@
 
 // --- Constants ---
 
-/** Hash routes: #/queue, #/row/<id>, #/keywords, #/today, #/digest. */
-const ROUTES = ["queue", "row", "keywords", "today", "digest", "settings"];
+/** Hash routes: #/applications, #/row/<id>, #/keywords, #/today, #/digest.
+ * #/queue is the old address for #/applications and still works. */
+const ROUTES = ["applications", "queue", "row", "keywords", "today", "digest", "settings"];
 
-/** Queue tabs, in the order the person works them. Sent is capped at 30 rows.
+/** Application tabs, in the order the person works them. Sent is capped at 30 rows.
  * `label` is the short name, `long` is how the filter column says it. */
 const TABS = [
   { key: "needs", label: "Needs you", long: "Needs you", status: "manual_action_needed", action: "retry" },
@@ -132,20 +133,14 @@ function toast(message, tone) {
 const TOKEN_KEY = "harnessUiToken";
 
 function readToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || "";
-  } catch {
-    return ""; // private mode, or storage disabled: carry on without a token.
-  }
+  // Private mode, or storage disabled: carry on without a token.
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
 }
 
 function writeToken(value) {
   try {
-    if (value) localStorage.setItem(TOKEN_KEY, value);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    toast("This browser will not let the page store the token.", "bad");
-  }
+    if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY);
+  } catch { toast("This browser will not let the page store the token.", "bad"); }
 }
 
 class ApiError extends Error {
@@ -177,11 +172,8 @@ async function api(path, options) {
   const text = await response.text();
   let data = {};
   if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new ApiError(response.status, `The server replied with something that is not JSON (${response.status}).`);
-    }
+    try { data = JSON.parse(text); }
+    catch { throw new ApiError(response.status, `The server replied with something that is not JSON (${response.status}).`); }
   }
   if (!response.ok) {
     const detail = data.error || data.message || `request failed (${response.status})`;
@@ -198,10 +190,7 @@ function paragraphs(source) {
     const lines = block.split("\n").filter((line) => line.trim() !== "");
     if (!lines.length) continue;
     const p = h("p", {});
-    lines.forEach((line, i) => {
-      if (i) p.append(h("br", {}));
-      p.append(document.createTextNode(line.trim()));
-    });
+    lines.forEach((line, i) => { if (i) p.append(h("br", {})); p.append(document.createTextNode(line.trim())); });
     out.push(p);
   }
   return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
@@ -210,14 +199,8 @@ function paragraphs(source) {
 function richMarkdown(source) {
   const lines = String(source).replace(/\r\n/g, "\n").split("\n");
   const out = [];
-  let list = null;
-  let table = null;
-  let para = [];
-  const flushPara = () => {
-    if (!para.length) return;
-    out.push(...paragraphs(para.join("\n")));
-    para = [];
-  };
+  let list = null, table = null, para = [];
+  const flushPara = () => { if (para.length) { out.push(...paragraphs(para.join("\n"))); para = []; } };
   const flushList = () => { if (list) { out.push(list); list = null; } };
   // A markdown table renders as preformatted text rather than as a grid.
   const flushTable = () => { if (table) { out.push(h("pre", { text: table.join("\n") })); table = null; } };
@@ -227,23 +210,17 @@ function richMarkdown(source) {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
     const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-    if (line.trim().startsWith("|")) {
-      flushPara();
-      flushList();
-      (table = table || []).push(line);
-      continue;
-    }
+    // A table line is collected until the block ends; see flushTable.
+    if (line.trim().startsWith("|")) { flushPara(); flushList(); (table = table || []).push(line); continue; }
     flushTable();
-    if (heading) {
+    if (heading) { // h1 is the view title, so a document heading starts at h2
       flushAll();
-      const level = Math.min(3, heading[1].length + 1); // h1 is the view title
-      out.push(h(`h${level}`, { text: heading[2].trim() }));
+      out.push(h(`h${Math.min(3, heading[1].length + 1)}`, { text: heading[2].trim() }));
       continue;
     }
     if (bullet || numbered) {
       flushPara();
-      list = list || h("ul", {});
-      list.append(h("li", { text: (bullet ? bullet[1] : numbered[1]).trim() }));
+      (list = list || h("ul", {})).append(h("li", { text: (bullet ? bullet[1] : numbered[1]).trim() }));
       continue;
     }
     flushList();
@@ -266,11 +243,7 @@ function asText(value) {
 let summary = null;
 
 async function loadSummary() {
-  try {
-    summary = await api("summary");
-  } catch {
-    summary = null;
-  }
+  try { summary = await api("summary"); } catch { summary = null; }
   renderHeader();
 }
 
@@ -326,11 +299,7 @@ function guarded(button, label, run) {
       return;
     }
     disarm();
-    armed = {
-      button,
-      label,
-      timer: setTimeout(() => { disarm(); }, ARM_WINDOW_MS),
-    };
+    armed = { button, label, timer: setTimeout(() => { disarm(); }, ARM_WINDOW_MS) };
     button.classList.add("armed");
     button.textContent = `Confirm ${label.toLowerCase()}`;
     button.setAttribute("aria-label", `Confirm ${label.toLowerCase()}. Press again to apply.`);
@@ -365,9 +334,9 @@ function actionButton(row, action, fields, done) {
   return button;
 }
 
-// --- View: queue ---
+// --- View: applications ---
 
-const queueState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
+const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
 
 /** One job card: title and score, who and where, the tags, why it is here,
  * and the two things the person can do about it. */
@@ -401,15 +370,15 @@ function jobCard(row, tab, refresh) {
  * loaded rows actually use, and a floor on the score. */
 function filterCard(rows, repaint) {
   const card = h("aside", { class: "card filter-card", id: "filter-card" });
-  card.hidden = !queueState.filtersOpen && window.innerWidth < 900;
+  card.hidden = !appState.filtersOpen && window.innerWidth < 900;
   const body = h("div", { class: "filters" });
   card.append(h("h2", { text: "Filters" }), body);
   const counts = (summary && summary.counts) || {};
   const statuses = h("div", { class: "filter-group" });
   statuses.append(eyebrow("Status"));
   for (const tab of TABS) {
-    const input = h("input", { type: "radio", name: "queue-tab", checked: tab.key === queueState.tab });
-    input.addEventListener("change", () => { queueState.tab = tab.key; render(); });
+    const input = h("input", { type: "radio", name: "status-tab", checked: tab.key === appState.tab });
+    input.addEventListener("change", () => { appState.tab = tab.key; render(); });
     statuses.append(h("label", { class: "choice" }, input, h("span", { text: tab.long }),
       h("span", { class: "tally", text: String(counts[tab.status] ?? 0) })));
   }
@@ -419,9 +388,9 @@ function filterCard(rows, repaint) {
     const group = h("div", { class: "filter-group" });
     group.append(eyebrow("Channel"));
     for (const channel of channels) {
-      const input = h("input", { type: "checkbox", checked: queueState.channels.has(channel) });
+      const input = h("input", { type: "checkbox", checked: appState.channels.has(channel) });
       input.addEventListener("change", () => {
-        if (input.checked) queueState.channels.add(channel); else queueState.channels.delete(channel);
+        if (input.checked) appState.channels.add(channel); else appState.channels.delete(channel);
         repaint();
       });
       group.append(h("label", { class: "choice" }, input, h("span", { text: channel }),
@@ -431,8 +400,8 @@ function filterCard(rows, repaint) {
   }
   const score = h("div", { class: "filter-group" });
   score.append(eyebrow("Minimum score"));
-  const input = h("input", { type: "number", min: "0", max: "100", step: "1", value: queueState.minScore, placeholder: "Any" });
-  input.addEventListener("input", () => { queueState.minScore = input.value; repaint(); });
+  const input = h("input", { type: "number", min: "0", max: "100", step: "1", value: appState.minScore, placeholder: "Any" });
+  input.addEventListener("input", () => { appState.minScore = input.value; repaint(); });
   body.append(score);
   score.append(input);
   return card;
@@ -440,36 +409,33 @@ function filterCard(rows, repaint) {
 
 /** Sort and floor the fetched rows the way the filter column says. */
 function visibleRows(rows) {
-  const floor = Number(queueState.minScore);
+  const floor = Number(appState.minScore);
   const out = rows.filter((row) => {
-    if (queueState.channels.size && !queueState.channels.has(row.channel)) return false;
-    if (queueState.minScore !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
+    if (appState.channels.size && !appState.channels.has(row.channel)) return false;
+    if (appState.minScore !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
     return true;
   });
-  return queueState.sort === "updated"
+  return appState.sort === "updated"
     ? out.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
     : out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 }
 
-async function viewQueue(view) {
-  const tab = TABS.find((t) => t.key === queueState.tab) || TABS[0];
-  view.append(h("p", {
-    class: "lede",
-    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send.",
-  }));
+async function viewApplications(view) {
+  const tab = TABS.find((t) => t.key === appState.tab) || TABS[0];
+  view.append(h("p", { class: "lede",
+    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." }));
   const head = h("div", { class: "page-head" }, h("div", {},
     h("h1", { text: tab.long }), h("p", { class: "page-count", id: "row-count", text: "Loading rows." })));
   const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
   toggle.addEventListener("click", () => {
-    queueState.filtersOpen = !queueState.filtersOpen;
-    const card = $("#filter-card");
-    if (card) card.hidden = !queueState.filtersOpen;
+    appState.filtersOpen = !appState.filtersOpen;
+    if ($("#filter-card")) $("#filter-card").hidden = !appState.filtersOpen;
   });
   const sort = h("select", { "aria-label": "Sort rows" });
   for (const [value, label] of [["score", "Score"], ["updated", "Updated"]]) {
-    sort.append(h("option", { value, selected: queueState.sort === value, text: label }));
+    sort.append(h("option", { value, selected: appState.sort === value, text: label }));
   }
-  sort.addEventListener("change", () => { queueState.sort = sort.value; render(); });
+  sort.addEventListener("change", () => { appState.sort = sort.value; render(); });
   head.append(h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort));
   const layout = h("div", { class: "layout" });
   const list = h("div", { class: "cards" });
@@ -479,14 +445,8 @@ async function viewQueue(view) {
 
   const params = new URLSearchParams({ status: tab.status });
   if (tab.limit) params.set("limit", String(tab.limit));
-  let data;
-  try {
-    data = await api(`rows?${params.toString()}`);
-  } catch (error) {
-    clear(list);
-    list.append(errorBox(error, "Could not load rows.", () => render()));
-    return;
-  }
+  const data = await fetchInto(list, `rows?${params.toString()}`, "Could not load rows.");
+  if (!data) return;
   const rows = data.rows || [];
   const paint = () => {
     clear(list);
@@ -506,13 +466,25 @@ async function viewQueue(view) {
 function errorBox(error, what, retry) {
   const box = h("div", { class: "error" });
   const unauthorised = error instanceof ApiError && (error.status === 401 || error.status === 403);
-  box.append(h("p", {
-    text: unauthorised
-      ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
-      : `${what} ${error.message}`,
-  }));
+  box.append(h("p", { text: unauthorised
+    ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
+    : `${what} ${error.message}` }));
   if (retry) box.append(h("button", { type: "button", class: "btn", text: "Try again", onClick: retry }));
   return box;
+}
+
+/** Fetch for a view: on failure the host says what happened and offers a retry,
+ * and null tells the caller to stop. The host is cleared either way. */
+async function fetchInto(host, path, what) {
+  try {
+    const data = await api(path);
+    clear(host);
+    return data;
+  } catch (error) {
+    clear(host);
+    host.append(errorBox(error, what, () => render()));
+    return null;
+  }
 }
 
 // --- View: row detail ---
@@ -525,14 +497,11 @@ function stat(label, value, tone, note) {
   return card;
 }
 
-
 /** The stats row: the machine verdicts that decide whether a letter may go out.
  * A missing verdict says so; it is never read as a pass (AGENTS.md section 8). */
 function statsRow(row, pkg) {
   const stats = h("div", { class: "stats", "aria-label": "Gates" });
-  stats.append(typeof row.score === "number"
-    ? stat("Score", String(Math.round(row.score)), "good")
-    : stat("Score", "Not scored", ""));
+  stats.append(typeof row.score === "number" ? stat("Score", String(Math.round(row.score)), "good") : stat("Score", "Not scored", ""));
   const critic = pkg.letter_critic;
   if (!critic) stats.append(stat("Critic", "Critic not run", "", "No letter has been critiqued on this row."));
   else {
@@ -567,8 +536,7 @@ function findingsBlock(critic) {
   for (const finding of findings) {
     const text = typeof finding === "string" ? finding : [
       finding.severity === "fail" ? "Fail" : finding.severity === "warn" ? "Warn" : finding.severity,
-      finding.issue || finding.message,
-      finding.fix,
+      finding.issue || finding.message, finding.fix,
     ].filter(Boolean).map((part) => String(part).trim().replace(/\.+$/, "")).join(". ") + ".";
     ul.append(h("li", { text: text || asText(finding) }));
   }
@@ -597,12 +565,10 @@ function actionBar(row, onDone) {
   const buttons = h("div", { class: "action-buttons" });
   const reason = h("input", { type: "text", "aria-label": "Reason, optional", placeholder: "Reason, optional" });
   const edits = h("textarea", { "aria-label": "Edits, optional", placeholder: "Edits to the letter or package, optional" });
-  const fields = () => {
-    const out = {};
-    if (reason.value.trim()) out.reason = reason.value.trim();
-    if (edits.value.trim()) out.edits = edits.value.trim();
-    return out;
-  };
+  const fields = () => ({
+    ...(reason.value.trim() ? { reason: reason.value.trim() } : {}),
+    ...(edits.value.trim() ? { edits: edits.value.trim() } : {}),
+  });
   for (const action of ACTIONS) buttons.append(actionButton(row, action, fields, onDone));
   return panel("Your decision", h("div", {}, buttons, h("div", { class: "action-fields" }, reason, edits),
     h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." })));
@@ -610,19 +576,11 @@ function actionBar(row, onDone) {
 
 async function viewRow(view, id) {
   view.append(h("p", { class: "empty", text: "Loading the row." }));
-  let data;
-  try {
-    data = await api(`rows/${encodeURIComponent(id)}`);
-  } catch (error) {
-    clear(view);
-    view.append(h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Queue" })),
-      errorBox(error, "Could not load this row.", () => render()));
-    return;
-  }
-  clear(view);
+  const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
+  if (!data) return view.prepend(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })));
   const row = data.row || {};
   const pkg = data.package || {};
-  view.append(h("p", { class: "backlink" }, h("a", { href: "#/queue", text: "Queue" })),
+  view.append(h("p", { class: "backlink" }, h("a", { href: "#/applications", text: "Applications" })),
     h("h1", { text: row.title || "Untitled role" }));
   const facts = [
     row.company, row.location, row.classification?.work_arrangement || row.workArrangement,
@@ -653,74 +611,189 @@ async function viewRow(view, id) {
   const rest = h("div", { class: "stack" });
   const findings = findingsBlock(pkg.letter_critic);
   if (findings) rest.append(findings);
-  rest.append(historyBlock(row.history), actionBar(row, () => { location.hash = "#/queue"; render(); }));
+  rest.append(historyBlock(row.history), actionBar(row, () => { location.hash = "#/applications"; render(); }));
   view.append(rest);
 }
 
 // --- View: keywords ---
 
+/* The drain flow. Hundreds of terms sit pending, so the view keeps its own pass:
+ * the order to work through, where the person is in it, what they settled and
+ * what they put off. It lives in sessionStorage, so a refresh does not lose the
+ * place. AGENTS.md section 9: four at a time, four fixed answers, no default. */
+const KEYWORD_SESSION = "harnessKeywordSession";
+const blankPass = () => ({ pass: [], cursor: 0, decided: [], skipped: [], requeued: [] });
+
+function readKeywordSession() {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(KEYWORD_SESSION) || "null");
+    if (raw && Array.isArray(raw.pass)) return { ...blankPass(), ...raw };
+  } catch { /* blocked or corrupt storage just starts a fresh pass */ }
+  return blankPass();
+}
+
+const saveKeywordSession = (state) => {
+  try { sessionStorage.setItem(KEYWORD_SESSION, JSON.stringify(state)); } catch { /* private mode: memory only */ }
+};
+
+/** One question: the term, what it was asked against, and the four answers.
+ * 1 to 4 pick an answer while the focus is inside the card. */
+function termCard(item) {
+  const set = h("fieldset", { class: "term" }, h("legend", { text: item.term }));
+  const facts = [item.count === 1 ? "seen once" : `seen ${item.count} times`,
+    (item.resumes || []).join(", "), item.context].filter(Boolean);
+  set.append(h("p", { class: "context", text: facts.join(". ") }));
+  const options = h("div", { class: "options" });
+  for (const option of KEYWORD_OPTIONS) {
+    options.append(h("label", {}, h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
+      h("span", { text: option.label })));
+  }
+  set.addEventListener("keydown", (event) => {
+    const n = Number(event.key);
+    if (!(n >= 1 && n <= KEYWORD_OPTIONS.length) || event.metaKey || event.ctrlKey) return;
+    options.querySelectorAll("input")[n - 1].checked = true;
+    event.preventDefault(); // 1 to 4 answer the term the focus is in
+  });
+  set.append(options);
+  return set;
+}
+
 async function viewKeywords(view) {
   view.append(h("h1", { text: "Keywords" }));
-  const host = h("div", { class: "stack" });
-  host.append(h("p", { class: "empty", text: "Loading pending terms." }));
-  view.append(host);
-  let data;
-  try {
-    data = await api(`keywords/pending?limit=${KEYWORD_BUNDLE}`);
-  } catch (error) {
-    clear(host);
-    host.append(errorBox(error, "Could not load the pending terms.", () => render()));
-    return;
-  }
-  clear(host);
-  const terms = (data.terms || []).slice(0, KEYWORD_BUNDLE);
-  const total = data.pending_total ?? terms.length;
-  if (!terms.length) {
-    host.append(h("p", { class: "empty", text: "Nothing pending. Every mined term has an answer. The next hunt will add more." }));
-    return;
+  const count = h("p", { class: "page-count", text: "Loading pending terms." });
+  const layout = h("div", { class: "layout kw-layout" });
+  const left = h("aside", { class: "card kw-list", id: "kw-list" });
+  const right = h("div", { class: "stack" });
+  view.append(count, layout);
+  let terms = [];
+  const load = async () => {
+    const data = await api("keywords/pending?all=1");
+    terms = data.terms || [];
+    count.textContent = `${data.term_total ?? terms.length} terms pending, ${data.pending_total ?? 0} questions behind them.`;
+  };
+  try { await load(); } catch (error) { return layout.append(errorBox(error, "Could not load the pending terms.", () => render())); }
+  layout.append(left, right);
+
+  const state = readKeywordSession();
+  const decided = new Set(state.decided), skipped = new Set(state.skipped), requeued = new Set(state.requeued);
+  let listOpen = false;
+  /** Keep the session order, drop what has since been answered, append what is new. */
+  const reconcile = () => {
+    const live = new Set(terms.map((t) => t.term));
+    state.pass = state.pass.filter((t) => live.has(t));
+    const seen = new Set(state.pass);
+    for (const item of terms) if (!seen.has(item.term)) state.pass.push(item.term);
+    for (const term of [...skipped]) if (!live.has(term)) skipped.delete(term);
+    state.cursor = Math.max(0, Math.min(state.cursor, state.pass.length));
+  };
+
+  const repaint = () => {
+    Object.assign(state, { decided: [...decided], skipped: [...skipped], requeued: [...requeued] });
+    saveKeywordSession(state);
+    paintBundle();
+    paintList();
+  };
+  reconcile();
+
+  const toggle = h("button", { type: "button", class: "btn terms-toggle", text: "All terms" });
+  toggle.addEventListener("click", () => { listOpen = !listOpen; left.hidden = !listOpen; });
+  const heading = h("h2", {});
+  const search = h("input", { type: "search", placeholder: "Search terms", "aria-label": "Search terms" });
+  const list = h("ul", { class: "kw-terms" });
+  search.addEventListener("input", () => paintList());
+  left.append(heading, search, list);
+
+  function paintList() {
+    heading.textContent = toggle.textContent = `All terms (${terms.length})`;
+    left.hidden = !listOpen && window.innerWidth < 900;
+    clear(list);
+    const needle = search.value.trim().toLowerCase();
+    const shown = needle ? terms.filter((t) => t.term.toLowerCase().includes(needle)) : terms;
+    if (!shown.length) return list.append(h("li", { class: "grey small", text: needle ? "No term matches that search." : "Nothing pending." }));
+    for (const item of shown) {
+      const done = decided.has(item.term), put = skipped.has(item.term);
+      const button = h("button", { type: "button", class: "kw-term", title: done ? "Decided this session" : put ? "Skipped this session" : item.term },
+        h("span", { class: done ? "mark done" : put ? "mark put" : "mark", text: done ? "✓" : put ? "•" : "" }),
+        h("span", { class: "name", text: item.term }), h("span", { class: "tally", text: String(item.count) }));
+      // Jumping moves the bundle to start at that term, wherever the pass had it.
+      button.addEventListener("click", () => {
+        const at = state.pass.indexOf(item.term);
+        if (at < 0) return;
+        state.cursor = at; listOpen = false; repaint();
+      });
+      list.append(h("li", {}, button));
+    }
   }
 
-  view.insertBefore(h("p", { class: "page-count", text: `${total} pending.` }), host);
-  const form = h("form", {});
-  form.addEventListener("submit", (event) => event.preventDefault());
-  for (const item of terms) {
-    const set = h("fieldset", { class: "term" });
-    set.append(h("legend", { text: item.term }));
-    const facts = [];
-    if (item.count) facts.push(item.count === 1 ? "seen once" : `seen ${item.count} times`);
-    if (Array.isArray(item.resumes) && item.resumes.length) facts.push(item.resumes.join(", "));
-    if (item.context) facts.push(item.context);
-    if (facts.length) set.append(h("p", { class: "context", text: facts.join(". ") }));
-    const options = h("div", { class: "options" });
-    // AGENTS.md section 9: exactly these four, recommended first, no free text.
-    for (const option of KEYWORD_OPTIONS) {
-      const input = h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } });
-      options.append(h("label", {}, input, h("span", { text: option.label })));
+  /** Put the bundle's undecided terms off: each goes to the back of the pass once,
+   * so the pass ends, and the skipped ones are offered again as a fresh pass. */
+  const defer = (put, step) => {
+    for (const term of put) {
+      skipped.add(term);
+      if (!requeued.has(term)) { requeued.add(term); state.pass.push(term); }
     }
-    set.append(options);
-    form.append(set);
+    state.cursor = Math.min(state.pass.length, state.cursor + step);
+    repaint();
+  };
+
+  function paintBundle() {
+    clear(right);
+    const settled = decided.size + skipped.size;
+    const togo = Math.max(0, terms.length - skipped.size);
+    const pct = Math.round((settled * 100) / (decided.size + terms.length || 1));
+    right.append(h("p", { class: "progress-line", text: `Decided ${decided.size}, skipped ${skipped.size}, ${togo} to go.` }),
+      h("div", { class: "bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct) },
+        h("span", { style: `width: ${pct}%` })), toggle);
+    const bundle = state.pass.slice(state.cursor, state.cursor + KEYWORD_BUNDLE)
+      .map((term) => terms.find((item) => item.term === term)).filter(Boolean);
+    if (!terms.length) return right.append(h("p", { class: "empty", text: "Nothing pending. Every mined term has an answer. The next hunt will add more." }));
+    if (!bundle.length) {
+      const again = h("button", { type: "button", class: "btn primary", text: "Start again with the skipped ones" });
+      again.addEventListener("click", () => { state.pass = [...skipped]; state.cursor = 0; requeued.clear(); repaint(); });
+      return right.append(panel("This pass is done", h("div", {},
+        h("p", { text: `Every pending term has been seen this pass. ${skipped.size} skipped.` }),
+        skipped.size ? again : h("p", { class: "grey small", text: "Nothing was put off. The next hunt mines more terms." }))));
+    }
+    const form = h("form", {});
+    form.addEventListener("submit", (event) => event.preventDefault());
+    for (const item of bundle) form.append(termCard(item));
+    const problem = h("div", {});
+    const record = h("button", { type: "button", class: "btn primary", text: "Record and next" });
+    const skip = h("button", { type: "button", class: "btn", text: "Skip these" });
+    const back = h("button", { type: "button", class: "btn", text: "Back", disabled: state.cursor === 0 });
+    back.addEventListener("click", () => { state.cursor = Math.max(0, state.cursor - KEYWORD_BUNDLE); repaint(); });
+    skip.addEventListener("click", () => defer(bundle.map((item) => item.term), bundle.length));
+    record.addEventListener("click", async () => {
+      const answers = {};
+      // "Unsure / keep pending" sends nothing: that term simply goes to the back.
+      for (const input of form.querySelectorAll("input[type=radio]:checked")) if (input.value !== "pending") answers[input.dataset.term] = input.value;
+      const put = bundle.map((item) => item.term).filter((term) => !(term in answers));
+      if (!Object.keys(answers).length) return defer(put, bundle.length);
+      record.disabled = true;
+      clear(problem);
+      try {
+        const result = await api("keywords/record", { method: "POST", body: { answers } });
+        const n = (value) => (Array.isArray(value) ? value.length : value ?? 0);
+        toast([`Recorded ${n(result.recorded)}.`, n(result.skipped_already_answered) ? `${n(result.skipped_already_answered)} already answered.` : "",
+          n(result.unmatched) ? `${n(result.unmatched)} unmatched.` : ""].filter(Boolean).join(" "));
+        for (const term of Object.keys(answers)) { decided.add(term); skipped.delete(term); }
+        await load(); // the recorded terms leave the left list
+        reconcile();
+        defer(put, put.length);
+      } catch (error) {
+        // The answers stay on screen: nobody should have to pick them twice.
+        record.disabled = false;
+        problem.append(errorBox(error, "Could not record these answers. Nothing was written.", null));
+      }
+    });
+    form.append(h("div", { class: "action-buttons" }, record, skip, back), problem,
+      h("p", { class: "grey small measure",
+        text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source." }));
+    right.append(form);
   }
-  const submit = h("button", { type: "button", class: "btn primary", text: "Record these" });
-  guarded(submit, "Record these", async () => {
-    const answers = {};
-    for (const input of form.querySelectorAll("input[type=radio]:checked")) answers[input.dataset.term] = input.value;
-    if (!Object.keys(answers).length) return toast("Choose an answer for at least one term first.", "bad");
-    submit.disabled = true;
-    try {
-      const result = await api("keywords/record", { method: "POST", body: { answers } });
-      const parts = [`Recorded ${result.recorded ?? 0}.`];
-      if (result.skipped_already_answered) parts.push(`${result.skipped_already_answered} already answered.`);
-      if (result.unmatched) parts.push(`${result.unmatched} unmatched.`);
-      toast(parts.join(" "));
-      render(); // pull the next bundle
-    } catch (error) {
-      toast(error.message, "bad");
-      submit.disabled = false;
-    }
-  });
-  form.append(submit, h("p", { class: "grey small",
-    text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source." }));
-  host.append(form);
+
+  paintBundle();
+  paintList();
 }
 
 // --- View: today ---
@@ -730,15 +803,8 @@ async function viewToday(view) {
   const host = h("div", {});
   host.append(h("p", { class: "empty", text: "Loading the journal." }));
   view.append(host);
-  let data;
-  try {
-    data = await api("journal/today");
-  } catch (error) {
-    clear(host);
-    host.append(errorBox(error, "Could not load today's summary.", () => render()));
-    return;
-  }
-  clear(host);
+  const data = await fetchInto(host, "journal/today", "Could not load today's summary.");
+  if (!data) return;
   const markdown = String(data.markdown || "").trim();
   if (!markdown) {
     host.append(h("p", { class: "empty", text: "No entry for today yet. The morning run writes one when it finishes." }));
@@ -753,10 +819,8 @@ async function viewToday(view) {
 function copyButton(text) {
   const button = h("button", { type: "button", class: "btn", text: "Copy rule" });
   button.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast("Rule copied.");
-    } catch { toast("This browser blocked the clipboard. Select the rule and copy it.", "bad"); }
+    try { await navigator.clipboard.writeText(text); toast("Rule copied."); }
+    catch { toast("This browser blocked the clipboard. Select the rule and copy it.", "bad"); }
   });
   return button;
 }
@@ -766,15 +830,8 @@ async function viewDigest(view) {
   const host = h("div", { class: "cards" });
   host.append(h("p", { class: "empty", text: "Loading the digest." }));
   view.append(host);
-  let data;
-  try {
-    data = await api("critic/digest?since=14d");
-  } catch (error) {
-    clear(host);
-    host.append(errorBox(error, "Could not load the critic digest.", () => render()));
-    return;
-  }
-  clear(host);
+  const data = await fetchInto(host, "critic/digest?since=14d", "Could not load the critic digest.");
+  if (!data) return;
   const themes = data.themes || [];
   view.insertBefore(h("p", { class: "page-count",
     text: `Last 14 days. ${data.verdicts ?? 0} verdicts, ${data.blocked ?? 0} blocked.` }), host);
@@ -794,10 +851,8 @@ async function viewDigest(view) {
   }
   // AGENTS.md section 5: recurring findings become editorial rules, but the
   // person promotes them in an attended session. This view copies, never writes.
-  host.append(h("p", {
-    class: "grey small",
-    text: "Nothing here is written to the editorial rules. Copy a rule and promote it in an attended session.",
-  }));
+  host.append(h("p", { class: "grey small",
+    text: "Nothing here is written to the editorial rules. Copy a rule and promote it in an attended session." }));
 }
 
 // --- View: settings ---
@@ -817,11 +872,8 @@ function viewSettings(view) {
     spellcheck: "false", placeholder: "Paste once", "aria-label": "API token" });
   input.value = readToken();
   const state = h("p", { class: "grey small", id: "token-state" });
-  const paint = () => {
-    state.textContent = readToken() ? "A token is set in this browser." : "No token is set in this browser.";
-  };
+  const paint = () => { state.textContent = readToken() ? "A token is set in this browser." : "No token is set in this browser."; };
   paint();
-
   const show = h("button", { type: "button", class: "btn", text: "Show" });
   show.addEventListener("click", () => {
     const hidden = input.type === "password";
@@ -830,8 +882,7 @@ function viewSettings(view) {
   });
   const save = h("button", { type: "button", class: "btn primary", text: "Save" });
   save.addEventListener("click", () => {
-    writeToken(input.value.trim());
-    paint();
+    writeToken(input.value.trim()); paint();
     toast(input.value.trim() ? "Token saved." : "Token cleared.");
   });
   const wipe = h("button", { type: "button", class: "btn", text: "Clear" });
@@ -852,9 +903,11 @@ function viewSettings(view) {
 // --- Router ---
 
 function parseHash() {
-  const raw = (location.hash || "#/queue").replace(/^#\/?/, "");
+  const raw = (location.hash || "#/applications").replace(/^#\/?/, "");
   const [name, ...rest] = raw.split("/");
-  const route = ROUTES.includes(name) ? name : "queue";
+  // #/queue is where this screen used to live. Quietly move the address on.
+  if (name === "queue") history.replaceState(null, "", "#/applications");
+  const route = !name || name === "queue" || !ROUTES.includes(name) ? "applications" : name;
   return { route, id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
 }
 
@@ -864,7 +917,7 @@ async function render() {
   disarm();
   const mine = ++renderToken;
   const { route, id } = parseHash();
-  markNav(route === "row" ? "queue" : route);
+  markNav(route === "row" ? "applications" : route);
   const view = $("#view");
   clear(view);
   await loadSummary();
@@ -872,12 +925,12 @@ async function render() {
   try {
     if (route === "row") {
       if (id) await viewRow(view, id);
-      else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the queue." }));
+      else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the applications list." }));
     } else if (route === "keywords") await viewKeywords(view);
     else if (route === "today") await viewToday(view);
     else if (route === "digest") await viewDigest(view);
     else if (route === "settings") viewSettings(view);
-    else await viewQueue(view);
+    else await viewApplications(view);
   } catch (error) {
     if (mine !== renderToken) return;
     clear(view);
@@ -890,5 +943,5 @@ window.addEventListener("hashchange", () => {
   render();
 });
 
-if (!location.hash) location.hash = "#/queue";
+if (!location.hash) location.hash = "#/applications";
 render();

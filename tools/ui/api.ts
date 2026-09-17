@@ -308,6 +308,14 @@ function parseLimit(value: RowsQuery["limit"], fallback: number): number {
   return Math.min(Math.floor(n), MAX_ROW_LIMIT);
 }
 
+/** A page start. Absent is 0; anything that is not a whole number at or above 0 is a 400. */
+function parseOffset(value: number | string | null | undefined): number {
+  if (value == null || value === "") return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new ApiError(400, `offset must be zero or a positive number, got '${String(value)}'`);
+  return Math.floor(n);
+}
+
 export async function getRows(query: RowsQuery = {}, _ctx: ApiContext = {}): Promise<{ rows: RowSummary[] }> {
   const statuses = wantedStatuses(query.status);
   const limit = parseLimit(query.limit, DEFAULT_ROW_LIMIT);
@@ -408,20 +416,52 @@ function ledgerPathOf(ctx: ApiContext): string {
   return resolveProfileContext(ctx.profileId ?? null).marketConfirmationsPath;
 }
 
+/**
+ * The pending questions, one entry per term, in the order `groupPending` fixes:
+ * count descending, then term ascending. That order is stable across calls, so
+ * `offset` means the same thing on the next page as it did on this one.
+ *
+ * `q` is a case-insensitive substring filter on the term and narrows `terms`
+ * and `matched_total` only: `pending_total` and `term_total` stay the
+ * unfiltered totals, because a search box must not make the backlog look
+ * smaller than it is. `all=1` (or any truthy `all`) returns every term, which
+ * is what the UI's left-hand list wants: a few hundred terms is a small page.
+ */
 export async function getKeywordsPending(
-  query: { limit?: number | string | null; resume?: string | null } = {},
+  query: {
+    limit?: number | string | null;
+    offset?: number | string | null;
+    resume?: string | null;
+    q?: string | null;
+    all?: string | boolean | null;
+  } = {},
   ctx: ApiContext = {},
-): Promise<{ terms: KeywordPendingTerm[]; pending_total: number }> {
-  const limit = parseLimit(query.limit, DEFAULT_KEYWORD_LIMIT);
+): Promise<{
+  terms: KeywordPendingTerm[];
+  pending_total: number;
+  term_total: number;
+  matched_total: number;
+  offset: number;
+  limit: number;
+}> {
   const groups = groupPending(await readLedger(ledgerPathOf(ctx)), query.resume ?? null);
+  const needle = (query.q ?? "").trim().toLowerCase();
+  const matched = needle ? groups.filter((g) => g.term.toLowerCase().includes(needle)) : groups;
+  const wantsAll = query.all === true || (typeof query.all === "string" && query.all !== "" && query.all !== "0" && query.all !== "false");
+  const limit = wantsAll ? Math.max(matched.length, 1) : parseLimit(query.limit, DEFAULT_KEYWORD_LIMIT);
+  const offset = parseOffset(query.offset);
   return {
-    terms: groups.slice(0, limit).map((g) => ({
+    terms: matched.slice(offset, offset + limit).map((g) => ({
       term: g.term,
       count: g.count,
       resumes: g.resumes,
       context: groupContext(g),
     })),
     pending_total: groups.reduce((n, g) => n + g.count, 0),
+    term_total: groups.length,
+    matched_total: matched.length,
+    offset,
+    limit,
   };
 }
 
@@ -526,7 +566,16 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
       };
     }
     if (method === "GET" && pathname === "/api/keywords/pending") {
-      return { status: 200, body: await getKeywordsPending({ limit: query.get("limit"), resume: query.get("resume") }, ctx) };
+      return {
+        status: 200,
+        body: await getKeywordsPending({
+          limit: query.get("limit"),
+          offset: query.get("offset"),
+          resume: query.get("resume"),
+          q: query.get("q"),
+          all: query.get("all"),
+        }, ctx),
+      };
     }
     if (method === "POST" && pathname === "/api/keywords/record") {
       return { status: 200, body: await postKeywordsRecord((req.body ?? {}) as { answers?: Record<string, string> }, ctx) };

@@ -243,32 +243,72 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
 // ---------- keywords ----------
 
 {
+  // Five pending rows over four terms: kafka is asked under two positionings,
+  // which is one question, not two.
+  const keywordRow = (resume: string, term: string, extra: string[] = []): string[] => [
+    "  - kind: keyword",
+    "    scope: person",
+    `    resume_id: ${resume}`,
+    `    signal: ${term}`,
+    `    term: ${term}`,
+    "    status: pending",
+    ...extra,
+  ];
   write("state/profile/market-confirmations.yaml", [
     "confirmations:",
-    "  - kind: keyword",
-    "    scope: person",
-    "    resume_id: solution-architect",
-    "    signal: event-driven architecture",
-    "    term: event-driven architecture",
-    "    status: pending",
-    "    question: Have you delivered event-driven architecture?",
-    "    opportunity_id: seek-abc123",
-    "  - kind: keyword",
-    "    scope: person",
-    "    resume_id: delivery-lead",
-    "    signal: terraform",
-    "    term: terraform",
-    "    status: pending",
-    "    evidence_hint: infrastructure as code on the platform build",
+    ...keywordRow("solution-architect", "event-driven architecture", [
+      "    question: Have you delivered event-driven architecture?",
+      "    opportunity_id: seek-abc123",
+    ]),
+    ...keywordRow("delivery-lead", "terraform", ["    evidence_hint: infrastructure as code on the platform build"]),
+    ...keywordRow("solution-architect", "kafka"),
+    ...keywordRow("delivery-lead", "kafka"),
+    ...keywordRow("delivery-lead", "databricks"),
     "",
   ].join("\n"));
 
-  const pending = await api.getKeywordsPending({ limit: 20 }, ctx);
-  assert.equal(pending.pending_total, 2);
-  assert.deepEqual(pending.terms.map((t) => t.term).sort(), ["event-driven architecture", "terraform"]);
-  const eda = pending.terms.find((t) => t.term === "event-driven architecture")!;
+  // The ordering rule: count descending, then term ascending. Stable across
+  // calls, so an offset means the same thing on the next page as on this one.
+  const all = await api.getKeywordsPending({ all: "1" }, ctx);
+  assert.deepEqual(
+    all.terms.map((t) => t.term),
+    ["kafka", "databricks", "event-driven architecture", "terraform"],
+    "terms come back count descending, then term ascending",
+  );
+  assert.equal(all.pending_total, 5, "pending_total counts pending rows, not terms");
+  assert.equal(all.term_total, 4);
+  assert.equal(all.offset, 0);
+  const kafka = all.terms.find((t) => t.term === "kafka")!;
+  assert.equal(kafka.count, 2, "the same term under two positionings is one question over two rows");
+  assert.deepEqual(kafka.resumes.sort(), ["delivery-lead", "solution-architect"]);
+  const eda = all.terms.find((t) => t.term === "event-driven architecture")!;
   assert.deepEqual(eda.resumes, ["solution-architect"]);
   assert.equal(eda.context, "seek-abc123", "context is the opportunity the term came from");
+
+  // Paging: the same order, a window into it. This is what stops the view from
+  // showing the same four terms for ever.
+  const page = await api.getKeywordsPending({ limit: 2, offset: 1 }, ctx);
+  assert.deepEqual(page.terms.map((t) => t.term), ["databricks", "event-driven architecture"]);
+  assert.equal(page.offset, 1);
+  assert.equal(page.limit, 2);
+  assert.equal(page.pending_total, 5, "a page does not shrink the backlog");
+  const past = await api.getKeywordsPending({ limit: 2, offset: 40 }, ctx);
+  assert.deepEqual(past.terms, [], "an offset past the end is an empty page, not an error");
+  await assert.rejects(
+    () => api.getKeywordsPending({ offset: -1 }, ctx),
+    (error: any) => error.status === 400,
+    "a negative offset is a 400",
+  );
+
+  // The search box narrows the list only. The totals stay unfiltered.
+  const found = await api.getKeywordsPending({ q: "KAF" }, ctx);
+  assert.deepEqual(found.terms.map((t) => t.term), ["kafka"], "q is a case-insensitive substring match on the term");
+  assert.equal(found.matched_total, 1);
+  assert.equal(found.pending_total, 5, "pending_total is the unfiltered count");
+  assert.equal(found.term_total, 4, "term_total is the unfiltered term count");
+  const nothing = await api.getKeywordsPending({ q: "no such term" }, ctx);
+  assert.deepEqual(nothing.terms, []);
+  assert.equal(nothing.term_total, 4);
 
   const recorded = await api.postKeywordsRecord({ answers: { terraform: "familiarity", "event-driven architecture": "confirm" } }, ctx);
   assert.equal(recorded.action, "record-file");
@@ -276,8 +316,9 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   assert.match(recorded.next_step ?? "", /apply-patch/, "a confirmed term still authorises nothing");
   assert.deepEqual(recorded.unmatched, []);
 
-  const drained = await api.getKeywordsPending({}, ctx);
-  assert.equal(drained.pending_total, 0, "answered terms leave the pending list");
+  const after = await api.getKeywordsPending({ all: "1" }, ctx);
+  assert.deepEqual(after.terms.map((t) => t.term), ["kafka", "databricks"], "answered terms leave the pending list");
+  assert.equal(after.pending_total, 3);
 
   const again = await api.postKeywordsRecord({ answers: { terraform: "familiarity" } }, ctx);
   assert.deepEqual(again.recorded, [], "re-recording the same answer is a no-op");
@@ -288,7 +329,12 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
     (error: any) => error.status === 400,
     "an answer outside the four fixed answers is a 400",
   );
-  console.log("  ✓ keyword pending and record");
+
+  const drained = await api.postKeywordsRecord({ answers: { kafka: "na", databricks: "na" } }, ctx);
+  assert.equal(drained.recorded.length, 2);
+  const empty = await api.getKeywordsPending({}, ctx);
+  assert.equal(empty.pending_total, 0, "nothing pending once every term has an answer");
+  console.log("  ✓ keyword pending, paging, search and record");
 }
 
 // ---------- journal and digest ----------

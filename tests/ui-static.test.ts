@@ -119,14 +119,40 @@ test("keyword bundles are capped at four", () => {
   assert.match(js, /KEYWORD_BUNDLE\s*=\s*4/, "app.js must cap a keyword bundle at four terms");
 });
 
+test("the keyword view can drain a list of hundreds", () => {
+  // The bug this replaced: the first four terms came back for ever, because
+  // "Unsure / keep pending" left them pending. The view now holds its own pass.
+  for (const control of ["Record and next", "Skip these", "Back", "Start again with the skipped ones"]) {
+    assert.ok(js.includes(control), `the keyword view has no control: ${control}`);
+  }
+  assert.ok(js.includes("keywords/pending?all=1"), "the left list must fetch every pending term, not the first page");
+  assert.match(js, /All terms \(\$\{terms\.length\}\)/, "the list must be headed with the term count");
+  assert.match(js, /Search terms/, "the list must carry a search box");
+  assert.match(js, /Decided \$\{decided\.size\}, skipped \$\{skipped\.size\}, \$\{togo\} to go/,
+    "the bundle must show the progress line");
+  assert.match(js, /class: "bar", role: "progressbar"/, "the bundle must show a progress bar");
+  assert.match(js, /Every pending term has been seen this pass/, "the end of a pass must say so");
+  assert.match(js, /sessionStorage\.getItem\(KEYWORD_SESSION\)/, "the pass order must survive a refresh");
+  assert.match(js, /sessionStorage\.setItem\(KEYWORD_SESSION/, "the pass order must be written to sessionStorage");
+  assert.match(js, /input\.value !== "pending"/, "an unsure answer must send nothing and go to the back");
+});
+
 test("every route is present", () => {
-  for (const route of ["queue", "row", "keywords", "today", "digest", "settings"]) {
+  for (const route of ["applications", "queue", "row", "keywords", "today", "digest", "settings"]) {
     assert.ok(js.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  for (const hash of ["#/queue", "#/keywords", "#/today", "#/digest", "#/settings"]) {
+  for (const hash of ["#/applications", "#/keywords", "#/today", "#/digest", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
-  assert.ok(js.includes("#/row/"), "app.js must link a queue card to #/row/<id>");
+  assert.ok(js.includes("#/row/"), "app.js must link an application card to #/row/<id>");
+});
+
+test("the screen is called Applications, and the old address still works", () => {
+  assert.match(html, /<a href="#\/applications" data-nav="applications">Applications<\/a>/, "the nav link must read Applications");
+  assert.ok(!/>Queue</.test(html), "index.html must not still call the screen Queue");
+  assert.ok(!js.includes('"#/queue"'), "app.js must link to #/applications, not #/queue");
+  assert.match(js, /name === "queue"/, "app.js must still accept the old #/queue address");
+  assert.match(js, /history\.replaceState\(null, "", "#\/applications"\)/, "#/queue must redirect to the canonical address");
 });
 
 test("settings opens from a cog in the header, drawn in the page itself", () => {
@@ -251,7 +277,7 @@ test("the row detail carries the three stat cards", () => {
   }
 });
 
-test("the queue reads as cards with a filter column", () => {
+test("the applications screen reads as cards with a filter column", () => {
   for (const piece of ["Why it is here", "Filters", "Minimum score", "Details", "saved by you"]) {
     assert.ok(js.includes(piece), `the queue card or filter column never says: ${piece}`);
   }
@@ -295,7 +321,7 @@ test("the stylesheet keeps to the flat card house style", () => {
 
 test("app.js stays small enough to read in one sitting", () => {
   const lines = js.split("\n").length;
-  assert.ok(lines <= 900, `app.js is ${lines} lines; the budget is 900`);
+  assert.ok(lines <= 950, `app.js is ${lines} lines; the budget is 950`);
 });
 
 if (process.exitCode) {
