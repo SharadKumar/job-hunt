@@ -15,6 +15,7 @@
  * Read-only. Never hardcodes personal detail: everything comes from state/.
  */
 
+import { exists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,10 +47,6 @@ function parseArgs(argv: string[]): Record<string, string> {
 
 async function readIfExists(file: string): Promise<string | null> {
   try { return await fs.readFile(file, "utf8"); } catch { return null; }
-}
-
-async function exists(file: string): Promise<boolean> {
-  try { await fs.access(file); return true; } catch { return false; }
 }
 
 /**

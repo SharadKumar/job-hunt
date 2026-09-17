@@ -33,7 +33,7 @@ import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { repoPath } from "./repo-root.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
-const APPROVAL_QUEUE_PATH = "state/pipeline/approval-queue.json";
+const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
 const TRAY_HEADER = [
   "id", "channel", "company", "title", "score", "profileRelevance", "fitReason", "domain",
   "isContract", "workArrangement", "resumeId", "resumeReason", "topReasons", "redFlags",
@@ -134,7 +134,7 @@ async function push() {
   await ensureTabs(sheets, spreadsheetId);
 
   const all = await loadPipeline();
-  const scoringWeights = YAML.parse(await fs.readFile("state/profile/scoring-weights.yaml", "utf8"));
+  const scoringWeights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
   const pipelineSheetMinScore = scoringWeights.thresholds?.pipeline_sheet_min_score ?? 0;
 
   // Keep the operational view useful without requiring a manual Sheet sort:

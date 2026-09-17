@@ -6,7 +6,7 @@
  * per-page text hash (so a re-audit can say which pages changed).
  */
 
-import { createHash } from "node:crypto";
+import { sha256 } from "../../lib/hash.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { LineUnitMetric } from "./measure-document.ts";
@@ -46,7 +46,7 @@ export async function measurePdfPages(pdf: string): Promise<PdfMetrics> {
     });
     const text = norm(words.join(" "));
     pageText.push(text);
-    pageHashes.push(createHash("sha256").update(text).digest("hex").slice(0, 16));
+    pageHashes.push(sha256(text, 16));
   });
   return { pageCount: pages.length, pages, pageText, pageHashes };
 }

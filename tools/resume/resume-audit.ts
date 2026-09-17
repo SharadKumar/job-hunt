@@ -36,6 +36,7 @@
  *          --force-drops (with --auto-fit: drop even when text edits would suffice)
  */
 
+import { exists, readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -145,10 +146,6 @@ function parseArgs(): Record<string, string> {
   return out;
 }
 
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
-
 async function loadTemplate(name: string): Promise<ResumeTemplate> {
   const renderPath = path.resolve(`templates/resume/${name}/render.ts`);
   if (!(await exists(renderPath))) throw new Error(`Template '${name}' not found at ${renderPath}`);
@@ -159,7 +156,7 @@ async function loadTemplate(name: string): Promise<ResumeTemplate> {
 
 async function readKeywordPlan(planPath?: string): Promise<KeywordPlan | null> {
   if (!planPath) return null;
-  try { return JSON.parse(await fs.readFile(planPath, "utf8")) as KeywordPlan; } catch { return null; }
+  return readJsonIfExists<KeywordPlan>(planPath).catch(() => null);
 }
 
 /**

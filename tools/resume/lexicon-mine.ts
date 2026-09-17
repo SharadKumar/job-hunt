@@ -23,6 +23,7 @@
  * JDs were available so a thin corpus is never mistaken for a clean signal.
  */
 
+import { readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,8 +101,9 @@ function parseArgs(argv: string[]): Record<string, string> {
   return args;
 }
 
+/** Tolerant on purpose: a corrupt input file is skipped, not fatal. */
 async function readJson<T>(file: string): Promise<T | null> {
-  try { return JSON.parse(await fs.readFile(file, "utf8")) as T; } catch { return null; }
+  return readJsonIfExists<T>(file).catch(() => null);
 }
 
 async function readText(file: string): Promise<string | null> {

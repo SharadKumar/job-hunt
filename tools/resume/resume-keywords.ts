@@ -47,7 +47,8 @@
  *       2 on usage error.
  */
 
-import { createHash } from "node:crypto";
+import { sha256 } from "../lib/hash.ts";
+import { repoPath } from "../repo-root.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -177,7 +178,7 @@ export const TAXONOMY_GROUP_POSITIONINGS: Record<string, readonly string[]> = {
 
 function escapeRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function wordRe(s: string): RegExp { return new RegExp(`(?<![A-Za-z0-9])${escapeRe(s)}(?![A-Za-z0-9])`, "i"); }
-function sha(text: string): string { return createHash("sha256").update(text).digest("hex").slice(0, 16); }
+function sha(text: string): string { return sha256(text, 16); }
 function key(term: string): string { return normalise(term).trim(); }
 function isAcronymish(s: string): boolean { return /^[A-Z0-9][A-Z0-9/.+-]{1,7}$/.test(s) && /[A-Z]/.test(s); }
 
@@ -1189,7 +1190,7 @@ export function sourceHasCredentials(cvSource: string): boolean {
 async function readJdTitle(opportunityId: string | null, jdText: string | null): Promise<string | null> {
   if (opportunityId) {
     try {
-      const raw = JSON.parse(await fs.readFile("state/pipeline/opportunities.json", "utf8"));
+      const raw = JSON.parse(await fs.readFile(repoPath("state/pipeline/opportunities.json"), "utf8"));
       const list: any[] = Array.isArray(raw) ? raw : raw.opportunities ?? Object.values(raw);
       const hit = list.find((o) => o?.id === opportunityId);
       if (hit?.title) return String(hit.title);

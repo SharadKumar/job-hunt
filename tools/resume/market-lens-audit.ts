@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
+import { sha256 } from "../lib/hash.ts";
 import { promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
 import YAML from "yaml";
 import { getResume, type MarketLens } from "../resumes.ts";
 import { resolveProfileContext } from "../profile-context.ts";
@@ -330,7 +330,7 @@ function auditMarketLens(resumeId: string, lens: MarketLens, source: string, pro
   return {
     resume_id: resumeId,
     profile_id: profileId,
-    cv_source_hash: createHash("sha256").update(source).digest("hex"),
+    cv_source_hash: sha256(source),
     applied_terms: [...appliedTerms],
     implicit_terms_used: implicitTerms,
     confirmation_needed: confirmationNeeded,

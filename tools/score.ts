@@ -16,9 +16,10 @@
  *   echo '{...}' | tsx tools/score.ts --stdin
  */
 
+import { repoPath } from "./repo-root.ts";
+import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import YAML from "yaml";
 import { classifyJdRegex, type Classification } from "./classify-jd.ts";
 
 export type Role = {
@@ -91,13 +92,9 @@ type Weights = {
 
 const SENIORITY_MULT: Record<string, number> = { expert: 1.0, practitioner: 0.7, familiar: 0.4 };
 
-async function loadYaml<T>(p: string): Promise<T> {
-  return YAML.parse(await fs.readFile(p, "utf8")) as T;
-}
-
 /** The canonical skill → synonyms → seniority taxonomy (shared with resume-keywords.ts). */
-export async function loadTaxonomy(filePath = "state/profile/skills-taxonomy.yaml"): Promise<SkillTaxonomy> {
-  const parsed = await loadYaml<SkillTaxonomy | null>(filePath).catch((e: any) => { if (e?.code === "ENOENT") return null; throw e; });
+export async function loadTaxonomy(filePath = repoPath("state/profile/skills-taxonomy.yaml")): Promise<SkillTaxonomy> {
+  const parsed = await readYaml<SkillTaxonomy | null>(filePath).catch((e: any) => { if (e?.code === "ENOENT") return null; throw e; });
   return parsed?.categories ? parsed : { categories: {} };
 }
 
@@ -279,8 +276,8 @@ export function computeFitVerdict(input: {
 }
 
 export async function scoreRole(role: Role, providedClassification?: Classification): Promise<ScoreResult & { classification: Classification }> {
-  const weights = await loadYaml<Weights>("state/profile/scoring-weights.yaml");
-  const taxonomy = await loadYaml<SkillTaxonomy>("state/profile/skills-taxonomy.yaml");
+  const weights = await readYaml<Weights>(repoPath("state/profile/scoring-weights.yaml"));
+  const taxonomy = await readYaml<SkillTaxonomy>(repoPath("state/profile/skills-taxonomy.yaml"));
   const profile = await loadProfile();
 
   // Classification policy:

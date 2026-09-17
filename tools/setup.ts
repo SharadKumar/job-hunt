@@ -24,6 +24,7 @@
  *   8 autopilot    policy state and what would still block a send
  */
 
+import { readYamlIfExists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -49,8 +50,9 @@ async function cmdOk(bin: string, args: string[]): Promise<{ ok: boolean; out: s
   catch (e: any) { return { ok: false, out: String(e?.message ?? e).split("\n")[0] }; }
 }
 
+/** Tolerant on purpose: setup reports a malformed config as "not configured yet". */
 async function readYaml(p: string): Promise<any | null> {
-  try { return YAML.parse(await fs.readFile(p, "utf8")); } catch { return null; }
+  return readYamlIfExists(p).catch(() => null);
 }
 
 /* ------------------------------------------------------------ stages */

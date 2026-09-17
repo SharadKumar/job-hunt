@@ -37,6 +37,7 @@
  * 2 on a usage or environment error.
  */
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -71,10 +72,6 @@ function parseArgs(argv: string[]): Record<string, string> {
     if (argv[i].startsWith("--")) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
   }
   return a;
-}
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
 }
 
 function seekJobId(url: string): string | null {

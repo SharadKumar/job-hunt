@@ -12,11 +12,12 @@
  * Exit code: 0 if all checks pass, 1 if any warn, 2 if any fail.
  */
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import { repoRoot } from "./repo-root.ts";
+import { repoRoot, repoPath } from "./repo-root.ts";
 
 const DEFAULT_PLAN = `${process.env.HOME}/.claude/plans/let-s-create-a-harness-delightful-meadow.md`;
 
@@ -27,10 +28,6 @@ const TEMPLATE_SAMPLES = [
   { name: "modern", maxPages: 3 },
   { name: "minimalist", maxPages: 2 },
 ] as const;
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
 
 async function fileSizeOk(p: string, minBytes = 50): Promise<boolean> {
   try { const s = await fs.stat(p); return s.size >= minBytes; } catch { return false; }
@@ -434,8 +431,8 @@ async function smokeAudit(checks: Check[]): Promise<void> {
 
   // Clean up: remove sentinel from dedup-index and audit-log.jsonl
   try {
-    const logPath = "state/audit/audit-log.jsonl";
-    const indexPath = "state/audit/dedup-index.json";
+    const logPath = repoPath("state/audit/audit-log.jsonl");
+    const indexPath = repoPath("state/audit/dedup-index.json");
     if (await exists(logPath)) {
       const txt = await fs.readFile(logPath, "utf8");
       const filtered = txt.split("\n").filter((l) => l && !l.includes(SENTINEL_CO)).join("\n");

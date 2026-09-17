@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -383,11 +384,6 @@ async function loadResumeTemplates(): Promise<TemplateReport[]> {
 async function loadReportTemplate(filePath?: string): Promise<string | undefined> {
   const templatePath = filePath ?? DEFAULT_TEMPLATE_PATH;
   return readTextIfExists(templatePath).then((content) => content ?? undefined);
-}
-
-async function exists(filePath: string | null | undefined): Promise<boolean> {
-  if (!filePath) return false;
-  return fs.access(filePath).then(() => true).catch(() => false);
 }
 
 function artefactsFromMetadata(metadata: Record<string, unknown> | null): Partial<ArtefactSet> {

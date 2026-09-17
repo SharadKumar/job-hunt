@@ -1,3 +1,4 @@
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -18,10 +19,6 @@ export function profileIdFromArg(value?: string): string | null {
 
 export function profileLabel(id: string | null): string {
   return id ?? "default";
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  return fs.access(filePath).then(() => true).catch(() => false);
 }
 
 export async function loadTeamConfig(filePath = repoPath("state/org/team.yaml")): Promise<TeamFile | null> {

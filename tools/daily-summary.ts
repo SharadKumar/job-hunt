@@ -22,6 +22,7 @@
  * osascript failure degrades to a stderr note).
  */
 
+import { readJsonIfExists as readJsonOrNull } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -129,10 +130,9 @@ async function readIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, "utf8"); } catch { return null; }
 }
 
+/** Tolerant on purpose: a half-written artefact must not break the summary. */
 async function readJsonIfExists<T>(p: string): Promise<T | null> {
-  const txt = await readIfExists(p);
-  if (txt == null) return null;
-  try { return JSON.parse(txt) as T; } catch { return null; }
+  return readJsonOrNull<T>(p).catch(() => null);
 }
 
 function parseArgs(argv: string[]): { date: string; notify: boolean; json: boolean; sheet: boolean } {

@@ -8,6 +8,7 @@
  *   tsx tools/prepare-baseline-packages.ts --ids seek-a,seek-b
  */
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { load, save } from "./pipeline.ts";
@@ -30,15 +31,6 @@ function parseIds(): string[] {
     throw new Error("Usage: prepare-baseline-packages --ids seek-a,seek-b");
   }
   return [...new Set(argv[index + 1].split(",").map((id) => id.trim()).filter(Boolean))];
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function main(): Promise<void> {

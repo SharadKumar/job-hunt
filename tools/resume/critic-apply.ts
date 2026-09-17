@@ -47,6 +47,7 @@
  *   npm run resume:critic:apply -- --composition <path> --findings <json> --round 2 --dry-run
  */
 
+import { readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { ResumeContent, ResumeSourceProvenance, ExperienceFeatured, ExperienceMentioned } from "../../templates/resume/_interface.ts";
@@ -158,8 +159,9 @@ export function criticSidecarPath(compositionPath: string): string {
   return compositionPath.replace(/\.json$/, "") + ".critic.json";
 }
 
+/** Tolerant on purpose: a missing or corrupt sidecar means "no review", not a crash. */
 async function readJson(file: string): Promise<any | null> {
-  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return null; }
+  return readJsonIfExists(file).catch(() => null);
 }
 
 export async function loadCriticReview(compositionPath: string): Promise<CriticReviewFile | null> {

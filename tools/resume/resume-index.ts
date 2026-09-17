@@ -21,6 +21,7 @@
  *   tsx tools/resume/resume-index.ts [--profile <id>] [--out <path>]
  */
 
+import { exists, readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -163,12 +164,9 @@ export function relativeLink(outPath: string, target: string): string {
   return encodeURI(rel || path.basename(target));
 }
 
+/** Tolerant on purpose: a corrupt artefact must degrade the index, not crash it. */
 async function readJson<T = any>(file: string): Promise<T | null> {
-  try { return JSON.parse(await fs.readFile(file, "utf8")) as T; } catch { return null; }
-}
-
-async function exists(file: string): Promise<boolean> {
-  try { await fs.stat(file); return true; } catch { return false; }
+  return readJsonIfExists<T>(file).catch(() => null);
 }
 
 function num(value: unknown): number | null {

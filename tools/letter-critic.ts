@@ -33,9 +33,9 @@
  * `--apply-fixes` is reserved and currently a no-op: the critic never edits.
  */
 
+import { sha256 } from "./lib/hash.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
@@ -56,7 +56,7 @@ export type CriticResult = {
 };
 
 export function sha256Text(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex");
+  return sha256(text);
 }
 
 /**

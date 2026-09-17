@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 /** Merge one or more classification maps into the canonical map atomically. */
 
+import { writeAtomic } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { Classification } from "./classify-jd.ts";
@@ -43,9 +44,7 @@ async function main(): Promise<void> {
     }
   }
   await fs.mkdir(path.dirname(target), { recursive: true });
-  const temp = `${target}.${process.pid}.tmp`;
-  await fs.writeFile(temp, `${JSON.stringify(canonical, null, 2)}\n`);
-  await fs.rename(temp, target);
+  await writeAtomic(target, `${JSON.stringify(canonical, null, 2)}\n`);
   console.log(JSON.stringify({ target, total: Object.keys(canonical).length, merged: replaced.size, sources }, null, 2));
 }
 
