@@ -18,6 +18,7 @@
     "resume:market-audit": "tsx tools/resume/market-lens-audit.ts",
     "resume:approve": "tsx tools/resume/resume-approve.ts",
     "resume:critic:apply": "tsx tools/resume/critic-apply.ts",
+    "resume:critic:learn": "tsx tools/resume/critic-learn.ts",
     "resume:edit": "tsx tools/resume/resume-edit.ts",
     "resume:to-images": "tsx tools/resume/resume-to-images.ts",
     "resume:design:golden": "tsx tools/resume/resume-golden.ts",
