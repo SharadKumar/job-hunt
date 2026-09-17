@@ -123,7 +123,7 @@ export type Opportunity = {
 const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   discovered: ["shortlisted", "parked", "awaiting_external", "rejected", "manual_action_needed"],
   awaiting_external: ["shortlisted", "rejected", "withdrawn"],
-  shortlisted: ["drafted", "parked", "rejected", "withdrawn"],
+  shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn"],
   // parked (2026-09-15): fits the profile but held for a logistics reason the
   // user has ruled on (interstate role needing routine onsite attendance, or
   // a card-only blurb that cannot be judged). Not part of the apply queue.
