@@ -140,6 +140,9 @@ export function contextualControl(row, done, { small = true } = {}) {
   // `decide` is the server saying there is no one obvious move: the choices it
   // offers all sit in `also`, and none of them is the primary.
   if (act.kind === "decide") return null;
+  // A gate refusal is the server saying there is no move at all on this board:
+  // no button here changes a policy, and a retry would hit the same gate.
+  if (act.kind === GATE_REFUSED) return null;
   if (act.kind === "portal") {
     return h("a", { class: cls, href: act.href || row.url, target: "_blank", rel: "noreferrer noopener", text: act.label || "Open portal" });
   }
@@ -152,6 +155,18 @@ export function contextualControl(row, done, { small = true } = {}) {
     return routeButton(row, { label: act.label, path: "outcome", body: { status: act.outcome, note: "recorded from the board" }, primary: act.primary, small }, done);
   }
   return null;
+}
+
+/** The action kind the server sends when the submission gate refused a row on
+ * policy (rows-ext-api.ts). The board reads it in two places, so it is named. */
+export const GATE_REFUSED = "gate_refused";
+
+/** The one clause of a refusal note the board has room for: what stopped it.
+ * The rest of the note, the part that says what to do, is on the row page. */
+export function firstClause(text) {
+  const raw = String(text || "").replace(/\s+/g, " ").trim();
+  const match = /^[^.;]+[.;]/.exec(raw);
+  return match ? `${match[0].slice(0, -1).trim()}.` : raw;
 }
 
 /** An `also` entry, or a row's own apply method, that means the person sent
@@ -247,14 +262,24 @@ function jobRow(row, refresh) {
   // line has to say why it is sitting among the shortlist.
   if (isInFlight(row)) main.append(h("span", { class: "pill", text: "in flight" }));
   const score = h("span", { class: "row-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "" });
+  const act = row.action || { kind: "none" };
+  // A refused row reads as what stopped it, in the server's plain words, rather
+  // than as the gate's own stamp. The board offers the one move it still takes:
+  // drop it. Hold keeps it here, which is where it already is, so Hold and the
+  // full explanation are left to the row page.
+  const refused = act.kind === GATE_REFUSED;
+  const shown = refused
+    ? { ...row, action: { ...act, also: (Array.isArray(act.also) ? act.also : []).filter((spec) => spec && spec.post === "reject") } }
+    : row;
   const reason = h("p", {
     class: "row-reason", "aria-label": "Why it is here",
-    text: plainReasonText(row.reason) || "No reason recorded. Open the row to read its history.",
+    text: (refused ? firstClause(act.note) : plainReasonText(row.reason))
+      || "No reason recorded. Open the row to read its history.",
   });
   const control = h("div", { class: "row-control" });
-  const button = contextualControl(row, refresh);
+  const button = contextualControl(shown, refresh);
   if (button) control.append(button);
-  const { buttons, extras } = alsoControls(row, refresh);
+  const { buttons, extras } = alsoControls(shown, refresh);
   for (const extra of buttons) control.append(extra);
   if (!button && !buttons.length && row.status !== "submitted") {
     control.append(h("a", { class: "btn sm", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
