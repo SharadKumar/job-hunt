@@ -447,10 +447,27 @@ test("Home is a dashboard of cards, each linking to its screen", () => {
   for (const gone of ['"#/keywords"', '"#/digest"', '"#/today"']) {
     assert.ok(!home.includes(gone), `a Home card still links at the moved address ${gone}`);
   }
-  assert.ok(home.includes("Start deciding"), "the evidence card must carry the primary Start deciding button");
-  assert.ok(home.includes("Open Rules"), "the critic themes card must open the Rules screen");
-  assert.ok(home.includes("Open Runs"), "the latest run card must open the Runs screen");
-  assert.match(home, /See all \$\{rows\.length\}/, "the needs card must offer to see all of them");
+  assert.ok(home.includes("Start deciding."), "the evidence card must still prompt, as plain text now");
+  assert.match(home, /\$\{rows\.length - 5\} more on the Applications screen\./,
+    "the needs card must say how many more there are");
+
+  // Every card is the link, so the "Open ..." footer links are gone and there
+  // is nothing interactive left inside an anchor to click by mistake.
+  for (const footer of ["Open Applications", "Open Sent", "Open Runs", "Open Rules", "Open Resumes", "Open Settings", "Open To approve", "Open the questions"]) {
+    assert.ok(!home.includes(footer), `the ${footer} footer link must be gone; the card is the link`);
+  }
+  assert.ok(!home.includes("home-more"), "the footer link row must be gone with it");
+  assert.match(home, /const section = h\("a", \{ class: "card home-card", href \}\);/,
+    "a Home card must be the anchor itself");
+  // Nothing nested and interactive: an anchor inside an anchor is invalid
+  // markup, and a button inside one fires the navigation instead of itself.
+  const cardBuilders = [...home.matchAll(/function \w+Card\([\s\S]*?\n\}/g)].map((m) => m[0]);
+  assert.equal(cardBuilders.length, 8, `Home must build eight cards, found ${cardBuilders.length}`);
+  for (const builder of cardBuilders) {
+    assert.ok(!/h\("a",/.test(builder), `a Home card still nests a link: ${builder.slice(0, 60)}`);
+    assert.ok(!/h\("button",/.test(builder), `a Home card still nests a button: ${builder.slice(0, 60)}`);
+    assert.ok(!/class: "btn/.test(builder), `a Home card still carries a button: ${builder.slice(0, 60)}`);
+  }
   assert.match(home, /rows\.slice\(0, 5\)/, "the needs card must show the top five rows");
   assert.match(home, /slice\(0, 3\)/, "the digest card must show the top three themes");
   assert.match(home, /slice\(0, 12\)/, "the run card must fall back to the first twelve lines of the summary");
@@ -509,11 +526,14 @@ test("a quotation sits under the greeting, attributed, and rerolled each load", 
   assert.ok(home.includes("quotes.quoteFor(Math.random)"), "Home must reroll the quotation on every load");
   assert.ok(home.includes('await import("./quotes.js")'), "and load the pool when the page is drawn, not at import time");
   assert.match(home, /class: "lede quote"/, "the quotation sits where the lede goes");
+  assert.match(home, /h\("p", \{ class: "lede quote" \}/, "and it is one paragraph, so quotation and attribution share a line");
   assert.match(home, /class: "quote-text", text: `"\$\{saying\.text\}"`/, "the quotation is quoted");
-  assert.match(home, /class: "quote-by", text: saying\.by/, "and the attribution is on its own line");
-  assert.match(css, /\.quote-text \{ margin: 0; max-width: 72ch; font-style: italic; font-size: 15px; color: var\(--grey\); \}/,
-    "the quotation is 15 px grey italic at 72ch");
-  assert.match(css, /\.quote-by \{ margin: 0; font-size: 13px; color: var\(--grey\); \}/, "the attribution is 13 px grey");
+  assert.match(home, /\}\),\n\s*" ",\n\s*h\("span", \{ class: "quote-by", text: saying\.by \}\)/,
+    "a single space separates the quotation from its attribution, with no dash and no brackets");
+  assert.match(css, /\.quote \{ max-width: 72ch; font-size: 15px; \}/, "the one line wraps at the 72ch measure, at 15 px");
+  assert.match(css, /\.quote-text \{ font-style: italic; \}/, "the quotation is the italic half");
+  assert.match(css, /\.quote-by \{ font-size: 15px; font-weight: 400; color: var\(--grey\); \}/,
+    "the attribution is 15 px regular weight grey");
 });
 
 test("the Home cards are packed, not laid out on a grid of rows", () => {
@@ -529,6 +549,13 @@ test("the Home cards are packed, not laid out on a grid of rows", () => {
   assert.match(rules, /\.home-card \{[^}]*break-inside: avoid/, "a card must never split across columns");
   assert.match(rules, /\.home-card \{[^}]*-webkit-column-break-inside: avoid/, "and the webkit spelling must be there too");
   assert.match(rules, /\.home-card \{[^}]*margin-bottom: 24px/, "the gap between packed cards must be 24 px");
+  assert.match(rules, /a\.home-card, a\.home-card:hover \{ text-decoration: none; color: inherit; \}/,
+    "a card that is a link must keep the page's own text colour and never underline");
+  assert.match(rules, /a\.home-card:hover \{ background: var\(--hover\); \}/,
+    "the only hover on a card is the subtle tint");
+  assert.match(rules, /--hover: #fafafa;/, "and that tint is #FAFAFA in light mode");
+  assert.match(rules, /:focus-visible \{\s*outline: 2px solid var\(--ink\);/,
+    "the card takes the standard focus ring, so a keyboard can see where it is");
 });
 
 test("the Home cards are in priority order", () => {
@@ -670,7 +697,8 @@ test("every screen draws its title through the one page header", () => {
     "the header must carry 32 px above it and 24 px before the first card");
   assert.match(css, /\.page-header \.lede, \.page-header \.page-count \{ grid-column: 1 \/ -1; \}/,
     "the lede must run the full width under the title");
-  assert.match(css, /\.lede \{\s*margin: 4px 0 0;/, "the lede must sit 4 px under the title");
+  assert.match(css, /\.lede \{\s*margin: 4px 0 0;\s*font-size: 17px;\s*line-height: 1\.5;\s*color: var\(--grey\);/,
+    "the lede must sit 4 px under the title and read at 17 px grey");
   assert.match(css, /\.page-aside \{ justify-self: end;/, "the aside must be right aligned on the desktop");
   assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*?\.page-aside \{ justify-self: start; order: 1;/,
     "on a phone the aside must drop below the lede");
@@ -1193,7 +1221,7 @@ test("a run that is still going is said in amber, not red, and not as no log", (
     "and say it in the same amber as the card above it");
   assert.ok(home.includes('const missing = run.has_log ? "no summary yet" : "no log";'),
     "a log that exists with no summary yet must not be reported as no log");
-  assert.ok(home.includes('return card("Latest run", "#/runs", "Open Runs", body);'),
+  assert.ok(home.includes('return card("Latest run", "#/runs", body);'),
     "the Latest run card still opens the Runs screen");
 
   // The Runs screen row.

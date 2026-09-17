@@ -21,13 +21,21 @@ import { api, clockTime, dayStamp, getPolicy, getSummary, h, isPolicyAvailable, 
 /** The hour scripts/install-launchd.sh puts the daily run at. */
 const RUN_SCHEDULE = "The daily run is at 07:00.";
 
-/** One dashboard card: a heading, a body, and the screen it opens. */
-function card(title, href, linkText, body, note) {
-  const section = h("article", { class: "card home-card" });
+/**
+ * One dashboard card: a heading, a body, and the screen the whole card opens.
+ *
+ * The card is the anchor rather than carrying an "Open ..." link in its
+ * footer, because the footer link was the only part of a summary you could
+ * aim at and the rest of the card was already saying "go here". An anchor may
+ * not contain another anchor or a button, so nothing inside a card is
+ * interactive: the row titles are spans and the evidence prompt is plain text,
+ * and the screen the card opens is where anything gets decided.
+ */
+function card(title, href, body, note) {
+  const section = h("a", { class: "card home-card", href });
   section.append(h("h2", { text: title }));
   section.append(body);
   if (note) section.append(h("p", { class: "grey small", text: note }));
-  section.append(h("p", { class: "home-more" }, h("a", { href, text: linkText })));
   return section;
 }
 
@@ -232,7 +240,7 @@ export const channelLabel = (id) => CHANNEL_LABELS[id] || upperFirst(String(id |
  */
 function healthCard(result) {
   if (result.status !== "fulfilled") {
-    return card("Harness", "#/settings", "Open Settings", failure("Could not read the harness health."));
+    return card("Harness", "#/settings", failure("Could not read the harness health."));
   }
   const health = result.value;
   const body = h("div", {});
@@ -270,24 +278,25 @@ function healthCard(result) {
       h("span", { text: `${channelLabel(channel.id)}: ` }),
       h("span", { class: channel.state === "ok" ? "grey" : "alarm", text: channel.note })));
   }
-  return card("Harness", "#/settings", "Open Settings", body);
+  return card("Harness", "#/settings", body);
 }
 
 /** Top five rows the run could not finish, with the reason each is stuck. */
 function needsCard(result) {
-  if (result.status !== "fulfilled") return card("Blocked", "#/applications/needs", "Open Applications", failure("Could not load the blocked rows."));
+  if (result.status !== "fulfilled") return card("Blocked", "#/applications/needs", failure("Could not load the blocked rows."));
   const rows = result.value.rows || [];
   const body = h("div", {});
   body.append(line("The run could not finish these: a blocked letter, an unanswered question or an external portal.", "home-line grey"));
   if (!rows.length) body.append(line("Nothing is blocked.", "home-line grey"));
   for (const row of rows.slice(0, 5)) {
     const item = h("div", { class: "home-row" });
-    item.append(h("a", { class: "home-row-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
+    item.append(h("span", { class: "home-row-title", text: row.title || "Untitled role" }));
     if (row.company) item.append(h("span", { class: "grey small", text: row.company }));
     item.append(h("p", { class: "grey small", text: plainReason(row.reason) || "No reason recorded." }));
     body.append(item);
   }
-  return card("Blocked", "#/applications/needs", rows.length > 5 ? `See all ${rows.length}` : "Open Applications", body);
+  const more = rows.length > 5 ? `${rows.length - 5} more on the Applications screen.` : null;
+  return card("Blocked", "#/applications/needs", body, more);
 }
 
 /** What went out today, by title. The count is the summary's own figure. */
@@ -295,7 +304,7 @@ function sentCard(result) {
   const summary = getSummary();
   const count = summary ? summary.sent_today ?? 0 : 0;
   if (result.status !== "fulfilled") {
-    return card("Sent today", "#/applications/sent", "Open Sent", failure("Could not load what was sent."));
+    return card("Sent today", "#/applications/sent", failure("Could not load what was sent."));
   }
   const today = localDay();
   const rows = (result.value.rows || []).filter((row) => localDay(row.updated_at) === today);
@@ -303,11 +312,11 @@ function sentCard(result) {
   body.append(line(count === 1 ? "1 application sent today." : `${count} applications sent today.`));
   for (const row of rows.slice(0, 6)) {
     body.append(h("p", { class: "home-row" },
-      h("a", { href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }),
-      row.company ? h("span", { class: "grey small", text: ` ${row.company}` }) : null));
+      h("span", { class: "home-row-title", text: row.title || "Untitled role" }),
+      row.company ? h("span", { class: "grey small", text: row.company }) : null));
   }
   if (!rows.length && !count) body.append(line("Nothing has gone out yet today.", "home-line grey"));
-  return card("Sent today", "#/applications/sent", "Open Sent", body);
+  return card("Sent today", "#/applications/sent", body);
 }
 
 /** How many prepared packages are waiting on the person to say yes. */
@@ -317,7 +326,7 @@ function waitingCard() {
   const body = h("div", {});
   body.append(h("p", { class: "home-big", text: String(count) }));
   body.append(line("Packages ready to send once you say yes.", "home-line grey"));
-  return card("To approve", "#/applications/waiting", "Open To approve", body);
+  return card("To approve", "#/applications/waiting", body);
 }
 
 /**
@@ -326,7 +335,7 @@ function waitingCard() {
  * now follows the hashes rather than the artefact mtimes.
  */
 function resumesCard(result) {
-  if (result.status !== "fulfilled") return card("Resumes", "#/resumes", "Open Resumes", failure("Could not load the positionings."));
+  if (result.status !== "fulfilled") return card("Resumes", "#/resumes", failure("Could not load the positionings."));
   const items = result.value.resumes || [];
   const body = h("div", {});
   if (!items.length) body.append(line("No positionings yet. Run /onboarding, then /resume-review.", "home-line grey"));
@@ -344,7 +353,7 @@ function resumesCard(result) {
       h("span", { class: "home-row-title", text: item.label || item.id }),
       h("span", { class: `stamp ${approved ? "approved" : "stale"}`, text: said })));
   }
-  return card("Resumes", "#/resumes", "Open Resumes", body);
+  return card("Resumes", "#/resumes", body);
 }
 
 /**
@@ -354,19 +363,20 @@ function resumesCard(result) {
  */
 function evidenceCard(result) {
   const where = "#/resumes/evidence";
-  if (result.status !== "fulfilled") return card("Evidence questions", where, "Open the questions", failure("Could not load the pending terms."));
+  if (result.status !== "fulfilled") return card("Evidence questions", where, failure("Could not load the pending terms."));
   const total = result.value.term_total ?? 0;
   const body = h("div", {});
   body.append(line(total === 1 ? "1 term pending" : `${total} terms pending`));
-  body.append(h("p", { class: "home-actions" },
-    h("a", { class: "btn primary", href: where, text: "Start deciding" })));
-  return card("Evidence questions", where, "Open the questions", body);
+  // The card itself opens the questions, so the button that used to say so is
+  // plain text: a button inside an anchor is invalid and clicks the anchor.
+  body.append(line("Start deciding.", "home-line grey"));
+  return card("Evidence questions", where, body);
 }
 
 /** The three themes the critic keeps raising. AGENTS.md section 5: they become
  * editorial rules in an attended session, never from here. */
 function digestCard(result) {
-  if (result.status !== "fulfilled") return card("Recurring critic themes", "#/rules", "Open Rules", failure("Could not load the critic digest."));
+  if (result.status !== "fulfilled") return card("Recurring critic themes", "#/rules", failure("Could not load the critic digest."));
   const themes = (result.value.themes || []).slice(0, 3);
   const body = h("div", {});
   if (!themes.length) body.append(line("No recurring themes in the last 14 days.", "home-line grey"));
@@ -375,7 +385,7 @@ function digestCard(result) {
       h("span", { class: "digest-count", text: String(theme.count ?? 0) }),
       h("span", { text: themeWords(theme.key) })));
   }
-  return card("Recurring critic themes", "#/rules", "Open Rules", body);
+  return card("Recurring critic themes", "#/rules", body);
 }
 
 /**
@@ -414,7 +424,7 @@ function latestRunCard(runs, journal) {
     if (markdown) body.append(h("div", { class: "home-journal" }, richMarkdown(markdown.split("\n").slice(0, 12).join("\n"))));
     else body.append(line("No run has been logged yet. The morning run writes one when it finishes.", "home-line grey"));
   }
-  return card("Latest run", "#/runs", "Open Runs", body);
+  return card("Latest run", "#/runs", body);
 }
 
 export async function viewHome(view) {
@@ -432,9 +442,10 @@ export async function viewHome(view) {
   const quotes = await import("./quotes.js").catch(() => null);
   if (quotes) {
     const saying = quotes.quoteFor(Math.random);
-    head.append(h("div", { class: "lede quote" },
-      h("p", { class: "quote-text", text: `"${saying.text}"` }),
-      h("p", { class: "quote-by", text: saying.by })));
+    head.append(h("p", { class: "lede quote" },
+      h("span", { class: "quote-text", text: `"${saying.text}"` }),
+      " ",
+      h("span", { class: "quote-by", text: saying.by })));
   }
   const grid = h("div", { class: "home-grid" });
   grid.append(h("p", { class: "empty", text: "Loading the dashboard." }));
