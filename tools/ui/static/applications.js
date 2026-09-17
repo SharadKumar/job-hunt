@@ -201,6 +201,34 @@ export function alsoControls(row, done, { small = true } = {}) {
 
 const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
 
+/**
+ * The lane split the rows endpoint reports for awaiting_approval: how many
+ * rows actually want the person, and how many the run is already carrying.
+ * Held here because the filter column draws every tab's count from one place,
+ * whichever tab is open.
+ */
+const laneCounts = { needs_you: null, in_flight: null };
+
+/** Only the awaiting_approval response is the To approve tally. Every status
+ * reports its own split, and the shortlisted one overwrote this with a figure
+ * that belonged to a different tab. */
+function rememberLaneCounts(status, data) {
+  const counts = status === "awaiting_approval" && data ? data.counts : null;
+  if (!counts) return;
+  if (typeof counts.needs_you === "number") laneCounts.needs_you = counts.needs_you;
+  if (typeof counts.in_flight === "number") laneCounts.in_flight = counts.in_flight;
+}
+
+/** A row that still wants a decision from the person. A server that does not
+ * carry lanes says nothing, and then every awaiting row is theirs, exactly as
+ * it was before the lanes existed. */
+export const needsYou = (row) => row.needs_you !== false;
+
+/** A row the run is already carrying. It is approved, it is going out, and it
+ * is not a question (AGENTS.md section 2: the channel decides the lane). */
+export const isInFlight = (row) => row.needs_you === false
+  || Boolean(row.action && row.action.kind === "in_flight");
+
 /** One job row: two lines, and at most one button. The whole row opens the
  * detail; the button inside it does its own thing. */
 function jobRow(row, refresh) {
@@ -215,6 +243,9 @@ function jobRow(row, refresh) {
   // A job the person saved on the channel is an order to apply (AGENTS.md
   // section 2), so it is said on the row rather than buried in the detail.
   if (row.userSaved) main.append(h("span", { class: "pill", text: "saved by you" }));
+  // A row the run is carrying is read here rather than in To approve, so the
+  // line has to say why it is sitting among the shortlist.
+  if (isInFlight(row)) main.append(h("span", { class: "pill", text: "in flight" }));
   const score = h("span", { class: "row-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "" });
   const reason = h("p", {
     class: "row-reason", "aria-label": "Why it is here",
@@ -247,7 +278,11 @@ function filterCard(rows, repaint) {
   card.append(h("h2", { text: "Filters" }), body);
   const summary = getSummary();
   const counts = (summary && summary.counts) || {};
-  const tally = (tab) => tab.status.split(",").reduce((n, s) => n + (counts[s] ?? 0), 0);
+  // To approve counts only what wants the person; the rows the run is already
+  // carrying are counted on the Shortlisted tab they are read on.
+  const tally = (tab) => (tab.key === "waiting" && typeof laneCounts.needs_you === "number"
+    ? laneCounts.needs_you
+    : tab.status.split(",").reduce((n, s) => n + (counts[s] ?? 0), 0));
   const statuses = h("div", { class: "filter-group" });
   statuses.append(eyebrow("Status"));
   for (const tab of TABS) {
@@ -385,7 +420,17 @@ export async function viewApplications(view, which) {
   if (tab.limit) params.set("limit", String(tab.limit));
   const data = await fetchInto(list, `rows?${params.toString()}`, "Could not load rows.");
   if (!data) return;
-  const rows = data.rows || [];
+  rememberLaneCounts(tab.status, data);
+  let rows = data.rows || [];
+  // To approve is the person's queue and nothing else.
+  if (tab.key === "waiting") rows = rows.filter(needsYou);
+  if (tab.key === "shortlisted") {
+    // The approved rows the run is carrying are not waiting on anybody, so
+    // they are read with the rest of the queue instead of in To approve.
+    const carried = await api("rows?status=awaiting_approval").catch(() => null);
+    rememberLaneCounts("awaiting_approval", carried);
+    if (carried) rows = rows.concat((carried.rows || []).filter(isInFlight));
+  }
   const paint = () => {
     clear(list);
     const shown = visibleRows(rows);

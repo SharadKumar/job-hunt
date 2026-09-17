@@ -158,7 +158,7 @@ export function when(iso) {
 /** The person's own day as YYYY-MM-DD, so "sent today" means what they mean. */
 export const localDay = (value) => {
   const d = value ? new Date(value) : new Date();
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-CA");
+  return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat("en-CA").format(d); // ISO day, browser timezone
 };
 
 let toastTimer = 0;
