@@ -277,14 +277,18 @@ a:hover { text-decoration: underline; }
   .page-aside { justify-self: start; order: 1; margin-top: 12px; }
 }
 
-/* The line under the greeting: the quotation in italics at reading measure,
-   the attribution quieter under it. */
-.quote { display: grid; gap: 4px; }
-.quote-text { margin: 0; max-width: 72ch; font-style: italic; font-size: 15px; color: var(--grey); }
-.quote-by { margin: 0; font-size: 13px; color: var(--grey); }
+/* The line under the greeting: the quotation in italics, then the attribution
+   in regular weight, both on the one line, wrapping at the reading measure. */
+.quote { max-width: 72ch; font-size: 15px; }
+.quote-text { font-style: italic; }
+.quote-by { font-size: 15px; font-weight: 400; color: var(--grey); }
 
+/* The subtitle under any page title: 17 px so it reads as a sentence rather
+   than as a caption, grey, and 4 px under the title. */
 .lede {
   margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.5;
   color: var(--grey);
   max-width: var(--measure);
 }
@@ -892,7 +896,9 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 /* --- Home ---------------------------------------------------------------
    A dashboard of cards, each a summary of one screen and a link into it.
-   Nothing here acts: Home reads, the screen it links to decides. */
+   Nothing here acts: Home reads, the screen it links to decides. Every card
+   is the anchor, so the whole box is the target and nothing inside it is
+   interactive; the hover tint is the only thing that moves. */
 
 /* The cards are very different heights, so a grid row leaves a hole beside the
    short one. A multi-column flow packs them instead: each card stays whole
@@ -909,6 +915,8 @@ button[disabled] { opacity: 0.45; cursor: default; }
   -webkit-column-break-inside: avoid;
   margin-bottom: 24px;
 }
+a.home-card, a.home-card:hover { text-decoration: none; color: inherit; }
+a.home-card:hover { background: var(--hover); }
 .home-card h2 { margin-bottom: 16px; }
 .home-line { margin: 0 0 8px; }
 .home-big { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
@@ -925,11 +933,11 @@ button[disabled] { opacity: 0.45; cursor: default; }
 
 .home-row:first-of-type { border-top: 0; padding-top: 0; }
 .home-row p { margin: 0; flex: 1 0 100%; }
-.home-row-title { font-weight: 600; text-decoration: none; }
-.home-row-title:hover { text-decoration: underline; }
+/* Not a link: inside a card that is itself the anchor, the title of a row is
+   only the row's own emphasis. */
+.home-row-title { font-weight: 600; }
 
 .home-actions { margin: 12px 0 0; }
-.home-more { margin: 16px 0 0; font-size: 13px; }
 
 .home-journal {
   margin: 0;
