@@ -12,7 +12,14 @@ import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { load, patchMany, type Opportunity } from "./pipeline.ts";
-import { repoPath } from "./repo-root.ts";
+import { sha256 } from "./lib/hash.ts";
+import { repoPath, repoRoot } from "./repo-root.ts";
+
+/** Repo-relative form of a path inside the repo; absolute paths outside it stay as they are. */
+function relToRepo(absolute: string): string {
+  const rel = path.relative(repoRoot(), absolute);
+  return rel.startsWith("..") ? absolute : rel;
+}
 
 type BaselineMetadata = {
   resume_id: string;
@@ -67,13 +74,28 @@ async function main(): Promise<void> {
 
     const archiveDir = path.join(repoPath("state/pipeline/archive"), id);
     await fs.mkdir(archiveDir, { recursive: true });
-    const copied: Record<string, string> = {};
-    for (const [kind, sourcePath] of Object.entries(baseline.artefacts ?? {})) {
-      if (!["docx", "pdf", "composition_json", "provenance_json", "html", "md"].includes(kind)) continue;
-      const targetPath = path.join(archiveDir, path.basename(sourcePath));
-      await fs.copyFile(sourcePath, targetPath);
-      copied[kind] = targetPath;
-    }
+
+    // Reference, not copy. A baseline package used to copy the whole approved
+    // artefact set (~1.2 MB) into every package, and 143 packages of bytes that
+    // are identical to state/profile/resumes/<id>/ is 110 MB of archive saying
+    // nothing the reference does not. The sha256 of the referenced docx is what
+    // makes the reference evidence: submission-gate re-hashes the file at `ref`
+    // and refuses the send if it has moved since the package was prepared.
+    // The adapters take a docx path, so they are pointed at the baseline file
+    // itself (SEEK matches its stored resumé by basename, which is unchanged).
+    const docxSource = baseline.artefacts?.docx;
+    if (!docxSource) throw new Error(`${id}: ${resumeId} baseline metadata has no docx artefact`);
+    const docxPath = path.isAbsolute(docxSource) ? docxSource : repoPath(docxSource);
+    if (!(await exists(docxPath))) throw new Error(`${id}: baseline docx missing at ${docxPath}`);
+    const pdfSource = baseline.artefacts?.pdf ?? null;
+    const resumeRef = {
+      mode: "baseline" as const,
+      resume_id: resumeId,
+      ref: relToRepo(docxPath),
+      pdf_ref: pdfSource ? relToRepo(path.isAbsolute(pdfSource) ? pdfSource : repoPath(pdfSource)) : null,
+      sha256: sha256(await fs.readFile(docxPath)),
+      baseline_content_hash: baseline.approved_hash ?? baseline.content_hash,
+    };
 
     const coverLetter = path.join(archiveDir, "cover-letter.md");
     const jdSnapshot = path.join(archiveDir, "jd.md");
@@ -85,7 +107,7 @@ async function main(): Promise<void> {
       resumeId,
       mode: "approved_baseline",
       template: baseline.template ?? null,
-      resume: copied,
+      resume: resumeRef,
       baselineSource: baselineDir,
       baselineContentHash: baseline.content_hash,
       coverLetter,

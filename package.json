@@ -60,6 +60,7 @@
     "login:linkedin": "tsx scripts/login-channel.ts linkedin",
     "login:seek": "tsx scripts/login-channel.ts seek",
     "verify:plan": "tsx tools/verify-plan.ts",
+    "archive:compact": "tsx tools/archive-compact.ts",
     "audit:log": "tsx tools/audit.ts log",
     "audit:query": "tsx tools/audit.ts query",
     "audit:check-dup": "tsx tools/audit.ts check-dup",

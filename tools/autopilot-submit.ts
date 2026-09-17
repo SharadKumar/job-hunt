@@ -48,6 +48,7 @@ import { normaliseQuestion } from "./channels/seek-submit.ts";
 import { evaluateSubmission, type GateDecision } from "./submission-gate.ts";
 import { critiqueLetter, readCurrentVerdict, sha256Text, type CriticResult } from "./letter-critic.ts";
 import { log as auditLog } from "./audit.ts";
+import { reencodeScreenshots } from "./archive-compact.ts";
 import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
 
@@ -84,11 +85,16 @@ function seekJobId(url: string): string | null {
 async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): Promise<{ docx: string; source: string }> {
   const metaPath = path.join(archiveDir, "metadata.json");
   if (await exists(metaPath)) {
-    const meta = JSON.parse(await fs.readFile(metaPath, "utf8")) as { resume?: { docx?: string } };
-    const docx = meta.resume?.docx;
-    if (docx) {
-      const abs = path.isAbsolute(docx) ? docx : repoPath(docx);
-      if (await exists(abs)) return { docx: abs, source: "metadata.json" };
+    const meta = JSON.parse(await fs.readFile(metaPath, "utf8")) as { resume?: { docx?: string; ref?: string; mode?: string } };
+    // A baseline package carries a reference to the approved baseline docx
+    // rather than a copy of it (see prepare-baseline-packages). Both adapters
+    // take a docx path and derive the stored-resumé name from its basename, so
+    // pointing them at the baseline file itself is exactly equivalent to the
+    // copy that used to sit in the package. submission-gate re-hashes it.
+    const named = meta.resume?.ref ?? meta.resume?.docx;
+    if (named) {
+      const abs = path.isAbsolute(named) ? named : repoPath(named);
+      if (await exists(abs)) return { docx: abs, source: meta.resume?.ref ? "metadata.json baseline ref" : "metadata.json" };
       throw new Error(`metadata.json names a resume docx that does not exist: ${abs}`);
     }
   }
@@ -356,6 +362,24 @@ async function main() {
       summary.status = (await loadPipeline()).find((r) => r.id === id)!.status;
       finish(0);
     }
+    // The confirmation screenshot is a ~1.3 MB full-page PNG and it only ever
+    // has to be readable as "this is the confirmation page". Re-encode it to a
+    // half-scale JPEG before the confirmation text names it, so the archive
+    // never accumulates the PNG. A failure here is noted, never fatal: the send
+    // already happened and the confirmation record matters more than the size.
+    if (result.screenshotPath && /\.png$/i.test(result.screenshotPath) && (await exists(result.screenshotPath))) {
+      try {
+        const [converted] = await reencodeScreenshots([result.screenshotPath]);
+        if (converted) {
+          summary.notes.push(`screenshot re-encoded to jpeg (${Math.round(converted.before / 1024)}KB → ${Math.round(converted.after / 1024)}KB)`);
+          result.screenshotPath = converted.jpeg;
+          summary.screenshotPath = converted.jpeg;
+        }
+      } catch (e: any) {
+        summary.notes.push(`screenshot re-encode failed, PNG kept: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    }
+
     const jobId = row!.channel === "seek" ? seekJobId(row!.url) : null;
     const now = new Date().toISOString();
     const sha = sha256Text(letterText);

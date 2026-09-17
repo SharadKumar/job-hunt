@@ -11,7 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -83,6 +83,42 @@ function coreRow(extra: Partial<Opportunity> = {}): Opportunity {
 }
 function apOpts(extra: Partial<EvaluateOpts> = {}): EvaluateOpts {
   return opts({ approvedBy: "autopilot:daily-test", policy: autopilotPolicy(), opportunities: [coreRow()], archiveDir: archive("pass"), homeCity: "Sydney", ...extra });
+}
+
+// --- Baseline-by-reference fixtures ----------------------------------------
+// A baseline package records a reference to the approved baseline docx plus its
+// sha256 instead of copying the file. The gate must re-hash the referenced file
+// and refuse when it is not the artefact the package was prepared from.
+function refArchive(kind: "match" | "docx_moved" | "reapproved" | "baseline_revoked"): string {
+  const dir = archive("pass");
+  const baselineDir = mkdtempSync(path.join(tmpdir(), "gate-test-baseline-"));
+  const docxPath = path.join(baselineDir, "Fixture-Person_Architect.docx");
+  writeFileSync(docxPath, "PK-fixture-docx: approved baseline body\n");
+  const docxSha = createHash("sha256").update(readFileSync(docxPath)).digest("hex");
+  const contentHash = createHash("sha256").update("fixture-baseline-content").digest("hex");
+  writeFileSync(path.join(baselineDir, "metadata.json"), JSON.stringify({
+    resume_id: "fixture-resume",
+    content_hash: contentHash,
+    approved_hash: kind === "baseline_revoked" ? null : contentHash,
+    approved_at: "2026-09-01T00:00:00.000Z",
+    approval_status: kind === "baseline_revoked" ? "fresh" : "approved",
+    artefacts: { docx: docxPath },
+  }));
+  if (kind === "docx_moved") writeFileSync(docxPath, "PK-fixture-docx: re-rendered since the package was prepared\n");
+  writeFileSync(path.join(dir, "metadata.json"), JSON.stringify({
+    opportunityId: "seek-abc123",
+    resumeId: "fixture-resume",
+    mode: "approved_baseline",
+    resume: {
+      mode: "baseline",
+      resume_id: "fixture-resume",
+      ref: docxPath,
+      pdf_ref: null,
+      sha256: docxSha,
+      baseline_content_hash: kind === "reapproved" ? createHash("sha256").update("an-older-approval").digest("hex") : contentHash,
+    },
+  }));
+  return dir;
 }
 
 const tests: [string, () => Promise<void>][] = [
@@ -297,6 +333,33 @@ const tests: [string, () => Promise<void>][] = [
     for (const g of ["autopilot_enabled", "autopilot_status_approved", "autopilot_agent_classified", "autopilot_fit", "autopilot_letter_critic", "autopilot_channel", "autopilot_daily_cap"]) {
       assert.ok(d.checks.find((c) => c.gate === g && c.ok), `missing ok check ${g}`);
     }
+  }],
+  ["baseline ref: matching hashes → submit, with the ref check recorded", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("match") }));
+    assert.equal(d.action, "submit");
+    const check = d.checks.find((c) => c.gate === "baseline_resume_ref");
+    assert.ok(check?.ok, "the baseline_resume_ref check should be present and ok");
+    assert.match(check!.detail, /verified/);
+  }],
+
+  ["baseline ref: the referenced docx changed since prepare → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("docx_moved") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
+    assert.match(d.reason, /has changed since the package was prepared/);
+  }],
+
+  ["baseline ref: baseline re-approved since prepare → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("reapproved") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
+    assert.match(d.reason, /re-approved since the package was prepared/);
+  }],
+
+  ["baseline ref: approval revoked on the baseline → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("baseline_revoked") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
   }],
 ];
 

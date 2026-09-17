@@ -32,6 +32,10 @@
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
  *      sha256 matches the current cover-letter.md      → else gate_failed
  *   7. tailored CV explicitly approved when required    → else gate_failed
+ *   7b. a baseline-by-reference package's `resume.ref` still hashes to the
+ *      recorded sha256, the baseline beside it is still approved, and its
+ *      approved_hash still matches the one recorded at prepare time
+ *                                                       → else gate_failed
  *   8. channel opted into auto_submit (and, for autopilot, listed in
  *      autopilot.channels)                              → else manual
  *   9. role not flagged red_flag_blocker                → else gate_failed (+ audit validation_gate_failed)
@@ -53,6 +57,7 @@
  */
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import YAML from "yaml";
@@ -60,6 +65,7 @@ import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { log as auditLog, query as auditQuery, checkDuplicate } from "./audit.ts";
 import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
+import { sha256 } from "./lib/hash.ts";
 
 const exec = promisify(execFile);
 
@@ -199,6 +205,58 @@ export function parseProvenance(approvedBy: string | undefined): { kind: Provena
   return { kind: m[1] as Provenance, ref: m[2] };
 }
 
+/**
+ * Verify a baseline-by-reference package. Returns null when the package is not
+ * one (tailored, legacy copy-based, or no metadata at all), else the verdict.
+ */
+export async function verifyBaselineRef(opts: { archiveDir: string; cvDocxPath?: string }): Promise<{ ok: boolean; detail: string } | null> {
+  const metaPath = path.join(opts.archiveDir, "metadata.json");
+  let meta: any;
+  try {
+    meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
+  } catch (e: any) {
+    if (e?.code === "ENOENT") return null;
+    return { ok: false, detail: `package metadata at ${metaPath} is unreadable: ${e?.message ?? e}` };
+  }
+  const resume = meta?.resume;
+  if (!resume || typeof resume.ref !== "string") return null;
+  const ref: string = resume.ref;
+  const refPath = path.isAbsolute(ref) ? ref : repoPath(ref);
+
+  let bytes: Buffer;
+  try {
+    bytes = await fs.readFile(refPath);
+  } catch {
+    return { ok: false, detail: `metadata.resume.ref points at a file that is not there: ${ref}` };
+  }
+  const actual = sha256(bytes);
+  if (typeof resume.sha256 !== "string") return { ok: false, detail: `metadata.resume.ref is set but metadata.resume.sha256 is missing, so the reference cannot be verified` };
+  if (actual !== resume.sha256) {
+    return { ok: false, detail: `resume at ${ref} has changed since the package was prepared (sha256 ${actual.slice(0, 12)}, package recorded ${String(resume.sha256).slice(0, 12)})` };
+  }
+
+  // The referenced file must also be the currently approved baseline.
+  let baselineMeta: any = null;
+  try {
+    baselineMeta = JSON.parse(await fs.readFile(path.join(path.dirname(refPath), "metadata.json"), "utf8"));
+  } catch {
+    return { ok: false, detail: `no baseline metadata.json beside ${ref}; approval cannot be confirmed` };
+  }
+  if (baselineMeta.approval_status !== "approved" || !baselineMeta.approved_hash || baselineMeta.approved_hash !== baselineMeta.content_hash) {
+    return { ok: false, detail: `baseline beside ${ref} is '${baselineMeta.approval_status ?? "unapproved"}' (approved_hash ${String(baselineMeta.approved_hash).slice(0, 12)}, content_hash ${String(baselineMeta.content_hash).slice(0, 12)})` };
+  }
+  if (typeof resume.baseline_content_hash === "string" && resume.baseline_content_hash !== baselineMeta.approved_hash) {
+    return { ok: false, detail: `baseline was re-approved since the package was prepared (package ${resume.baseline_content_hash.slice(0, 12)}, resume-approve ${String(baselineMeta.approved_hash).slice(0, 12)})` };
+  }
+  if (opts.cvDocxPath) {
+    const sending = sha256(await fs.readFile(opts.cvDocxPath).catch(() => Buffer.alloc(0)));
+    if (sending !== actual) {
+      return { ok: false, detail: `the docx handed to the adapter (${path.basename(opts.cvDocxPath)}, sha256 ${sending.slice(0, 12)}) is not the package's referenced baseline` };
+    }
+  }
+  return { ok: true, detail: `baseline ref ${ref} verified (sha256 ${actual.slice(0, 12)}, approved ${String(baselineMeta.approved_at ?? "?").slice(0, 10)})` };
+}
+
 export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecision> {
   const nowISO = opts.nowISO ?? new Date().toISOString();
   const policy = opts.policy ?? (await loadPolicy());
@@ -315,6 +373,22 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       ok: true,
       detail: `approved by ${opportunity.tailoredResume?.approvedBy ?? "human"}`,
     });
+  }
+
+  // 3b. Baseline-by-reference integrity. A baseline package no longer copies
+  //     the approved CV into the archive; it records `resume.ref` (the path to
+  //     the approved baseline docx), its sha256, and the baseline's approved
+  //     content hash. A reference is only as good as its verification, so the
+  //     gate re-hashes the file on disk and refuses the send unless it is the
+  //     exact artefact the package was prepared from AND that baseline is still
+  //     approved with the same hash resume-approve recorded.
+  const refCheck = await verifyBaselineRef({
+    archiveDir: opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`),
+    cvDocxPath: opts.cvDocxPath,
+  });
+  if (refCheck) {
+    if (!refCheck.ok) return failGate("baseline_resume_ref", refCheck.detail);
+    checks.push({ gate: "baseline_resume_ref", ok: true, detail: refCheck.detail });
   }
 
   // 4. Per-channel auto_submit opt-in. Not opted in (or forced-manual) → manual queue.
