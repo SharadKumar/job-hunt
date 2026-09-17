@@ -53,6 +53,7 @@ const DEDUP_PATH = path.join(AUDIT_DIR, "dedup-index.json");
 const CONTACTS_PATH = path.join(AUDIT_DIR, "contacts.jsonl");
 
 export type AuditEventType =
+  | "policy_change"
   | "discovered" | "scored" | "drafted" | "approved" | "rejected"
   | "submission_pending" | "submitted" | "submission_failed" | "manual_queued"
   | "manual_action_completed" | "response_received" | "interview_scheduled"
