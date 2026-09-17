@@ -1,0 +1,347 @@
+# Synthetic ledger for the keyword-triage tests. Every term, question, employer
+# and person below is invented. Nothing here is copied from a real profile.
+confirmations:
+  # --- jd_boilerplate -------------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Apply Now
+    term: Apply Now
+    category: concept
+    question: "Apply Now: did you use or deliver Apply Now in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Key Skills
+    term: Key Skills
+    category: concept
+    question: "Key Skills: did you use or deliver Key Skills in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Primary Skills
+    term: Primary Skills
+    category: concept
+    question: "Primary Skills: did you use or deliver Primary Skills in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Why Northwind
+    term: Why Northwind
+    category: concept
+    question: "Why Northwind: did you use or deliver Why Northwind in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Also Receive
+    term: Also Receive
+    category: concept
+    question: "Also Receive: did you use or deliver Also Receive in any role?"
+    status: pending
+  # --- eeo_or_diversity -----------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: LGBTQ
+    term: LGBTQ
+    category: tool
+    question: "LGBTQ: did you use or deliver LGBTQ in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Torres Strait Islander
+    term: Torres Strait Islander
+    category: concept
+    question: "Torres Strait Islander: did you use or deliver Torres Strait Islander in any role?"
+    status: pending
+  # --- clearance_or_logistics ----------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: NV1 Clearance
+    term: NV1 Clearance
+    category: concept
+    question: "NV1 Clearance: did you use or deliver NV1 Clearance in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: WFH
+    term: WFH
+    category: tool
+    question: "WFH: did you use or deliver WFH in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: National Police Check
+    term: National Police Check
+    category: concept
+    question: "National Police Check: did you use or deliver National Police Check in any role?"
+    status: pending
+  # --- date_or_number -------------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: September 2026
+    term: September 2026
+    category: concept
+    question: "September 2026: did you use or deliver September 2026 in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Minimum 5
+    term: Minimum 5
+    category: concept
+    question: "Minimum 5: did you use or deliver Minimum 5 in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: P1
+    term: P1
+    category: tool
+    question: "P1: did you use or deliver P1 in any role?"
+    status: pending
+  # --- person_name ----------------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Marlow Fentiman
+    term: Marlow Fentiman
+    category: concept
+    question: "Marlow Fentiman: did you use or deliver Marlow Fentiman in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Dara Quillfeather
+    term: Dara Quillfeather
+    category: concept
+    question: "Dara Quillfeather: reach out to discuss this contract."
+    status: pending
+  # --- truncated_fragment ---------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: enterprise technol
+    term: enterprise technol
+    category: concept
+    question: "enterprise technol: did you use or deliver enterprise technol in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: senior te
+    term: senior te
+    category: concept
+    question: "senior te: did you use or deliver senior te in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: iterative d
+    term: iterative d
+    category: concept
+    question: "iterative d: did you use or deliver iterative d in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Catalog De
+    term: Catalog De
+    category: concept
+    question: "Catalog De: did you use or deliver Catalog De in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Catalog Development
+    term: Catalog Development
+    category: concept
+    question: "Catalog Development: did you use or deliver Catalog Development in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Architectural GovernanceFacilitate
+    term: Architectural GovernanceFacilitate
+    category: concept
+    question: "Architectural GovernanceFacilitate: did you use or deliver it in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Infrastructure as C
+    term: Infrastructure as C
+    category: concept
+    question: "Infrastructure as C: did you use or deliver Infrastructure as C in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Guidewire Cloud What
+    term: Guidewire Cloud What
+    category: concept
+    question: "Guidewire Cloud What: did you use or deliver it in any role?"
+    status: pending
+  # --- employer_or_program --------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: ASX 100
+    term: ASX 100
+    category: concept
+    question: "ASX 100: did you use or deliver ASX 100 in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: ZNBC
+    term: ZNBC
+    category: tool
+    question: "ZNBC (Zenith National Banking Corporation): did you use or deliver ZNBC in any role?"
+    status: pending
+  # --- generic_phrase -------------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Strong ITSM
+    term: Strong ITSM
+    category: concept
+    question: "Strong ITSM: did you use or deliver Strong ITSM in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: apply problem-solving
+    term: apply problem-solving
+    category: concept
+    question: "apply problem-solving: did you use or deliver apply problem-solving in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Excellent Stakeholder Engagement
+    term: Excellent Stakeholder Engagement
+    category: concept
+    question: "Excellent Stakeholder Engagement: did you use or deliver it in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: cloud services to develop and maintain
+    term: cloud services to develop and maintain
+    category: concept
+    question: "cloud services to develop and maintain: did you use or deliver it in any role?"
+    status: pending
+  # --- keeps ----------------------------------------------------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: TOGAF
+    term: TOGAF
+    category: certification
+    question: "TOGAF: did you use or deliver TOGAF in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Azure Functions
+    term: Azure Functions
+    category: concept
+    question: "Azure Functions: did you use or deliver Azure Functions in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: LlamaIndex
+    term: LlamaIndex
+    category: concept
+    question: "LlamaIndex: did you use or deliver LlamaIndex in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: ServiceNow
+    term: ServiceNow
+    category: concept
+    question: "ServiceNow: did you use or deliver ServiceNow in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: SQL
+    term: SQL
+    category: tool
+    question: "SQL: did you use or deliver SQL in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: XSLT
+    term: XSLT
+    category: tool
+    question: "XSLT: did you use or deliver XSLT in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Waterfall
+    term: Waterfall
+    category: methodology
+    question: "Waterfall: did you use or deliver Waterfall in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Microsoft Fabric
+    term: Microsoft Fabric
+    category: concept
+    question: "Microsoft Fabric: did you use or deliver Microsoft Fabric in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: deep learning
+    term: deep learning
+    category: concept
+    question: "deep learning: did you use or deliver deep learning in any role?"
+    status: pending
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Ragas
+    term: Ragas
+    category: concept
+    question: "Ragas: did you use or deliver Ragas in any role?"
+    status: pending
+  # --- already answered: the triage must not touch these --------------------
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Kubernetes
+    term: Kubernetes
+    category: tool
+    question: "Kubernetes: did you use or deliver Kubernetes in any role?"
+    status: confirmed
+    source_update_required: true
+  - resume_id: platform-architect
+    kind: keyword
+    scope: person
+    signal: Apply Today
+    term: Apply Today
+    category: concept
+    question: "Apply Today: did you use or deliver Apply Today in any role?"
+    status: declined
+  - resume_id: platform-architect
+    kind: market_signal
+    signal: architecture framework
+    question: "Architecture framework: can a formal framework be named?"
+    status: pending

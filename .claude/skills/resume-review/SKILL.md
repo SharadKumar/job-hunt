@@ -31,7 +31,7 @@ If one or more resumes have `market_alignment.confirmation_needed` or `market_al
 
 ### 0. Drain pending keyword confirmations
 
-Baselines render from `cv-source.md`, so unanswered keyword questions are the cheapest quality win available before any render. Start here:
+Baselines render from `cv-source.md`, so unanswered keyword questions are the cheapest quality win available before any render. Run the `keyword-triage` skill first: it applies the deterministic rejects and answers everything the corpus can answer, so the table below only ever puts a genuine skill question to the user. Then start here:
 
 ```
 npm run resume:keyword-confirm -- pending --group-by term --format table --limit 20

@@ -1,0 +1,16 @@
+categories:
+  platforms:
+    servicenow:
+      synonyms: [ServiceNow, SNow, Now Platform]
+      seniority: expert
+    microsoft365:
+      synonyms: [Microsoft 365, M365, SharePoint]
+      seniority: expert
+  engineering_stack:
+    sql:
+      synonyms: [SQL, T-SQL]
+      seniority: practitioner
+  practice_areas:
+    waterfall:
+      synonyms: [Waterfall]
+      seniority: practitioner

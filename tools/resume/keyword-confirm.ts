@@ -37,7 +37,11 @@
  *               requested status is reported, not rewritten. No plan needed.
  *   queue       --plan <keyword-plan.json> [--origin daily]
  *               Records every plan question as `pending` without asking. Never
- *               downgrades an existing answered row.
+ *               downgrades an existing answered row. Runs the deterministic
+ *               keyword triage first: a term a named reject rule refuses (ad
+ *               furniture, a recruiter name, a date, clearance wording, a cut
+ *               word) is appended to `keyword-rejects.jsonl` instead of
+ *               entering the ledger, and is counted as `rejected_by_triage`.
  *   pending     [--resume <id>] [--group-by term] [--limit N] [--format json|table]
  *               Read-only. Lists outstanding `kind: keyword` rows, one per term
  *               across resumes (keyword answers are person-scoped).
@@ -59,12 +63,16 @@
  */
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import YAML from "yaml";
 import { resolveProfileContext } from "../profile-context.ts";
 import { parseArgs, normalise, type KeywordPlan, type KeywordTerm } from "./keyword-lexicon.ts";
 import { isPersonScoped, type MarketConfirmation } from "./market-lens-audit.ts";
+import { loadTriageContext, triageRows, type TriageRow } from "./keyword-triage.ts";
 
 export type KeywordConfirmStatus = "confirmed" | "declined" | "not_applicable" | "familiarity" | "pending";
+/** Who answered. `triage` is `keyword-triage.ts`, which only ever answers a reject. */
+export type KeywordOrigin = "attended" | "daily" | "triage";
 const STATUSES: readonly KeywordConfirmStatus[] = ["confirmed", "declined", "not_applicable", "familiarity", "pending"];
 /** Answered statuses are terminal for `queue`: an unattended run never reopens them. */
 const ANSWERED: ReadonlySet<string> = new Set(["confirmed", "declined", "not_applicable", "familiarity"]);
@@ -166,7 +174,7 @@ export function findPlanTerm(plan: KeywordPlan, term: string): KeywordTerm | nul
 export function rowFromPlanTerm(
   plan: KeywordPlan,
   term: KeywordTerm,
-  opts: { status: KeywordConfirmStatus; opportunityId?: string | null; origin?: "attended" | "daily"; notes?: string | null },
+  opts: { status: KeywordConfirmStatus; opportunityId?: string | null; origin?: KeywordOrigin; notes?: string | null },
 ): MarketConfirmation & { resume_id: string; signal: string } {
   const question = term.question ?? plan.questions.find((q) => key(q.term) === key(term.term))?.question;
   return {
@@ -364,10 +372,10 @@ export type AppliedAnswers = {
  */
 export async function applyAnswerEntries(
   entries: AnswerEntry[],
-  opts: { ledger: string; origin?: "attended" | "daily"; dryRun?: boolean },
+  opts: { ledger: string; origin?: KeywordOrigin; dryRun?: boolean },
 ): Promise<AppliedAnswers> {
   const rows = await readLedger(opts.ledger);
-  const origin: "attended" | "daily" = opts.origin === "daily" ? "daily" : "attended";
+  const origin: KeywordOrigin = opts.origin ?? "attended";
   const recorded: RecordedAnswer[] = [];
   const skipped: { term: string; status: string }[] = [];
   const unmatched: string[] = [];
@@ -485,6 +493,36 @@ export async function cmdRecord(args: Record<string, string>): Promise<number> {
   return 0;
 }
 
+/**
+ * Where a term the triage refused is logged instead of the ledger. One JSON
+ * object per line, append-only: it is a record that the term was SEEN and
+ * mechanically refused, so the same junk never re-enters the question queue and
+ * a wrong rule is auditable afterwards. Never read back as an answer.
+ */
+export function rejectsPathFor(ledger: string): string {
+  return path.join(path.dirname(ledger), "keyword-rejects.jsonl");
+}
+
+export async function appendRejects(
+  file: string,
+  rows: { term: string; rule: string; opportunity_id?: string | null; resume_id?: string | null }[],
+): Promise<void> {
+  if (!rows.length) return;
+  const at = new Date().toISOString();
+  await fs.appendFile(file, rows.map((r) => JSON.stringify({ at, ...r })).join("\n") + "\n");
+}
+
+/**
+ * Queue a plan's questions as `pending`, with the deterministic keyword triage
+ * in front of the ledger.
+ *
+ * The extractor is greedy by design, so most of what a JD yields is not a skill
+ * at all (ad furniture, recruiter names, dates, clearance wording, cut words).
+ * Those terms used to land as `pending` rows and then be put to the person as
+ * "did you use or deliver <junk> in any role?". They are now refused here by a
+ * named rule and appended to `keyword-rejects.jsonl` instead, so the ledger
+ * only ever carries questions that could be about a skill.
+ */
 export async function cmdQueue(args: Record<string, string>): Promise<number> {
   if (!args.plan) {
     console.error("Usage: keyword-confirm queue --plan <keyword-plan.json> [--origin daily]");
@@ -495,20 +533,62 @@ export async function cmdQueue(args: Record<string, string>): Promise<number> {
   let rows = await readLedger(paths.ledger);
   const queued: string[] = [];
   const skipped: string[] = [];
+
+  const candidates: { term: KeywordTerm; row: TriageRow }[] = [];
   for (const question of plan.questions) {
     const term = findPlanTerm(plan, question.term);
     if (!term) continue;
     const existing = findRow(rows, plan.resume_id, term.term);
-    if (existing && ANSWERED.has(existing.status)) { skipped.push(term.term); continue; }
-    if (existing && existing.status === "pending") { skipped.push(term.term); continue; }
-    rows = upsertKeywordRow(rows, rowFromPlanTerm(plan, term, {
-      status: "pending",
-      opportunityId: args.opportunity ?? null,
-      origin: args.origin === "attended" ? "attended" : "daily",
-    })).rows;
-    queued.push(term.term);
+    if (existing && (ANSWERED.has(existing.status) || existing.status === "pending")) { skipped.push(term.term); continue; }
+    candidates.push({
+      term,
+      row: {
+        term: term.term,
+        category: term.category,
+        question: term.question ?? question.question ?? null,
+        jd_context: term.jd_context ?? null,
+        evidence_hint: term.evidence_hint ?? null,
+        opportunity_id: args.opportunity ?? plan.opportunity_id ?? null,
+        resume_id: plan.resume_id,
+      },
+    });
   }
-  if (queued.length && args["dry-run"] !== "true") await writeLedger(paths.ledger, rows);
+
+  const rejected: { term: string; rule: string; evidence: string }[] = [];
+  if (candidates.length) {
+    const triage = await loadTriageContext({
+      profile: args.profile,
+      cvSource: args["cv-source"],
+      taxonomy: args.taxonomy,
+      clouds: args.clouds,
+      boilerplate: args.boilerplate,
+    });
+    const verdicts = triageRows(candidates.map((c) => c.row), triage);
+    verdicts.forEach((verdict, i) => {
+      const candidate = candidates[i];
+      if (verdict.decision === "reject") {
+        rejected.push({ term: candidate.term.term, rule: verdict.rule, evidence: verdict.evidence });
+        return;
+      }
+      rows = upsertKeywordRow(rows, rowFromPlanTerm(plan, candidate.term, {
+        status: "pending",
+        opportunityId: args.opportunity ?? null,
+        origin: args.origin === "attended" ? "attended" : "daily",
+      })).rows;
+      queued.push(candidate.term.term);
+    });
+  }
+
+  const rejectsPath = rejectsPathFor(paths.ledger);
+  if (args["dry-run"] !== "true") {
+    if (queued.length) await writeLedger(paths.ledger, rows);
+    await appendRejects(rejectsPath, rejected.map((r) => ({
+      term: r.term,
+      rule: r.rule,
+      opportunity_id: args.opportunity ?? plan.opportunity_id ?? null,
+      resume_id: plan.resume_id,
+    })));
+  }
   console.log(JSON.stringify({
     action: "queue",
     ledger: paths.ledger,
@@ -517,6 +597,9 @@ export async function cmdQueue(args: Record<string, string>): Promise<number> {
     queued_count: queued.length,
     queued,
     already_recorded: skipped,
+    rejected_by_triage: rejected.length,
+    rejected,
+    rejects_log: rejected.length ? rejectsPath : null,
     coverage: plan.coverage,
   }, null, 2));
   return 0;

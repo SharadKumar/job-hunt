@@ -15,6 +15,7 @@
     "resume:term-grounding": "tsx tools/resume/resume-term-grounding.ts",
     "resume:keywords": "tsx tools/resume/resume-keywords.ts",
     "resume:keyword-confirm": "tsx tools/resume/keyword-confirm.ts",
+    "resume:keyword-triage": "tsx tools/resume/keyword-triage.ts",
     "resume:market-audit": "tsx tools/resume/market-lens-audit.ts",
     "resume:approve": "tsx tools/resume/resume-approve.ts",
     "resume:critic:apply": "tsx tools/resume/critic-apply.ts",

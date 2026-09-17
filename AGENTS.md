@@ -66,7 +66,7 @@ If the brief says there is no profile, or `npm run setup:check` reports a blocke
 
 Each user-invokable workflow lives in `.claude/skills/<name>/SKILL.md` and is discovered by both CLIs (`.agents/skills/` is a symlink). Invoke on intent match or explicitly by `/<name>`. Each skill's body says which subagents to invoke and which tools to call, in order; follow it.
 
-`setup`, `daily`, `hunt`, `apply`, `submit-approved`, `manual-applications`, `review-drafts`, `pipeline`, `follow-up`, `prep-interview`, `rate-check`, `refresh-cv`, `onboarding`, `resume-strategy`, `resume-render`, `resume-review`, `resume-critique`, `profile-report`.
+`setup`, `daily`, `hunt`, `apply`, `submit-approved`, `manual-applications`, `review-drafts`, `pipeline`, `follow-up`, `prep-interview`, `rate-check`, `refresh-cv`, `onboarding`, `resume-strategy`, `resume-render`, `resume-review`, `resume-critique`, `keyword-triage`, `profile-report`.
 
 ## 8. Routing free-form asks
 

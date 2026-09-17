@@ -62,7 +62,8 @@ export type MarketConfirmation = {
   question?: string;
   proposed_phrasing?: string;
   evidence_hint?: string;
-  origin?: "attended" | "daily";
+  /** `triage` is the deterministic keyword-triage pass, which answers only rejects. */
+  origin?: "attended" | "daily" | "triage";
   asked_at?: string;
   status: ConfirmationStatus;
   source_update_required?: boolean;

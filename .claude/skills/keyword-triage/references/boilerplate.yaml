@@ -1,0 +1,329 @@
+# boilerplate.yaml: the deterministic stoplist behind `npm run resume:keyword-triage`.
+#
+# Framework file: generic job-ad vocabulary only. Never put a person, an
+# employer, a client, a recruiter or any profile fact in here. Personal facts
+# live in state/profile/ and are matched at runtime from the taxonomy, the
+# keyword clouds and cv-source.md, never from this list.
+#
+# Every entry below is matched on the NORMALISED term (lowercased, every
+# non-alphanumeric run folded to one space), so "Apply Now" and "apply-now"
+# are the same string here.
+version: 1
+
+jd_boilerplate:
+  # whole-term matches: the term IS the ad furniture
+  phrases:
+    - apply now
+    - apply today
+    - apply tab
+    - also receive
+    - start asap
+    - immediate start
+    - be more
+    - working
+    - language requirement
+    - excellent english
+    - fluent english
+    - talent acquisition
+    - recruitment process
+    - job description
+    - position description
+    - role overview
+    - about us
+    - about you
+    - about the role
+    - what we offer
+    - what you will bring
+    - how to apply
+    - next steps
+    - key criteria
+    - key skills
+    - key responsibilities
+    - required experience
+    - required qualifications
+    - desirable criteria
+    - essential criteria
+    - selection criteria
+    - salary package
+    - competitive rate
+    - day rate
+    - contract length
+    - notice period
+  # a term starting with one of these is ad furniture whatever follows
+  prefixes:
+    - why
+    - next steps
+    - to apply
+    - please note
+    - in this role
+    - you will
+    - we are looking for
+    - the successful candidate
+    - benefits
+    - what s in it for you
+  # section-heading shape: <lead> <tail>, e.g. "Primary Skills", "Key Criteria8"
+  heading_leads:
+    - key
+    - core
+    - primary
+    - secondary
+    - technical
+    - required
+    - essential
+    - desirable
+    - mandatory
+    - minimum
+    - selection
+    - additional
+    - other
+    - general
+    - specific
+  heading_tails:
+    - skills
+    - skill
+    - requirements
+    - requirement
+    - criteria
+    - criterion
+    - experience
+    - qualifications
+    - competencies
+    - responsibilities
+    - duties
+    - attributes
+
+# Diversity, inclusion and EEO wording. These are statements an employer makes,
+# never a capability a CV claims.
+eeo_or_diversity:
+  - lgbtq
+  - lgbtqia
+  - cald
+  - torres strait
+  - aboriginal
+  - indigenous
+  - first nations
+  - gender
+  - diversity
+  - inclusive
+  - inclusion
+  - equal opportunity
+  - equal employment
+  - neurodiverse
+  - neurodiversity
+  - disability
+  - affirmative action
+  - reconciliation action plan
+
+# Clearance, vetting and logistics. These are profile facts and submission
+# gates: profile.md, screening-answers.yaml and the red-flag rules own them.
+clearance_or_logistics:
+  # substring matches (the wording can be wrapped in other words)
+  phrases:
+    - nv1
+    - nv2
+    - agsva
+    - security clearance
+    - baseline clearance
+    - current baseline
+    - negative vetting
+    - police check
+    - criminal record check
+    - working with children
+    - right to work
+    - working rights
+    - visa sponsorship
+    - must be an australian
+  # whole-term matches only, so "hybrid cloud" and "remote sensing" survive
+  exact:
+    - wfh
+    - work from home
+    - hybrid
+    - hybrid working
+    - onsite
+    - on site
+    - remote
+    - remote working
+    - relocation
+    - citizenship
+    - australian citizen
+    - australian citizenship
+    - permanent resident
+    - permanent residency
+    - baseline
+
+# Organisation words: when a term's question expands an acronym into a phrase
+# carrying one of these, the term is an employer or a program, not a skill.
+employer_words:
+  - bank
+  - council
+  - department
+  - authority
+  - agency
+  - university
+  - hospital
+  - district
+  - corporation
+  - institute
+  - commission
+  - ministry
+  - bureau
+  - society
+  - foundation
+  - association
+  - pty
+  - ltd
+  - limited
+  - incorporated
+
+# Wording that marks the question as a recruiter contact rather than a skill.
+recruiter_words:
+  - recruiter
+  - recruitment
+  - consultant at
+  - talent
+  - contact
+  - reach out
+  - call me
+  - apply via
+  - agency
+
+# Qualifier adjectives an ad hangs on a noun. "Strong ITSM" is not a skill,
+# "ITSM" is; the qualified form is always junk.
+qualifiers:
+  - strong
+  - excellent
+  - proven
+  - demonstrable
+  - demonstrated
+  - extensive
+  - solid
+  - advanced
+  - exceptional
+  - outstanding
+  - sound
+  - highly
+  - preferably
+  - ideally
+  - relevant
+  - comparable
+  - equivalent
+  - significant
+  - substantial
+  - superior
+  - good
+  - great
+  - broad
+  - hands on
+
+# Delivery verbs. A term that starts with one is a responsibility line, not a
+# capability noun.
+verbs:
+  - apply
+  - facilitate
+  - represent
+  - demonstrate
+  - ensure
+  - manage
+  - provide
+  - support
+  - deliver
+  - lead
+  - drive
+  - develop
+  - maintain
+  - coordinate
+  - collaborate
+  - participate
+  - contribute
+  - perform
+  - assist
+  - liaise
+  - engage
+  - undertake
+  - oversee
+  - produce
+  - prepare
+
+# Words that continue a sentence. Finding one glued onto a token (JD text with
+# the line break eaten, "GovernanceFacilitate") means the scraper ran two
+# sentences together, not that a skill was named.
+sentence_tails:
+  - facilitate
+  - facilitating
+  - work
+  - working
+  - represent
+  - provide
+  - providing
+  - support
+  - supporting
+  - ensure
+  - deliver
+  - manage
+  - managing
+  - develop
+  - please
+  - apply
+  - you
+  - we
+  - what
+  - which
+  - if
+  - due
+  - and
+  - or
+  - to
+  - for
+  - with
+  - the
+  - a
+  - an
+  - in
+  - on
+  - at
+  - e
+  - i
+  - eg
+  - ie
+
+# Function words and interrogatives. A term whose LAST token is one of these is
+# a cut sentence. Deliberately narrower than sentence_tails: a noun phrase may
+# legitimately end in "support" or "management", never in "with" or "what".
+trailing_words:
+  - what
+  - which
+  - who
+  - whom
+  - if
+  - due
+  - and
+  - or
+  - to
+  - for
+  - with
+  - the
+  - a
+  - an
+  - in
+  - on
+  - at
+  - as
+  - by
+  - from
+  - than
+  - that
+  - into
+  - about
+  - per
+  - plus
+  - also
+  - etc
+  - eg
+  - ie
+  - e
+  - i
+  - is
+  - are
+  - be
+  - will
+  - including
