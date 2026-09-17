@@ -18,8 +18,13 @@
  *   tsx tools/daily-summary.ts [--date YYYY-MM-DD] [--notify] [--json] [--no-sheet]
  *
  * Dates are interpreted in Australia/Sydney. Read-only against state except
- * for the summary file. Always exits 0 (a missing Sheet credential or an
- * osascript failure degrades to a stderr note).
+ * for the summary file.
+ *
+ * Exit codes: 0 clean; 1 when the brief cannot be trusted (a present but
+ * unparseable screening-answers.yaml or submission-policy.yaml, a failed Sheet
+ * push, or an unexpected throw); 2 on a bad argument. A *missing* policy or
+ * screening file is a normal state and stays exit 0. A missing Sheet
+ * credential, or an osascript failure, degrades to a note and stays exit 0.
  */
 
 import { readJsonIfExists as readJsonOrNull } from "./lib/fs.ts";
@@ -75,6 +80,8 @@ export type DailySummary = {
     exited: { id: string; title: string; company: string; status: string; reason: string }[];
   };
   responses: { id: string; title: string; company: string; status: string; at: string }[];
+  /** State that could not be read (present but unparseable). Non-empty means exit 1. */
+  errors: string[];
   numbers: {
     sentToday: number;
     autopilotSends: number;
@@ -87,7 +94,8 @@ export type DailySummary = {
     killSwitch: boolean;
   };
   markdown: string;
-  sheet: { pushed: boolean; note: string };
+  /** `failed` separates a real push failure (exit 1) from "not configured" (exit 0). */
+  sheet: { pushed: boolean; failed: boolean; note: string };
 };
 
 // ---------- helpers ----------
@@ -199,8 +207,39 @@ async function gatherSent(rows: Opportunity[], date: string, submittedEvents: Au
 }
 
 function lastReason(r: Opportunity): string {
-  const h = r.history[r.history.length - 1];
+  const h = r.history.at(-1);
   return clean(r.notes) || clean(h?.reason) || "";
+}
+
+/**
+ * Escalations keyed by (opportunity, kind) so the same row never appears twice
+ * for the same problem. A row can carry a manual note *and* an unanswered
+ * screening question; those are one escalation whose Next step says both.
+ * Insertion order is preserved, so the section keeps its current ordering.
+ */
+class Escalations {
+  private readonly order: string[] = [];
+  private readonly byKey = new Map<string, Escalation>();
+
+  add(e: Escalation): void {
+    // Rows key on their id; id-less escalations (channel, cap, kill switch)
+    // key on their reason, which is what distinguishes them from each other.
+    const key = `${e.kind}::${e.id ?? e.reason}`;
+    const existing = this.byKey.get(key);
+    if (!existing) {
+      this.byKey.set(key, { ...e });
+      this.order.push(key);
+      return;
+    }
+    existing.title ??= e.title;
+    existing.company ??= e.company;
+    // First reason wins (it is the row-specific one); every distinct next step is kept.
+    if (!existing.action.includes(e.action)) existing.action = `${existing.action}; also ${e.action}`;
+  }
+
+  list(): Escalation[] {
+    return this.order.map((k) => this.byKey.get(k)!);
+  }
 }
 
 /** Turn a manual_action_needed row into a reason plus the exact next step. */
@@ -216,7 +255,9 @@ async function manualEscalation(r: Opportunity): Promise<Escalation> {
   }
   const q = reason.match(/unknown screening question:\s*"([^"]+)"/i);
   if (q) {
-    return { ...base, reason: `Unknown screening question: "${short(q[1], 110)}"`, action: "Answer it in state/profile/screening-answers.yaml unknown_questions, then rerun autopilot:submit for this id" };
+    // Same problem as the screening-answers escalation below, so same kind and
+    // wording: the two merge into one entry for this row.
+    return { ...base, kind: "screening", reason: `Unanswered screening question: "${short(q[1], 110)}"`, action: "Answer it in state/profile/screening-answers.yaml unknown_questions, then rerun autopilot:submit for this id" };
   }
   if (/letter-critic block/i.test(reason) || critic?.verdict === "block") {
     const fail = (critic?.findings ?? []).find((f) => f.severity === "fail");
@@ -235,11 +276,19 @@ async function manualEscalation(r: Opportunity): Promise<Escalation> {
 
 type UnknownQuestion = { opportunity_id?: string; company?: string; title?: string; question?: string; answer?: unknown };
 
-async function unansweredQuestions(): Promise<UnknownQuestion[]> {
+type Read<T> = { value: T; status: "ok" | "missing" | "error"; error?: string };
+
+/**
+ * Fail closed: a file that is present but unparseable is an error the summary
+ * shows and exits 1 on, never a silent "nothing to answer".
+ */
+async function unansweredQuestions(liveRowIds: Set<string>): Promise<Read<UnknownQuestion[]>> {
   const txt = await readIfExists(SCREENING_PATH);
-  if (!txt) return [];
+  if (txt == null) return { value: [], status: "missing" };
   let doc: { unknown_questions?: UnknownQuestion[] };
-  try { doc = YAML.parse(txt) ?? {}; } catch { return []; }
+  try { doc = YAML.parse(txt) ?? {}; } catch (e: any) {
+    return { value: [], status: "error", error: `screening-answers.yaml is unreadable: ${short(e?.message ?? String(e), 140)}` };
+  }
   const all = doc.unknown_questions ?? [];
   // A question answered anywhere (same text, any row) is answered for the
   // submitter too: it matches on exact question text. Also drop questions
@@ -250,29 +299,51 @@ async function unansweredQuestions(): Promise<UnknownQuestion[]> {
   for (const q of all) {
     if (q.answer != null) continue;
     if (answeredTexts.has(norm(q.question ?? ""))) continue;
-    if (q.opportunity_id && liveRowIds && !liveRowIds.has(q.opportunity_id)) continue;
+    if (q.opportunity_id && !liveRowIds.has(q.opportunity_id)) continue;
     const key = `${q.opportunity_id ?? ""}::${q.question ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(q);
   }
-  return out;
+  return { value: out, status: "ok" };
 }
 function norm(s: string): string { return s.replace(/\s+/g, " ").trim().toLowerCase(); }
-let liveRowIds: Set<string> | null = null;
 
-async function policy(): Promise<{ killSwitch: boolean; autopilotEnabled: boolean; maxPerDay: number | null }> {
+type Policy = { killSwitch: boolean; autopilotEnabled: boolean; maxPerDay: number | null };
+
+async function policy(): Promise<Read<Policy>> {
+  const off: Policy = { killSwitch: false, autopilotEnabled: false, maxPerDay: null };
   const txt = await readIfExists(POLICY_PATH);
-  if (!txt) return { killSwitch: false, autopilotEnabled: false, maxPerDay: null };
+  if (txt == null) return { value: off, status: "missing" };
   try {
     const p = YAML.parse(txt) ?? {};
     return {
-      killSwitch: p.kill_switch === true,
-      autopilotEnabled: p.autopilot?.enabled === true,
-      maxPerDay: typeof p.autopilot?.max_per_day === "number" ? p.autopilot.max_per_day : null,
+      value: {
+        killSwitch: p.kill_switch === true,
+        autopilotEnabled: p.autopilot?.enabled === true,
+        maxPerDay: typeof p.autopilot?.max_per_day === "number" ? p.autopilot.max_per_day : null,
+      },
+      status: "ok",
     };
-  } catch { return { killSwitch: false, autopilotEnabled: false, maxPerDay: null }; }
+  } catch (e: any) {
+    // Never report "kill switch off" off the back of a file we could not read.
+    return { value: off, status: "error", error: `submission-policy.yaml is unreadable: ${short(e?.message ?? String(e), 140)}` };
+  }
 }
+
+/** A verb that says something actually broke. The bare word "login" is not one. */
+const FAILURE_VERB = /\b(failed|fails|failure|errors?|logged out|signed out|could not|couldn't|timed out|blocked)\b/i;
+/** "expired" is only our problem when it is a session, not a job ad. */
+const EXPIRED = /\bexpired\b/i;
+const SESSION_WORD = /\b(session|login|log-in|sign-?in|signed|logged|cookie|token|auth)\b/i;
+/** The subject has to be a channel or a hunt step, otherwise it is not our problem. */
+const CHANNEL_WORD = /\b(seek|linkedin|channel|hunt|launchd|session|chrome|adapter)\b/i;
+/**
+ * Negations and status-report lines. "seek: healthy, no login issues" and
+ * "No login/DOM errors" are the daily health line, not an incident; a line
+ * about something fixed or passing is history, not today's problem.
+ */
+const NOT_A_PROBLEM = /healthy|\bno\b[\w/,\- ]*\b(issues|errors|problems|failures)\b|\b(0|zero|none)\b[\w ]*\b(failed|errors?)\b|all succeeded|no longer|\bfixed\b|\bpass(es|ed)?\b/i;
 
 /** Channel login failures and hunt errors noted in the day's journal. */
 async function journalProblems(date: string): Promise<string[]> {
@@ -282,11 +353,9 @@ async function journalProblems(date: string): Promise<string[]> {
   for (const raw of txt.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
-    // Only channel or hunt trouble: a login/session problem, or a failed/errored hunt step.
-    if (!/\b(login|log-in|logged out|session expired|signed out|failed|error)\b/i.test(line)) continue;
-    if (!/\b(seek|linkedin|channel|hunt|launchd|session|chrome|adapter)\b/i.test(line)) continue;
-    // Skip lines that describe a fix, a passing test, or a historical bug note.
-    if (/\b(fixed|tests? pass|passes|no longer|pre-existing|not verified)\b/i.test(line) && !/\b(login|expired|signed out)\b/i.test(line)) continue;
+    if (!FAILURE_VERB.test(line) && !(EXPIRED.test(line) && SESSION_WORD.test(line))) continue;
+    if (!CHANNEL_WORD.test(line)) continue;
+    if (NOT_A_PROBLEM.test(line)) continue;
     out.push(short(line.replace(/^[-*]\s*/, ""), 150));
   }
   return out.slice(0, 5);
@@ -299,33 +368,36 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   const { start, end } = dayBounds(date);
   const dayEvents = (await auditQuery({ sinceISO: start })).filter((e) => e.ts < end);
   const submittedEvents = dayEvents.filter((e) => e.event_type === "submitted");
-  const pol = await policy();
+  const policyRead = await policy();
+  const pol = policyRead.value;
 
   const sent = await gatherSent(rows, date, submittedEvents);
   const autopilotSends = submittedEvents.filter((e) => e.actor === "autopilot").length;
 
   // Escalations
-  const escalations: Escalation[] = [];
-  for (const r of rows.filter((x) => x.status === "manual_action_needed")) escalations.push(await manualEscalation(r));
+  const esc = new Escalations();
+  for (const r of rows.filter((x) => x.status === "manual_action_needed")) esc.add(await manualEscalation(r));
 
-  liveRowIds = new Set(rows.filter((x) => ["manual_action_needed", "submission_pending", "approved", "awaiting_approval", "drafted", "shortlisted"].includes(x.status)).map((x) => x.id));
-  const questions = await unansweredQuestions();
+  const liveRowIds = new Set(rows.filter((x) => ["manual_action_needed", "submission_pending", "approved", "awaiting_approval", "drafted", "shortlisted"].includes(x.status)).map((x) => x.id));
+  const screening = await unansweredQuestions(liveRowIds);
+  const questions = screening.value;
+  const errors = [policyRead.error, screening.error].filter((e): e is string => Boolean(e));
   for (const q of questions) {
-    escalations.push({
+    esc.add({
       kind: "screening", id: q.opportunity_id, title: q.title, company: q.company,
       reason: `Unanswered screening question: "${short(q.question ?? "", 120)}"`,
       action: "Write the answer in screening-answers.yaml (unknown_questions), then rerun autopilot:submit if the row is still manual",
     });
   }
   for (const r of rows.filter((x) => x.status === "awaiting_approval")) {
-    escalations.push({ kind: "awaiting_approval", id: r.id, title: r.title, company: r.company, reason: "Package waiting in the Tray", action: "Set Action to approve, hold or reject in the Sheet Tray, or review it with /review-drafts" });
+    esc.add({ kind: "awaiting_approval", id: r.id, title: r.title, company: r.company, reason: "Package waiting in the Tray", action: "Set Action to approve, hold or reject in the Sheet Tray, or review it with /review-drafts" });
   }
   for (const r of rows.filter((x) => x.status === "submission_pending")) {
-    escalations.push({ kind: "submission_pending", id: r.id, title: r.title, company: r.company, reason: `Stuck mid-submission: ${short(lastReason(r), 120)}`, action: "Finish or withdraw it in an attended session (/submit-approved or pipeline set-status)" });
+    esc.add({ kind: "submission_pending", id: r.id, title: r.title, company: r.company, reason: `Stuck mid-submission: ${short(lastReason(r), 120)}`, action: "Finish or withdraw it in an attended session (/submit-approved or pipeline set-status)" });
   }
   for (const e of dayEvents.filter((x) => x.event_type === "policy_kill_switch_blocked" || x.event_type === "daily_cap_hit")) {
     const d = e.details ?? {};
-    escalations.push({
+    esc.add({
       kind: e.event_type === "daily_cap_hit" ? "cap" : "gate", id: e.role_id ?? undefined,
       title: d.title as string | undefined, company: d.company as string | undefined,
       reason: e.event_type === "daily_cap_hit" ? `Gate capped (${d.submitted_today ?? "?"}/${d.cap ?? "?"}, ${d.scope ?? "attended"})` : "Gate blocked by the kill switch",
@@ -333,14 +405,14 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
     });
   }
   for (const e of dayEvents.filter((x) => x.event_type === "channel_login_expired" || x.event_type === "channel_search_failed")) {
-    escalations.push({ kind: "channel", reason: `${e.channel ?? "channel"}: ${e.event_type.replace(/_/g, " ")}${e.details?.error ? ` (${short(String(e.details.error), 80)})` : ""}`, action: `Sign in to ${e.channel ?? "the channel"} again on the harness Chrome profile and rerun the hunt` });
+    esc.add({ kind: "channel", reason: `${e.channel ?? "channel"}: ${e.event_type.replace(/_/g, " ")}${e.details?.error ? ` (${short(String(e.details.error), 80)})` : ""}`, action: `Sign in to ${e.channel ?? "the channel"} again on the harness Chrome profile and rerun the hunt` });
   }
   for (const line of await journalProblems(date)) {
-    escalations.push({ kind: "channel", reason: `Journal: ${line}`, action: "Check the line in the journal and fix the channel or rerun the step" });
+    esc.add({ kind: "channel", reason: `Journal: ${line}`, action: "Check the line in the journal and fix the channel or rerun the step" });
   }
-  if (pol.killSwitch) escalations.push({ kind: "kill_switch", reason: "Kill switch is ON; no submissions, attended or autopilot", action: "Set kill_switch: false in state/profile/submission-policy.yaml to resume" });
+  if (pol.killSwitch) esc.add({ kind: "kill_switch", reason: "Kill switch is ON; no submissions, attended or autopilot", action: "Set kill_switch: false in state/profile/submission-policy.yaml to resume" });
   if (pol.maxPerDay != null && autopilotSends >= pol.maxPerDay) {
-    escalations.push({ kind: "cap", reason: `Autopilot cap used up (${autopilotSends} of ${pol.maxPerDay})`, action: "Raise autopilot.max_per_day or let the rest go tomorrow" });
+    esc.add({ kind: "cap", reason: `Autopilot cap used up (${autopilotSends} of ${pol.maxPerDay})`, action: "Raise autopilot.max_per_day or let the rest go tomorrow" });
   }
 
   // Movement
@@ -354,14 +426,15 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
     const prefix = clean(r.parkedReason).split(/[;(]/)[0].trim().toLowerCase() || "no reason";
     byReason[prefix] = (byReason[prefix] ?? 0) + 1;
   }
+  // A row with no history is malformed but must not crash the brief.
   const exited = rows
-    .filter((r) => (r.status === "rejected" || r.status === "withdrawn") && sydneyDate(r.history[r.history.length - 1].at) === date)
-    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, reason: short(r.history[r.history.length - 1].reason ?? "", 110) }));
+    .filter((r) => (r.status === "rejected" || r.status === "withdrawn") && r.history.at(-1) && sydneyDate(r.history.at(-1)!.at) === date)
+    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, reason: short(r.history.at(-1)?.reason ?? "", 110) }));
 
   // Responses
   const responses = rows
     .filter((r) => r.status === "responded" || r.status === "interview" || r.status === "offered")
-    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, at: sydneyDate(r.responseAt ?? r.history[r.history.length - 1].at) }));
+    .map((r) => ({ id: r.id, title: r.title, company: r.company, status: r.status, at: sydneyDate(r.responseAt ?? r.history.at(-1)?.at ?? r.submittedAt ?? new Date().toISOString()) }));
 
   const numbers = {
     sentToday: sent.length,
@@ -374,12 +447,13 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
     unansweredQuestions: questions.length,
     killSwitch: pol.killSwitch,
   };
-  const headline = `Sent ${sent.length}, escalations ${escalations.length}, queue ${queue.length}`;
+  const escalations = esc.list();
+  const headline = `Sent ${sent.length}, escalations ${escalations.length}, queue ${queue.length}${errors.length ? `, state errors ${errors.length}` : ""}`;
 
   return {
     date, generatedAt: new Date().toISOString(), headline, sent, escalations,
     movement: { discovered: discoveredToday, queue, parked: { total: parkedRows.length, byReason }, exited },
-    responses, numbers,
+    responses, errors, numbers,
   };
 }
 
@@ -388,6 +462,13 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
 export function renderMarkdown(s: Omit<DailySummary, "markdown" | "sheet">): string {
   const L: string[] = [];
   L.push(`# Daily summary ${s.date}`, "", `${s.headline}.`, "");
+
+  // Only rendered when something is wrong, so the daily shape is unchanged.
+  if (s.errors.length) {
+    L.push("## State errors", "");
+    for (const e of s.errors) L.push(`- ${e}. This brief is incomplete until it is fixed.`);
+    L.push("");
+  }
 
   L.push("## Sent today", "");
   if (!s.sent.length) L.push("Nothing sent today.");
@@ -451,9 +532,10 @@ function sheetRows(date: string, markdown: string): (string | number)[][] {
   return rows;
 }
 
-async function pushSheet(date: string, markdown: string): Promise<{ pushed: boolean; note: string }> {
+async function pushSheet(date: string, markdown: string): Promise<{ pushed: boolean; failed: boolean; note: string }> {
   await loadLocalEnv();
-  if (!authReady()) return { pushed: false, note: "Sheet not configured (GOOGLE_APPLICATION_CREDENTIALS / SHEETS_SPREADSHEET_ID missing); summary not mirrored" };
+  // Not configured is a choice, not a failure; anything after this point is.
+  if (!authReady()) return { pushed: false, failed: false, note: "Sheet not configured (GOOGLE_APPLICATION_CREDENTIALS / SHEETS_SPREADSHEET_ID missing); summary not mirrored" };
   try {
     const sheets = await sheetsClient();
     const spreadsheetId = process.env.SHEETS_SPREADSHEET_ID!;
@@ -464,10 +546,10 @@ async function pushSheet(date: string, markdown: string): Promise<{ pushed: bool
     await applyHeadersAndFilters(sheets, spreadsheetId, { Summary: { headerCols: 3, rowCount: rows.length, columnWidths: { 0: 100, 1: 180, 2: 900 } } });
     const check = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Summary!A1:C" });
     const got = check.data.values?.length ?? 0;
-    if (got !== rows.length) return { pushed: false, note: `Sheet Summary verification failed: ${got}/${rows.length} rows` };
-    return { pushed: true, note: `Sheet Summary tab rewritten with ${rows.length - 1} lines` };
+    if (got !== rows.length) return { pushed: false, failed: true, note: `Sheet Summary verification failed: ${got}/${rows.length} rows` };
+    return { pushed: true, failed: false, note: `Sheet Summary tab rewritten with ${rows.length - 1} lines` };
   } catch (e: any) {
-    return { pushed: false, note: `Sheet push failed: ${short(e?.message ?? String(e), 160)}` };
+    return { pushed: false, failed: true, note: `Sheet push failed: ${short(e?.message ?? String(e), 160)}` };
   }
 }
 
@@ -489,7 +571,7 @@ export async function run(opts: { date: string; notify: boolean; json: boolean; 
   await fs.mkdir(SUMMARY_DIR, { recursive: true });
   const outPath = path.join(SUMMARY_DIR, `${opts.date}.md`);
   await fs.writeFile(outPath, markdown);
-  const sheet = opts.sheet ? await pushSheet(opts.date, markdown) : { pushed: false, note: "Sheet push skipped (--no-sheet)" };
+  const sheet = opts.sheet ? await pushSheet(opts.date, markdown) : { pushed: false, failed: false, note: "Sheet push skipped (--no-sheet)" };
   console.error(`[daily-summary] wrote ${path.relative(repoPath(), outPath)}; ${sheet.note}`);
   if (opts.notify) await notify(core.headline, opts.date);
   return { ...core, markdown, sheet };
@@ -503,9 +585,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const s = await run(opts);
       if (opts.json) console.log(JSON.stringify(s, null, 2));
       else process.stdout.write(s.markdown);
+      // Fail closed: unreadable state or a failed mirror must be visible to
+      // the caller (launchd, scripts/daily.sh), not buried in a note.
+      for (const e of s.errors) console.error(`[daily-summary] ${e}`);
+      if (s.sheet.failed) console.error(`[daily-summary] ${s.sheet.note}`);
+      process.exit(s.errors.length || s.sheet.failed ? 1 : 0);
     } catch (e: any) {
       console.error(`[daily-summary] ${e?.stack ?? e}`);
+      process.exit(1);
     }
-    process.exit(0);
   })();
 }
