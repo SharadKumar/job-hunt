@@ -1,0 +1,137 @@
+# modern template — research-backed composition policy.
+
+template: modern-columns
+description: Contemporary operator CV in Inter with a restrained professional-blue accent. Tech leads, founders, agentic engineering, fractional CTO audiences.
+
+allowed_headings:
+  - Summary
+  - Skills
+  - Experience
+  - Education
+
+section_ordering:
+  summary: "Narrative order: candidate identity, target-fit proof pattern, current capability/outlook."
+  highlights: "Order by employer relevance and evidence weight, not chronology; strongest target signal first."
+  skills: "Order skill blocks by target-fit priority; within each block, list core differentiators before adjacent breadth."
+  experience: "Reverse chronological by end date, then start date; current roles first. Featured blocks and compact mention rows both remain inside Experience and preserve date order."
+  credentials: "Order by relevance to the resume positioning; use recency/date only as a tie-breaker. Education does not default to chronological order."
+
+page_budget:
+  preferred: 2
+  hard_max: 3
+  reason: Operators are judged on density of recent shipping, not breadth of career. Two pages is the target; three is allowed when the user has multiple live products or deep recent enterprise validation.
+  last_page_min_fill_pct: 90
+
+summary:
+  min_chars: 240
+  max_chars: 400
+  candidate_narrative: true
+  shape: Unheaded 2 sentence prose paragraph. Lead with the candidate identity, accomplishment pattern, and current capability/outlook; use cover_letter_angle as positioning context, not as a project-led first clause. The presentation template omits a visible Summary heading to save space and avoid junior-looking structure.
+
+highlights:
+  min: 3
+  max: 5
+  label: unheaded impact bullets
+  presentation_unheaded: true
+  presentation_max_rendered_lines: 2
+  line_fill:
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    tolerance_pct: 0
+    max_lines: 2
+    severity: fail
+  style: outcome_or_capability_not_project_list
+  notes: In the modern presentation PDF, highlights flow directly after the summary without a visible heading. Use 3-5 outcome/capability bullets that supplement the summary; avoid project-list duplication and keep each bullet compact enough to render within two lines.
+
+skills:
+  min_blocks: 2
+  max_blocks: 3
+  max_chars_per_item: 130
+  additional_summary:
+    max_chars: 220
+  bullets_per_block:
+    min: 2
+    max: 5
+  notes: Prioritised target-fit skills only. Block names provide emphasis; avoid inline bolding and raw keyword dumps.
+
+experiences:
+  featured:
+    min: 3
+    max: 6
+    bullets_per_featured:
+      min: 3
+      max: 7
+  mentioned:
+    min: 0
+    max: 3
+
+bullets:
+  max_chars: 220
+  line_fill:
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    tolerance_pct: 0
+    max_lines: 2
+    severity: fail
+  weak_starts:
+    - Responsible for
+    - Worked on
+    - Helped
+    - Assisted
+    - Tasked with
+
+line_units:
+  summary:
+    desired_chars: "Modern full-width prose: target 95-115 chars per rendered line; compose 3-4 well-filled lines, not a short trailing fragment."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  impact_bullet:
+    desired_chars: "Modern unheaded impact bullet: target 82-102 chars for a single line, or 170-195 chars for two balanced lines."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 2
+    severity: fail
+  skill_summary:
+    desired_chars: "Modern skill-group lede continues inline after the heading in normal style; target one compact rendered line, normally 80-110 chars including the heading prefix."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 1
+    severity: fail
+  skill_item:
+    desired_chars: "Modern skill sub-bullet under a bold skill-group heading; target one rendered line, normally 74-102 chars, never wrapping unless source wording cannot be shortened without losing meaning."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 1
+    severity: fail
+  additional_skills_summary:
+    desired_chars: "Modern full-width skills breadth paragraph: target 95-115 chars per line and avoid a short final line."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  experience_summary:
+    desired_chars: "Modern experience summary is normal-style full-width prose below the date row; target 95-115 chars per line with a substantive final line."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  experience_bullet:
+    desired_chars: "Modern experience bullet: target 82-102 chars for one line, or 170-195 chars for two balanced lines."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 2
+    severity: fail
+  earlier_one_liner:
+    desired_chars: "Modern compact experience mention: the role/company/date row is rendered separately as a heading, so this unit is the SUMMARY PROSE ONLY — full-width, same column as experience_summary (~115 chars per rendered line). Target 90-109 chars on one line, or 201-224 chars across two balanced lines; use the second line only for distinct target-fit proof."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 90
+    max_lines: 2
+    severity: fail
+  credential:
+    desired_chars: "Modern credential bullet: keep each education/certification item to one rendered line; shorten long certification names rather than wrapping."
+    max_lines: 1
+    severity: fail
+
+claims_referenced:
+  - standard-section-headings
+  - ats-standard-experience-keyword
+  - grouped-skills
+  - recruiter-scan-discipline
+  - action-verbs-natural-language
+  - evidence-backed-competencies

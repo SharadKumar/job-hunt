@@ -1,0 +1,165 @@
+/*
+ * modern / styles.css — "Editorial" design language (signed off 2026-05-31).
+ *
+ * THIS FILE IS THE DESIGN. It is the human-signed-off target state and the
+ * runtime stylesheet — there is no separate spec to drift from. The committed
+ * golden render (modern/sample/golden*.png) is produced from this file by the
+ * same code that runs at render time; any change here regenerates the golden,
+ * and the PNG git-diff is the visual sign-off.
+ *
+ * Single-column, Swiss restraint: strong typographic hierarchy, one hairline
+ * rule, a single professional-blue accent, tabular right-aligned dates, generous rhythm.
+ * @font-face (bundled Inter, weight axis) is injected ahead of this file by
+ * template.ts — do not add @font-face here.
+ */
+
+@page { size: A4; margin: 19mm 18mm 16mm; }
+
+:root {
+  --ink:    #16181d;   /* primary text */
+  --soft:   #3b3f46;   /* secondary text (role summaries, skill detail) */
+  --muted:  #6b7280;   /* dates, contact, section labels */
+  --line:   #e3e6ea;   /* hairlines */
+  --accent: #1f4e79;   /* professional blue — used sparingly: tagline, bullets, header rule tick */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-optical-sizing: auto;
+  color: var(--ink);
+  font-size: 10.2pt;
+  line-height: 1.46;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ---- Header ------------------------------------------------------------- */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1.5px solid var(--ink);
+  padding-bottom: 10px;
+}
+h1 {
+  margin: 0;
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 31pt;
+  font-weight: 650;
+  letter-spacing: -0.018em;
+  line-height: 0.95;
+}
+.tagline {
+  font-size: 12pt;
+  font-style: normal;
+  font-weight: 650;
+  color: var(--accent);
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+}
+.contact {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 9pt;
+  letter-spacing: 0.004em;
+  line-height: 1.35;
+}
+.contact a { color: var(--muted); }
+.contact a,
+.contact .contact-part { white-space: nowrap; }
+.contact .sep { padding: 0 7px; color: var(--line); }
+
+/* ---- Sections ----------------------------------------------------------- */
+section { margin-top: 15px; }
+.resume-section-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+.resume-xp-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+.summary-section { margin-top: 12px; }
+.impact-section { margin-top: 8px; }
+h2 {
+  margin: 0 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  font-size: 8.4pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.summary { font-size: 10.6pt; line-height: 1.5; }
+
+/* ---- Bulleted lists ----------------------------------------------------- */
+ul { margin: 0; padding: 0; list-style: none; }
+li { position: relative; padding-left: 14px; margin: 0 0 4px; }
+li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.62em;
+  width: 4px; height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* ---- Experience --------------------------------------------------------- */
+.xp { margin-bottom: 11px; }
+.xp:last-child { margin-bottom: 0; }
+.xp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.role { font-weight: 650; font-size: 10.6pt; }
+.org  { font-weight: 650; }
+.where { color: var(--muted); font-weight: 400; }
+.dates {
+  color: var(--muted);
+  font-size: 9pt;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.xp-sum { color: var(--soft); font-style: normal; margin: 1px 0 4px; }
+.xp-head,
+.xp-sum {
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+/* ---- Skills ------------------------------------------------------------- */
+.skill { margin-bottom: 6px; }
+.skill:last-child { margin-bottom: 0; }
+.skill-heading { margin-bottom: 2px; }
+.skill-name { font-weight: 650; }
+.skill-summary { color: var(--soft); font-style: normal; }
+.skill-items li { color: var(--soft); margin-bottom: 2px; }
+.skill-items li:last-child { margin-bottom: 0; }
+.skills-additional {
+  margin-top: 6px;
+  color: var(--soft);
+  font-size: 9.6pt;
+  line-height: 1.42;
+}
+
+/* ---- Compact mentions ---------------------------------------------------
+ * Same heading row as a featured experience (bold role, company, right-aligned
+ * date column); only the density differs — one short summary line, no bullets,
+ * tighter bottom margin so the run of mentions still reads as a compact list.
+ */
+.xp-mention { margin-bottom: 5px; }
+.xp-mention:last-child { margin-bottom: 0; }
+.xp-mention .xp-sum { margin: 1px 0 0; }

@@ -1,0 +1,40 @@
+# Profile-owned rules for tools/letter-critic.ts, the independent fact-checker
+# every cover letter passes before it can be sent. This file is personal and
+# stays under state/ (git-ignored). The framework already enforces the generic
+# rules: no em or en dashes, the profile's English variant, no clearance claim
+# beyond eligibility, no other agency's reference codes, recruiter vs client
+# attribution, and that an openly disclosed gap is correct behaviour.
+#
+# Add here the facts about YOUR history that a letter must get right every
+# time: clients that may never be named, how an in-progress engagement may be
+# described, ventures that must stay off letters, titles and dates that are
+# easy to inflate. Recurring critic findings usually become a rule here.
+
+# Deterministic pre-checks. `pattern` is a case-insensitive JavaScript regex;
+# a match on any line of the letter is a fail with this issue and fix.
+never_named: []
+#  - pattern: "\\bAcme\\s*Holdings\\b"
+#    issue: "Names the client behind the current engagement; it may only be described as 'a large Australian retailer'."
+#    fix: "Replace the name with 'a large Australian retailer'."
+
+# Free-text rules appended, numbered, to the critic's STANDING RULES. Each
+# breach is a fail. Keep each to one or two sentences and state the permitted
+# wording, not just the forbidden one.
+standing_rules: []
+#  - 'The current engagement is "in delivery, first release live"; never "complete" or "delivered end to end".'
+#  - 'The 2019 side project is never mentioned in letters and is never attributed to an employer.'
+
+# Which "## " sections of profile.md the critic receives as PROFILE FACTS
+# (heading prefix match). The defaults below are what the skeleton profile has.
+profile_sections:
+  - Engagement targets
+  - Government eligibility
+  - Work arrangement
+  - Standing apply rules
+
+# Standing facts a letter may rely on that are not in cv-source.md: your
+# contracting vehicle, notice period, travel limits, rate framing.
+profile_facts: []
+#  - "Contracts through own company / ABN; a letter may say so but never names the company."
+#  - "Notice period two weeks; available from the first of next month."
+#  - "Hybrid up to two days a week on site; occasional interstate travel is fine, weekly is not."

@@ -1,0 +1,141 @@
+/*
+ * classic / styles.css — "Executive Editorial" in EB Garamond.
+ *
+ * THE DESIGN (signed-off target; runtime stylesheet). Same Editorial bones as
+ * modern, but a serif voice for senior consulting / government / executive
+ * audiences: gravitas, restraint, generous leading, near-monochrome with a
+ * single deep accent. @font-face (bundled EB Garamond) is injected by the
+ * shared builder — do not add it here.
+ */
+
+@page { size: A4; margin: 17mm 18mm 13mm; }
+
+:root {
+  --ink:    #1a1a1a;
+  --soft:   #3c3c3c;
+  --muted:  #6a6a6a;
+  --line:   #d9d6cf;   /* warm hairline */
+  --accent: #1f3a5f;   /* deep navy — used sparingly */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: 'EB Garamond', Garamond, 'Times New Roman', serif;
+  color: var(--ink);
+  font-size: 11.4pt;
+  line-height: 1.38;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "onum" 1;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ---- Header ------------------------------------------------------------- */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--ink);
+  padding-bottom: 8px;
+}
+h1 {
+  margin: 0;
+  font-size: 28pt;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  line-height: 1.02;
+}
+.tagline {
+  font-size: 12.8pt;
+  font-style: normal;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.contact {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10.4pt;
+}
+.contact a { color: var(--muted); }
+.contact .sep { padding: 0 7px; color: var(--line); }
+
+/* ---- Sections ----------------------------------------------------------- */
+section { margin-top: 13px; }
+.resume-section-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+.resume-xp-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+h2 {
+  margin: 0 0 6px;
+  font-size: 10pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 3px;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.summary { font-size: 11.6pt; line-height: 1.46; }
+
+/* ---- Bulleted lists ----------------------------------------------------- */
+ul { margin: 0; padding: 0; list-style: none; }
+li { position: relative; padding-left: 15px; margin: 0 0 2px; }
+li::before {
+  content: "";
+  position: absolute;
+  left: 1px; top: 0.62em;
+  width: 4px; height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* ---- Experience --------------------------------------------------------- */
+.xp { margin-bottom: 9px; }
+.xp:last-child { margin-bottom: 0; }
+.xp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+.role { font-weight: 700; font-size: 11.8pt; }
+.org  { font-weight: 700; }
+.where { color: var(--muted); font-weight: 400; }
+.dates {
+  color: var(--muted);
+  font-size: 10.4pt;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.xp-sum { color: var(--soft); font-style: normal; margin: 1px 0 4px; }
+
+/* ---- Skills ------------------------------------------------------------- */
+.skill { margin-bottom: 6px; }
+.skill:last-child { margin-bottom: 0; }
+.skill-heading { margin-bottom: 1px; }
+.skill-name { font-weight: 700; }
+.skill-summary { color: var(--soft); font-style: normal; }
+.skill-items li { color: var(--soft); margin-bottom: 1px; }
+.skill-items li:last-child { margin-bottom: 0; }
+
+/* ---- Compact mentions ---------------------------------------------------
+ * Same heading row as a featured experience (bold role, company, right-aligned
+ * date column); only the density differs — one short summary line, no bullets,
+ * tighter bottom margin so the run of mentions still reads as a compact list.
+ */
+.xp-mention { margin-bottom: 4px; }
+.xp-mention:last-child { margin-bottom: 0; }
+.xp-mention .xp-sum { margin: 1px 0 0; }

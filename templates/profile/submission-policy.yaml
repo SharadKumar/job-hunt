@@ -1,0 +1,132 @@
+# Submission policy. Every guardrail is enforced regardless of opt-ins.
+#
+# Autopilot rule: when `autopilot.enabled` is true the harness submits
+# one-click applications (SEEK Quick Apply, LinkedIn Easy Apply) unattended
+# when the machine gates below pass. No human reads the package first; the
+# letter-critic (tools/letter-critic.ts) is the independent read. Every other
+# channel, and every recruiter or hiring-manager message, stays attended or
+# draft-only no matter what is set here.
+#
+# Start with autopilot off. Run a few attended cycles, read the prepared
+# packages, then enable it once you trust the letters the harness produces.
+
+kill_switch: false                          # Set true to halt every submission, attended or not.
+max_auto_submits_per_day: 20                # Attended cap across all channels.
+per_channel_rate_limit_per_hour: 5          # Spacing between sends on one channel.
+
+# Unattended one-click submission. tools/submission-gate.ts accepts provenance
+# `autopilot:<run-id>` only while `enabled` is true, and then requires: status
+# approved, agent classification, core discipline (or user-saved), no
+# red_flag_blocker, a letter-critic pass whose sha256 matches the exact
+# cover-letter.md, kill switch off, and `max_per_day` not reached (counted on
+# audit `submitted` events with actor "autopilot", separately from the attended cap).
+autopilot:
+  enabled: false
+  channels: [seek, linkedin_jobs]           # only channels with a working one-click adapter
+  max_per_day: 10
+  require_letter_critic_pass: true          # <archive>/letter-critic.json verdict pass, sha matches cover-letter.md
+  core_discipline_only: true                # non-saved rows must be classification.discipline_fit core
+  saved_jobs_bypass_fit_gates: true         # a job you save on the channel skips discipline/location/duplicate gates
+  saved_jobs_hard_blocks: [active_clearance_required, permanent_or_fixed_term]  # reasons that still park a saved job (read by the /daily prompt, not the gate); [] applies to every saved job
+  journal_every_send: true                  # full letter text under "Sent unattended" in the day's journal
+  unsave_after_apply: true                  # remove the job from the channel's saved list after a confirmed send
+
+# Throughput guardrails. An awkward portal should not consume the batch.
+application_efficiency:
+  target_minutes_per_application: 8
+  external_portal_hard_stop_minutes: 12
+  on_budget_exceeded: manual_action_needed  # park with the blocker; do not keep grinding
+  record_timing_in_audit: true
+
+# Recruiter representation strategy. A buyer often releases one requisition to
+# many panel suppliers; each supplier makes an independent shortlist. Therefore
+# a shared endEmployer/requisitionId/duplicateGroup is informational, not a
+# suppression rule. Prepare and submit once through every distinct recruiter,
+# reusing one role-tailored CV/response pack across the group where practical.
+# Exact repeat ads from the same recruiter remain deduplicated.
+representation_policy:
+  same_buyer_different_recruiters: apply_each   # apply_each | apply_once
+  same_recruiter_same_requisition: apply_once
+  reuse_tailored_resume_within_group: true
+  per_row_approval_still_required: true
+
+# A requisition code seen in another representative's advert may remain useful
+# as an internal matching hint, but it must not be presented to a recruiter as
+# their reference unless that recruiter's own advert or correspondence uses it.
+external_reference_policy:
+  inferred_group_ids_are_internal_only: true
+  include_reference_only_if_target_recruiter_supplied_it: true
+  strip_other_recruiter_codes_from_subjects_filenames_headers_and_footers: true
+
+# A baseline approval only approves the reusable baseline. When classification
+# requires tailoring, the role-specific artefact has its own human sign-off and
+# cannot be submitted merely because its baseline was previously approved.
+tailored_resume_policy:
+  explicit_human_approval_required: true
+  inherit_baseline_approval: false
+  approval_scope: role_or_requisition_group
+  block_submission_while_status_in: [pending, stale, rejected, missing]
+
+# Clearance answers must distinguish eligibility from an existing clearance.
+# Citizenship plus willingness is sufficient only where the buyer can sponsor
+# or explicitly accepts candidates able to obtain the entry-level clearance.
+# Keep these in step with profile.md and screening-answers.yaml.
+security_clearance_policy:
+  current_clearance: none                   # none | Baseline | NV1 | NV2 | PV
+  australian_citizen: true                  # TODO: set to your actual status
+  willing_to_obtain: [Baseline]
+  ability_to_obtain_baseline: eligible      # eligible | not_eligible | unknown
+  active_clearance_required: hold_for_manual_eligibility_review
+  never_imply_active_clearance: true
+
+# Per-channel opt-in. ALL DEFAULT FALSE. A channel also needs to be listed in
+# autopilot.channels (and autopilot.enabled true) before an unattended run may
+# submit through it.
+channels:
+  seek:
+    auto_submit: false
+    notes: "Quick Apply adapter. External-ATS redirects, unknown screening questions and adapter failures fall back to the manual queue regardless."
+
+  linkedin_jobs:
+    auto_submit: false
+    notes: "Easy Apply only (row.applyMethod == easy_apply, gate-enforced); 'Apply on company website' ads and unknown apply methods fall back to the manual queue."
+
+  hays:
+    auto_submit: false
+    notes: "No adapter yet; always manual."
+
+  talenza:
+    auto_submit: false
+    notes: "No adapter yet; always manual."
+
+  paxus:
+    auto_submit: false
+  robert_half:
+    auto_submit: false
+  peoplebank:
+    auto_submit: false
+
+  recruiter_email:
+    auto_submit: false
+    notes: "FORCED FALSE. Recruiter email is always a Gmail draft, never auto-sent. The harness ignores this field if set to true."
+
+  manual:
+    auto_submit: false
+    notes: "FORCED FALSE. Items in manual-action-needed status require you to act."
+
+# Validation gate. The submission worker refuses to submit a row unless ALL hold:
+hard_gates:
+  cv_lint_ats_must_pass: true
+  slop_killer_verdict_in: [pass, warn]      # warn allowed, fail blocked
+  voice_check_verdict_in: [pass, warn]
+  rate_set_in_profile: true                  # if profile.md still has TODO for rate, no auto-submit
+  no_red_flag_blocker: true                  # roles with `red_flag_blocker: true` after scoring are blocked
+  duplicate_check: true                      # block an exact repeat to the same representative; buyer-level groups remain eligible
+  audit_dedup_check: true                    # check advertiser company + role family, not shared end employer/requisition
+  audit_dedup_within_days: 60                # how far back to look for prior actions on the same fingerprint
+
+# Post-submit
+post_submit:
+  capture_screenshot: true                   # archived at state/pipeline/archive/<opportunity-id>/confirmation.png
+  capture_confirmation_text: true            # archived at .../confirmation.txt
+  write_back_to_sheet: true

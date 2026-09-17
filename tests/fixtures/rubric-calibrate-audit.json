@@ -1,0 +1,21 @@
+{
+  "_comment": "Synthetic audit sidecar for tests/rubric-calibrate.test.ts. Every saturated unit is constructed to imply exactly 100 chars per rendered line; skill_summary is the shrink-to-fit case (always 100% fill, wildly different char counts) that calibration must refuse to trust.",
+  "verdict": "pass",
+  "resume": "fixture",
+  "template": "fixture-template",
+  "line_units": [
+    { "unit_path": "experiences[0].bullets[0]", "kind": "experience_bullet", "page": 1, "lines": 1, "last_line_fill_pct": 95, "chars": 95 },
+    { "unit_path": "experiences[0].bullets[1]", "kind": "experience_bullet", "page": 1, "lines": 2, "last_line_fill_pct": 90, "chars": 190 },
+    { "unit_path": "experiences[0].bullets[2]", "kind": "experience_bullet", "page": 1, "lines": 2, "last_line_fill_pct": 100, "chars": 200 },
+    { "unit_path": "experiences[0].bullets[3]", "kind": "experience_bullet", "page": 2, "lines": 1, "last_line_fill_pct": 40, "chars": 40 },
+    { "unit_path": "experiences[1].bullets[0]", "kind": "experience_bullet", "page": 2, "lines": 3, "last_line_fill_pct": 95, "chars": 295 },
+    { "unit_path": "skills[0].bullets[0]", "kind": "skill_item", "page": 1, "lines": 1, "last_line_fill_pct": 98, "chars": 98 },
+    { "unit_path": "skills[0].bullets[1]", "kind": "skill_item", "page": 1, "lines": 1, "last_line_fill_pct": 92, "chars": 92 },
+    { "unit_path": "skills[0].bullets[2]", "kind": "skill_item", "page": 1, "lines": 1, "last_line_fill_pct": 96, "chars": 96 },
+    { "unit_path": "skills[0].bullets[3]", "kind": "skill_item", "page": 1, "lines": 1, "last_line_fill_pct": 55, "chars": 55 },
+    { "unit_path": "skills[0].summary", "kind": "skill_summary", "page": 1, "lines": 1, "last_line_fill_pct": 100, "chars": 40 },
+    { "unit_path": "skills[1].summary", "kind": "skill_summary", "page": 1, "lines": 1, "last_line_fill_pct": 100, "chars": 62 },
+    { "unit_path": "skills[2].summary", "kind": "skill_summary", "page": 1, "lines": 1, "last_line_fill_pct": 100, "chars": 89 },
+    { "unit_path": "summary", "kind": "summary", "page": 1, "lines": 4, "last_line_fill_pct": 62, "chars": 362 }
+  ]
+}

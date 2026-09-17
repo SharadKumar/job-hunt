@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(tsx:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(pandoc:*)",
+      "Bash(pdfinfo:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)",
+      "Bash(launchctl print:*)",
+      "Read",
+      "Write",
+      "Edit",
+      "Bash(npm run submit:seek:*)",
+      "Bash(npm run submit:linkedin:*)",
+      "Bash(npm run submit:gate:*)",
+      "Bash(npm run autopilot:submit:*)",
+      "Bash(npm run letter:critic:*)",
+      "Bash(npm run seek:saved:*)",
+      "Bash(npm run seek:unsave:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(npm run submit:recruiter_email:*)",
+      "Bash(node tools/channels/recruiter-email*)",
+      "Bash(tsx tools/channels/recruiter-email*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

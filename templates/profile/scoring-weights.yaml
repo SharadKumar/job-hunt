@@ -1,0 +1,69 @@
+# Weights for tools/score.ts. All weights are 0-1; the final score is the
+# weighted sum normalised to 0-100. Edit and re-score the pipeline with
+# `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`.
+#
+# How to tune
+# -----------
+# Decide what you optimise for and move weight there. Someone who needs a
+# specific rate should raise rate_fit and lower work_arrangement_fit; someone
+# who wants remote work above all (for example to stack part-time engagements)
+# does the opposite. Keep skills_overlap and seniority_match dominant in every
+# case: a mis-fit role wastes your time regardless of rate or arrangement.
+# The seven base weights (everything except profile_relevance) should sum to
+# 1.0. Change one number at a time and re-score, then read the top and bottom
+# of the pipeline to see whether the ordering matches your judgement.
+#
+# profile_relevance is the lead term of the composite
+# (score = relevance x profile_relevance + base x (1 - profile_relevance)),
+# gated by the classifier's discipline_fit band. The seven base weights below
+# shape the base term only.
+weights:
+  profile_relevance: 0.65        # share of the composite carried by the agent's evidence-based relevance
+  skills_overlap: 0.30           # tag matches against skills-taxonomy.yaml (with synonyms)
+  work_arrangement_fit: 0.25     # remote / hybrid / onsite against profile.md "Work arrangement"
+  seniority_match: 0.20          # role title matches profile's target role families
+  contract_flexibility: 0.10     # short-term, non-exclusive, fractional-friendly
+  rate_fit: 0.05                 # raise this if rate is a hard requirement for you
+  industry_familiarity: 0.05     # known industry vs profile.md "Industry / domain preferences"
+  recency: 0.05                  # how fresh the posting is
+
+thresholds:
+  pipeline_sheet_min_score: 40    # rows below this never reach the Sheet
+  shortlist_min_score: 55         # rows at or above this are candidates for the apply queue
+  discipline_cap_outside: 25      # discipline_fit=outside can never exceed this relevance
+  discipline_cap_adjacent: 54
+  discipline_cap_platform_gap: 74
+  low_relevance_max: 50           # relevance below this caps the score at low_relevance_score_cap
+  low_relevance_score_cap: 40
+  blocker_score_cap: 30           # any red-flag blocker (incl. no resume positioning) caps the score here
+  high_agent_relevance_min: 90    # agent reasoning can rescue sparse channel-card metadata
+  high_agent_relevance_score_floor: 60
+  applied_ai_high_relevance_score_floor: 65
+  draft_min_score: 70             # auto-fire the application drafter at score >= this
+  top_decile_alert_score: 90      # eligible for optional push channel alert
+
+# Points subtracted when the classifier detects the pattern. Pair each entry
+# with a line in profile.md "Red flags" so the classifier knows why it matters.
+red_flag_penalties:
+  exclusive_engagement: 40       # "no concurrent work" clauses
+  onsite_5_days: 30
+  inside_ir35_equivalent: 25     # PAYG-only / employee-style engagement when you contract via a company
+  junior_or_mid_level: 40        # wrong seniority
+  no_remote_at_all: 20
+  unknown_recruiter_low_quality: 5
+  permanent_or_full_time: 60     # set to 0 if you are open to permanent roles
+
+# Points added when the classifier detects the pattern.
+bonuses:
+  fully_remote: 15
+  short_term_contract: 10        # <= 3 months is more flexible than 12+
+  rate_above_target_band: 5
+  australian_government: 5       # rename or drop if government is not a strength for you
+  servicenow_or_salesforce_or_m365: 10  # platform alignment; rename to match your own platforms
+  fractional_or_part_time_explicit: 15  # explicit "part-time OK" signals
+
+# Strategic ordering after fit and red-flag checks. A bonus here raises roles
+# matched to that resume id to the top of the tray without rescuing
+# low-relevance or blocked opportunities. Keys are resume ids from resumes.yaml.
+resume_priority_bonuses: {}
+#  my-priority-positioning: 15

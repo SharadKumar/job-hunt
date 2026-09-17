@@ -1,0 +1,31 @@
+# Market-lens and keyword confirmations for this profile.
+#
+# Every time a positioning's keyword plan (`npm run resume:keywords`) or a
+# market-lens review finds a term the market wants that the CV source does not
+# clearly evidence, the question is put to you and the answer is recorded here
+# with `npm run resume:keyword-confirm -- record`. Nothing in this file
+# authorises rendering a term by itself: a `confirmed` row still needs the fact
+# written into cv-source.md (via `keyword-confirm apply-patch`) before any CV
+# may carry it.
+#
+# Row schema
+# ----------
+#   - resume_id:   positioning the question was raised for (id from resumes.yaml)
+#     signal:      the market term or capability in question
+#     question:    the exact question that was put to you
+#     status:      pending | confirmed | not_applicable | familiarity
+#                  pending         = not yet answered; the term stays out of renders
+#                  confirmed       = you delivered it; patch cv-source.md, then it may render
+#                  not_applicable  = you did not do this; never claim it
+#                  familiarity     = you did not deliver it but can credibly prepare
+#                                    and speak to it; renders once in a
+#                                    familiarity-framed skills line and lands in
+#                                    interview_prep_terms
+#     kind:        keyword | market_lens (what raised the question)
+#     notes:       free text: what you said, where the evidence lives
+#     source_update_required: true when a confirmed fact still has to be
+#                  written into cv-source.md
+#     source_ref:  file and entry the confirmed fact was (or must be) written to
+#     updated_at:  ISO date of the last change to this row
+
+confirmations: []

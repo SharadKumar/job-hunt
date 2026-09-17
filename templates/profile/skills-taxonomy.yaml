@@ -1,0 +1,51 @@
+# Skill taxonomy + synonyms used by tools/score.ts for keyword overlap.
+# Each entry is a canonical skill with its synonyms; the scorer matches any
+# synonym in a role's JD against the canonical, then weighs by `seniority`.
+#
+# How to extend: add a category (any name) and under it one key per canonical
+# skill with a `synonyms` list and a `seniority` label. Keys are free-form
+# slugs. Put employers and client names under `industries` so brand mentions
+# in an ad count as familiarity. Adding entries here is the primary way to
+# expand or pivot the domains the harness considers you skilled in. The
+# entries below are examples only; replace them with your own.
+
+categories:
+  platforms:
+    example_platform:
+      synonyms: [Example Platform, ExamplePlat, Example Cloud]
+      seniority: expert
+    another_platform:
+      synonyms: [Another Platform, Another Suite]
+      seniority: practitioner
+
+  engineering_stack:
+    typescript:
+      synonyms: [TypeScript, TS]
+      seniority: practitioner
+    react:
+      synonyms: [React, ReactJS, React.js]
+      seniority: familiar
+
+  practice_areas:
+    solution_architecture:
+      synonyms: [Solution Architecture, Solutions Architect, Technical Architecture]
+      seniority: expert
+    delivery_management:
+      synonyms: [Delivery Manager, Delivery Lead, Program Manager, Project Manager]
+      seniority: practitioner
+    agile:
+      synonyms: [Agile, Scrum, SAFe, Lean]
+      seniority: practitioner
+
+  industries:
+    government:
+      synonyms: [Government, Public Sector, Department of Example]
+      seniority: expert
+    financial_services:
+      synonyms: [Bank, Insurance, Wealth Management]
+      seniority: familiar
+
+# Seniority labels affect the scoring multiplier:
+#   expert       = 1.0
+#   practitioner = 0.7
+#   familiar     = 0.4

@@ -1,0 +1,54 @@
+# Optional central resume type pool for consulting/team mode.
+# Copy this file to state/org/resume-types.yaml to activate central role types.
+# When active, profile resumes can either:
+#   - assign a central type with only `id` plus optional overrides, or
+#   - define a complete individual-only resume entry.
+
+resume_types:
+  - id: ai-engineering-lead
+    label: AI Engineering Lead
+    active: true
+    template: modern
+    search_keywords:
+      - AI Engineering Lead
+      - Agent Platform Engineer
+      - Applied AI Architect
+    should:
+      - agentic systems or LLM application delivery
+      - hands-on engineering leadership
+      - production delivery expectations
+    could:
+      - human-in-the-loop agent workflows
+      - model-output review gates
+      - evals or automated quality scoring
+    flagged:
+      - pure research role with no shipping mandate
+      - fully autonomous agent claims without human review evidence
+    cover_letter_angle: Lead with source-supported commercial applied-AI delivery and governed agent workflow evidence.
+    market_lens:
+      must_signal:
+        - agent orchestration
+        - human-in-the-loop review gates
+        - production software delivery workflow
+      keyword_aliases:
+        human-in-the-loop review gates:
+          acceptable_if_source_mentions:
+            - Slack approval gates
+            - GitHub branch flows
+            - model-output review gates
+          guidance: Use only when the CV source proves supervised agent workflow controls.
+      proof_questions:
+        - Were evals or automated quality scoring used beyond human review?
+      forbidden_claims:
+        - autonomous production agents without human review
+        - formal LLM evals program
+    rate_band:
+      floor: 1200
+      target: 1500
+      ceiling: 1800
+      currency: AUD
+      billing_unit: day
+      gst_handling: + GST
+    preferred_channels:
+      - linkedin_jobs
+      - linkedin_posts

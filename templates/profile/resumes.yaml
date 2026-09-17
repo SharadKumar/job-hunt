@@ -1,0 +1,127 @@
+# state/profile/resumes.yaml
+#
+# The resume positionings this profile applies with. Each entry is one
+# "resume type": a market-facing framing of the same career (for example
+# "Solution Architect" and "Delivery Manager" from one CV corpus).
+#
+# Two modes:
+#   - Individual mode (default after a fresh clone): this file holds complete
+#     standalone entries. Every field marked (required) below must be present or
+#     tools/resumes.ts drops the entry as incomplete.
+#   - Team/org mode: the shared definitions live in state/org/resume-types.yaml
+#     and this file activates a subset by id, overriding only person-specific
+#     positioning, evidence strategy, rate bands and notes.
+#
+# `/onboarding` proposes and writes the first entries; `/resume-strategy`
+# revises them. Hand-editing is fine as long as the YAML stays valid.
+
+# Time and iteration budget the resume-writer subagent works to when rendering
+# a baseline. Raise hard_stop_minutes on a slow machine; lower the iteration
+# caps if the writer keeps looping on the same audit finding.
+render_efficiency:
+  target_minutes_per_baseline: 4
+  hard_stop_minutes: 7
+  max_full_render_iterations: 3
+  max_reaudit_only_iterations: 1
+
+resumes: []
+
+# Example entry showing every field a positioning can carry. Uncomment, copy
+# per positioning, and replace the placeholders.
+#
+#  - id: solution-architect                # (required) slug; used in filenames, the pipeline and scoring
+#    label: Solution Architect             # (required) human label shown in the Sheet and journal
+#    display_headline: Senior Solutions Architect   # optional headline rendered at the top of the CV; defaults to label
+#    active: true                          # inactive entries are skipped by hunt, score and render
+#    template: classic                     # a directory under templates/resume/; defaults to "classic"
+#
+#    # Page budget the audit enforces. Every allocated page must be filled.
+#    page_policy:
+#      target_pages: 3
+#      preferred: 3
+#      hard_max: 3
+#      last_page_min_fill_pct: 75
+#      last_page_min_fill_severity: fail   # warn | fail
+#
+#    # Composition limits the writer works to. All keys optional.
+#    content_policy:
+#      summary: { max_lines: 6 }
+#      highlights: { min: 4, max: 6 }
+#      skills:
+#        min_blocks: 3
+#        max_blocks: 5
+#        bullets_per_block: { min: 3, max: 6 }
+#      experiences:
+#        featured: { min: 4, max: 8, bullets_per_featured: { min: 2, max: 6 } }
+#        mentioned: { max: 12, keep_all: false }   # keep_all: true = every role in cv-source.md appears at least as a one-line mention
+#
+#    # (required) Search terms the hunt adds to channels.yaml for this positioning.
+#    search_keywords:
+#      - Solution Architect
+#      - Solutions Architect
+#      - Technical Architect
+#
+#    # (required) Signals the classifier looks for. `should` = core fit,
+#    # `could` = nice-to-have, `flagged` = deprioritise or block.
+#    should:
+#      - solution or platform architecture ownership
+#      - senior stakeholder engagement
+#    could:
+#      - a platform you know well
+#      - a domain you have delivered in
+#    flagged:
+#      - pure hands-on developer role with no architecture component
+#      - requires a clearance you do not hold
+#      - onsite five days a week
+#
+#    # (required) One or two sentences the cover-letter writer leads with:
+#    # the anchor evidence for this positioning, written from cv-source.md.
+#    cover_letter_angle: >-
+#      TODO: the strongest evidence for this positioning in one breath, e.g.
+#      "Led the X stream of a large programme at <employer>, N services to
+#      M users, and currently delivering Y."
+#
+#    # Optional steer for the writer on what to magnify, support or play down.
+#    evidence_strategy:
+#      employer_signal_lens:
+#        - Client-facing, commercial outcomes carry the highest weight.
+#      magnify:
+#        - experience: <employer name as it appears in cv-source.md>
+#          reason: why this is the lead evidence
+#          guidance: anything the writer must or must never render about it
+#      support:
+#        - experience: <another employer>
+#          reason: supporting evidence
+#      de_emphasize:
+#        - experience: <an older or off-positioning role>
+#          reason: compress to a one-line mention
+#
+#    # (required) Rate band for this positioning; the scorer's rate_fit and the
+#    # screening answers read from it.
+#    rate_band:
+#      floor: 0
+#      target: 0
+#      ceiling: 0
+#      currency: AUD
+#      billing_unit: day                   # day | hour | annum
+#      gst_handling: + GST
+#
+#    # (required) Channel ids from channels.yaml this positioning is hunted on.
+#    preferred_channels:
+#      - seek
+#      - linkedin_jobs
+#
+#    # Optional market lens: the keyword clouds this positioning is written
+#    # against (ids from state/org/keyword-clouds.yaml, weight 1-5).
+#    market_lens:
+#      clouds:
+#        - { id: solution-architecture, weight: 5 }
+#      must_signal:
+#        - a term every render of this positioning must carry
+#      forbidden_claims:
+#        - a claim this positioning must never make
+#
+#    notes: >-
+#      TODO: free-text strategy notes for the writer and the reviewer, e.g.
+#      which channels reach this market, what differentiates you, what to
+#      watch for in ads that look like a fit but are not.

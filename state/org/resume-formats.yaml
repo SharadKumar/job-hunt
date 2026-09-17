@@ -1,0 +1,100 @@
+# Org-level resume formats define audience, purpose, page budget, and section policy.
+# They are applied in Team mode after the role type and profile assignment.
+# Templates remain visual styles; formats are output briefs.
+
+resume_formats:
+  - id: client-profile-one-pager
+    label: One-Pager
+    active: true
+    audience: client / professional-services buyer
+    purpose: consultant resume for client submission
+    template: classic
+    render_policy:
+      show_contact_line: false
+      show_experience_dates: false
+    page_policy:
+      target_pages: 1
+      preferred: 1
+      preferred_max: 1
+      hard_max: 1
+      last_page_min_fill_pct: 90
+      last_page_min_fill_severity: fail
+    content_policy:
+      summary:
+        max_sentences: 2
+      highlights:
+        min: 3
+        max: 5
+      skills:
+        min_blocks: 2
+        max_blocks: 3
+        bullets_per_block:
+          min: 1
+          max: 2
+      experiences:
+        featured:
+          min: 1
+          max: 2
+          bullets_per_featured:
+            min: 1
+            max: 3
+        mentioned:
+          min: 0
+          max: 3
+      line_units:
+        summary:
+          desired_chars: Compact one-pager summary should render as well-filled full-width lines; no short trailing fragment.
+          wrapped_last_line_min_fill_pct: 85
+          severity: fail
+        impact_bullet:
+          desired_chars: One-pager highlights are short proof lines; target one line filled 80-95%, not sparse fragments or long wrapped sentences.
+          single_line_min_fill_pct: 80
+          wrapped_last_line_min_fill_pct: 85
+          max_lines: 2
+          severity: fail
+        skill_summary:
+          desired_chars: Skill lede continues inline after heading; target one well-filled compact line.
+          single_line_min_fill_pct: 80
+          wrapped_last_line_min_fill_pct: 85
+          max_lines: 1
+          severity: fail
+        skill_item:
+          desired_chars: Skill bullets should be one well-filled line where possible.
+          single_line_min_fill_pct: 80
+          wrapped_last_line_min_fill_pct: 85
+          max_lines: 1
+          severity: fail
+        experience_summary:
+          desired_chars: Experience summaries should be compact and well-filled, with no sparse trailing line.
+          single_line_min_fill_pct: 80
+          wrapped_last_line_min_fill_pct: 85
+          severity: fail
+        experience_bullet:
+          desired_chars: Experience bullets should be one well-filled proof line where possible.
+          single_line_min_fill_pct: 80
+          wrapped_last_line_min_fill_pct: 85
+          max_lines: 2
+          severity: fail
+      section_policy:
+        profile_summary: Compact buyer-facing profile summary that wraps up career breadth when chronology is trimmed.
+        highlights: Use 3-5 short proof lines, each preferably one rendered line; cover breadth across architecture, delivery, consulting, platforms, and AI where relevant without long sentence packing.
+        capabilities: Show focused capability blocks, not exhaustive keyword coverage.
+        experience: Use selected experience only; do not present full chronology.
+        credentials: Collapse education and certifications to one line or omit unless differentiating.
+      heading_policy:
+        visible_headings: fewer
+        avoid:
+          - exhaustive chronology
+          - job-market CV density
+          - long education/certification sections
+    writer_instructions:
+      - Treat this format as the output brief for team/client submission resumes.
+      - Prefer concise consultant evidence over broad employment history.
+      - Because selected experience is intentionally short, carry overall career breadth in the summary and highlights based on the resume positioning.
+      - Keep highlights as short proof lines, not long sentences; use skills and selected experience to carry additional detail.
+      - Avoid sparse rendered lines; one-line highlights, skill bullets, and experience bullets should fill roughly 80-95% of the width, and wrapped final lines should be at least 85%.
+      - Use client-safe language suitable for a professional-services buyer.
+      - Omit personal contact details from the rendered client profile; the sender or firm controls the submission context.
+      - Omit year/month date ranges on experience items; clients need relevance, capability, and proof, not employment chronology.
+      - Keep to one page and fill at least 90% of the page; add higher-priority breadth before using whitespace or lowering density.
+    notes: Team client profile format for consultant resumes sent to clients.

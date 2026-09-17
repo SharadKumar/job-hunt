@@ -1,0 +1,121 @@
+# Canonical answers to common screening questions.
+# Submission worker matches the rendered question text against `patterns` (any
+# pattern matches -> use this entry's `answer`). If no entry matches confidently,
+# the worker halts that submission and surfaces the new question for you to add.
+#
+# Patterns are case-insensitive regex; use \b for word boundaries.
+# `select` (optional) lists regexes, in preference order, matched against the
+# option labels of a dropdown or radio group when the question is not free text.
+#
+# Replace every TODO answer before enabling any auto_submit channel; the
+# `rate_set_in_profile` hard gate blocks submission while rate answers are TODO.
+
+answers:
+  - id: right_to_work_au
+    patterns:
+      - "right to work in australia"
+      - "australian citizen|permanent resident"
+      - "work in australia without (visa|sponsorship)"
+    answer: "TODO: your work-rights status in one sentence, e.g. 'Yes, Australian Citizen with full unrestricted right to work.'"
+
+  - id: visa_sponsorship_needed
+    patterns:
+      - "require (visa )?sponsorship"
+      - "need sponsorship"
+    answer: "TODO: 'No.' if you do not need sponsorship; otherwise the visa you need."
+
+  - id: active_security_clearance
+    patterns:
+      - "(currently |already )?(hold|have|possess).*(active )?(baseline|nv1|nv2|pv|security clearance)"
+      - "(active|current).*(baseline|nv1|nv2|pv|security clearance)"
+      - "security clearance status"
+    answer: "TODO: state what you currently hold (or that you hold none) and, if none, your eligibility and willingness to apply. Never imply an active clearance you do not have."
+
+  - id: willing_to_obtain_baseline
+    patterns:
+      - "(able|eligible|willing).*(obtain|apply for|undertake).*(baseline|security clearance)"
+      - "baseline.*(ability|eligible|willing).*(obtain|apply|undertake)"
+    answer: "TODO: whether you are eligible for and willing to undertake the entry-level clearance, and what makes you eligible."
+
+  - id: agsva_clearance_select
+    patterns:
+      - "agsva|do you have a (security )?clearance|security clearance"
+    answer: "TODO: short dropdown-friendly clearance status."
+    select:
+      - "no, ability to obtain|able to obtain|eligible|willing to obtain|no clearance"
+
+  - id: notice_period
+    patterns:
+      - "notice period"
+      - "when can you start"
+      - "availability"
+    answer: "TODO: your notice period and earliest start, e.g. 'One week. Available immediately on one week's notice.'"
+    select:
+      - "1 week"
+      - "none, i'm ready|ready to go now"
+
+  - id: day_rate_expectation
+    patterns:
+      - "day rate"
+      - "daily rate"
+      - "contract rate expectation"
+      - "rate per day"
+    answer: "TODO: your target day rate, tax handling and billing entity, e.g. '$X per day plus GST through <your company> (ABN ...), negotiable on length and scope.'"
+    # Day-rate band dropdowns: nearest band to your target, then the next bands down.
+    select:
+      - "TODO regex for your target band, e.g. 1,?[2-3]\\d\\d"
+      - "TODO regex for the band below"
+
+  - id: salary_expectation
+    patterns:
+      - "salary expectation"
+      - "expected salary"
+      - "expected annual"
+      - "base salary"
+      - "annual package"
+      - "remuneration expectation"
+    answer: "TODO: for contract-only candidates restate the day rate and say you are not seeking a salaried package; otherwise your expected annual package."
+    # Salary-band dropdowns: pick the band nearest your day rate x ~220 working days.
+    select:
+      - "TODO regex for the nearest annual band, e.g. \\$2[0-4]\\d\\s*k"
+      - "TODO regex for the band below"
+
+  - id: years_experience_generic
+    patterns:
+      - "how many years'? experience do you have as"
+      - "years of experience (do you have )?(as|in|with)"
+    answer: "TODO: a safe generic answer, e.g. 'More than 5 years.'"
+    select:
+      - "more than 5 years|more than 10 years|10\\+ years"
+      - "5 years"
+
+  - id: privacy_policy_consent
+    patterns:
+      - "agree to (the|our) privacy policy|privacy (policy|statement|collection)"
+    answer: "Yes"
+    select:
+      - "^yes$|agree|accept"
+
+  - id: location
+    patterns:
+      - "based in (<your city>|<your state>)"
+      - "location.*<your city>"
+    answer: "TODO: '<your city>, <your state>.'"
+
+  - id: remote_or_hybrid
+    patterns:
+      - "remote.*hybrid"
+      - "work arrangement"
+      - "office attendance"
+    answer: "TODO: your arrangement preference in one sentence, matching profile.md 'Work arrangement'."
+
+  # Add one entry per platform or skill a screener commonly asks about, e.g.
+  #  - id: years_with_<platform>
+  #    patterns:
+  #      - "years.*<platform>"
+  #      - "experience.*<platform>"
+  #    answer: "N+ years; most recently <one-line evidence from cv-source.md>."
+
+# Unknown questions land here automatically when the worker can't match.
+# Edit, give an answer, and the next daily run resumes the paused submissions.
+unknown_questions: []

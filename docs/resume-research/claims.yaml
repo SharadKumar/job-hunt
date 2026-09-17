@@ -1,0 +1,191 @@
+version: 1
+last_reviewed: 2026-09-10
+claims:
+  standard-section-headings:
+    statement: Use plain, recruiter-recognisable section headings. Creative headings can be used only when they preserve a standard keyword such as Summary, Skills, Experience, Education, or Certifications.
+    confidence: high
+    source:
+      title: Penn State Engineering Resumes
+      publisher: Penn State Engineering Career Resources
+      url: https://career.engr.psu.edu/students/basics/resume.aspx
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: sections.required.*.allowed_headings and sections.forbidden_headings
+      evaluator_rule: required_sections, forbidden_headings
+
+  ats-standard-experience-keyword:
+    statement: Experience section headings should contain the word Experience where possible, because ATS guidance recognises that token reliably.
+    confidence: high
+    source:
+      title: Student Handout ATS
+      publisher: Cal Poly Career Services
+      url: https://content-calpoly-edu.s3.amazonaws.com/careerservices/1/documents/CCHandouts/Student%20Handout%20ATS%20-%20CP%20Career%20Services.pdf
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: sections.required.experience.allowed_headings
+      evaluator_rule: required_sections
+
+  grouped-skills:
+    statement: Skills should be grouped into three to five job-related categories and ordered by relevance to the target.
+    confidence: high
+    source:
+      title: Skills Section
+      publisher: Purdue OWL
+      url: https://owl.purdue.edu/owl/job_search_writing/resumes_and_vitas/resume_workshop/skills_section.html
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: skills.min_blocks, skills.max_blocks
+      evaluator_rule: skills_block_count, skills_bullets_per_block
+
+  recruiter-scan-discipline:
+    statement: Recruiter first-pass review is brief, so the first page should make the candidate's current value proposition obvious through clear title hierarchy, current/recent evidence, keywords in context, and short accomplishment statements.
+    confidence: medium
+    source:
+      title: Ladders Updates Popular Recruiter Eye-Tracking Study With New Key Insights on How Job Seekers Can Improve Their Resumes
+      publisher: PR Newswire / Ladders
+      url: https://www.prnewswire.com/news-releases/ladders-updates-popular-recruiter-eye-tracking-study-with-new-key-insights-on-how-job-seekers-can-improve-their-resumes-300744217.html
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: page_budget, summary, highlights, bullets.max_chars
+      evaluator_rule: page_budget, summary_length, bullet_length
+
+  action-verbs-natural-language:
+    statement: Bullets should begin with specific action language and avoid bland responsibility-led openings; verb variety matters, but the language must still sound natural.
+    confidence: medium
+    source:
+      title: 45 Rare Action Verbs for Your Resume
+      publisher: Harvard FAS Mignone Center for Career Success
+      url: https://careerservices.fas.harvard.edu/blog/2025/08/14/45-rare-action-verbs-for-your-resume-with-examples/
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: bullets.weak_starts
+      evaluator_rule: weak_bullet_starts
+
+  evidence-backed-competencies:
+    statement: Senior resumes should demonstrate broad career competencies through evidence rather than unsupported adjectives; relevant categories include communication, critical thinking, leadership, professionalism, teamwork, and technology.
+    confidence: medium
+    source:
+      title: What is Career Readiness?
+      publisher: National Association of Colleges and Employers
+      url: https://www.naceweb.org/career-readiness/competencies/career-readiness-defined/
+      checked_at: 2026-05-28
+    implementation:
+      template_rubric: skills.preferred_categories, bullets.min_quantified_ratio
+      evaluator_rule: quantified_bullet_ratio
+
+  # ---------------------------------------------------------------------------
+  # Screener model (added 2026-09-10). The target reader is an ATS parser plus
+  # an AI/LLM ranking layer plus recruiter Boolean search, before any human.
+  # These claims change WORDING and PLACEMENT of corpus-backed facts only.
+  # They never license a fact the corpus does not hold (see
+  # tools/resume/resume-term-grounding.ts and the 3-tier honesty rule).
+  # ---------------------------------------------------------------------------
+
+  screener-parse-first-then-rank:
+    statement: Screening is layered. A parser and keyword filter still run first and an AI/LLM layer summarises and ranks only what survives; a resume that fails parsing is never seen by the intelligent layer, so parse-safe structure remains the precondition for everything else.
+    confidence: medium
+    source:
+      title: How AI Resume Screening Works in 2026
+      publisher: Jobscan
+      url: https://www.jobscan.co/blog/blog-ai-resume-screening/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: ats flavour is always single-column plain docx (templates/resume/_ats-docx.ts)
+      evaluator_rule: ats_lint, required_sections
+
+  screener-exact-match-phrasing:
+    statement: Keyword filters and recruiter searches match the job description's exact spelling of skills, tools and titles and may not recognise synonyms. Where the corpus holds the same fact under a different name, render the JD's form (and cite the corpus line); this is the honest fix for screener mismatch.
+    confidence: high
+    source:
+      title: Get Your Resume Seen With ATS Keywords
+      publisher: Indeed Career Guide
+      url: https://www.indeed.com/career-advice/resumes-cover-letters/ats-resume-keywords
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: n/a (composition rule)
+      evaluator_rule: resume:keywords status alias_grounded -> jd_form; jd_keyword_coverage
+
+  screener-both-forms-of-synonyms:
+    statement: Render both the acronym and the spelled-out form of a credential, platform or method when the JD uses either (CI/CD and continuous integration; M365 and Microsoft 365; TOGAF and The Open Group Architecture Framework), so literal filters and semantic rankers both match.
+    confidence: high
+    source:
+      title: How to Create an ATS-Friendly Resume for University Students
+      publisher: University of Utah Career Success
+      url: https://careers.utah.edu/resume-cover-letter/how-to-create-an-ats-friendly-resume-for-university-students/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: n/a (composition rule)
+      evaluator_rule: resume:keywords render_both_forms
+
+  screener-boolean-search-is-literal:
+    statement: Recruiter Boolean search (LinkedIn Recruiter Job titles, Companies and Keywords filters; quoted phrases) is literal and ignores stop words, so title and skill phrases must appear verbatim somewhere in the document even when an LLM layer would tolerate paraphrase. Write for both readers.
+    confidence: high
+    source:
+      title: Use Boolean to filter search results in Recruiter and Recruiter Lite
+      publisher: LinkedIn Recruiter Help
+      url: https://www.linkedin.com/help/recruiter/answer/a415295
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: n/a (composition rule)
+      evaluator_rule: screener_surface_present, jd_keyword_coverage
+
+  screener-title-alignment:
+    statement: A headline or title line that names the target title family raises title-field matches in recruiter search and ATS ranking. Use the JD's title family only when the corpus evidences the role archetype and the seniority word; never invent seniority.
+    confidence: medium
+    source:
+      title: How to Create an ATS-Friendly Resume for University Students (mirror job-description keywords in titles and skills)
+      publisher: University of Utah Career Success
+      url: https://careers.utah.edu/resume-cover-letter/how-to-create-an-ats-friendly-resume-for-university-students/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: ResumeContent.headline
+      evaluator_rule: resume:keywords title.alignment; screener_surface_present (headline_aligned)
+
+  screener-skills-section-explicit-surface:
+    statement: A clearly labelled Skills section with bullet-pointed terms is the surface both parsers and rankers route skill evidence through; keywords in the summary and skills section carry more weight than the same words buried in prose. One term-dense, corpus-cited block is legitimate; stuffing the rest of the document is not.
+    confidence: medium
+    source:
+      title: How AI Resume Screening Works in 2026 (structured skills sections); Indeed ATS keywords (placement, no stuffing)
+      publisher: Jobscan; Indeed Career Guide
+      url: https://www.jobscan.co/blog/blog-ai-resume-screening/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: skills.min_blocks, skills.max_blocks; SkillBlock.role "screener"
+      evaluator_rule: screener_surface_present; skills_prioritised_not_keyword_dump (screener block exempt)
+
+  screener-quantified-recent-outcomes:
+    statement: LLM rankers and recruiters both distinguish candidates on specific, quantified, recent outcomes rather than responsibility statements; generic phrasing is scored as generic.
+    confidence: medium
+    source:
+      title: How AI Resume Screening Works in 2026
+      publisher: Jobscan
+      url: https://www.jobscan.co/blog/blog-ai-resume-screening/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: bullets.min_quantified_ratio, experiences.featured recency weighting
+      evaluator_rule: impact_outcome_not_project_list, evidence_weighting_alignment
+
+  screener-certification-names-verbatim:
+    statement: Certifications must be named exactly as issued, in their own clearly headed section, because parsers look for them under a Certifications heading and filters match the issued name. Never alias-match or paraphrase a certification; never imply one the corpus does not state.
+    confidence: medium
+    source:
+      title: How to Create an ATS-Friendly Resume for University Students (Certifications heading; both acronym and full title)
+      publisher: University of Utah Career Success
+      url: https://careers.utah.edu/resume-cover-letter/how-to-create-an-ats-friendly-resume-for-university-students/
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: credentials section
+      evaluator_rule: resume:keywords category certification is exact-match only; term_grounding
+
+  screener-llm-semantic-plus-lexical:
+    statement: LLM screeners tolerate paraphrase and infer adjacent skills, but published validity studies show they are inconsistent rankers, so paraphrase is not a substitute for the literal terms; a resume should carry the JD's terms literally AND read as specific, factual prose.
+    confidence: medium
+    source:
+      title: Measuring Validity in LLM-based Resume Screening (Castleman, Shen, Metevier, Springer, Korolova, 2026-02-20); AI Hiring with LLMs, a Context-Aware and Explainable Multi-Agent Framework for Resume Screening (Lo et al., 2025-05-13)
+      publisher: arXiv
+      url: https://arxiv.org/abs/2602.18550
+      checked_at: 2026-09-10
+    implementation:
+      template_rubric: n/a (rationale for the screener model as a whole)
+      evaluator_rule: jd_keyword_coverage, term_grounding
+

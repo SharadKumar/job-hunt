@@ -1,0 +1,104 @@
+# Which channel modules to enable + per-channel search config.
+# Modules live under tools/channels/<id>.ts implementing the HuntChannel interface.
+#
+# Search terms combine the explicit keyword lists below with `search_keywords`
+# from every active resume positioning in resumes.yaml. Those are added
+# automatically at hunt time, so this file only needs the broad heads of each
+# role family and any long-tail terms the positionings do not carry.
+#
+# Every channel starts disabled. Enable one at a time after the adapter has
+# been exercised with `npm run hunt -- <channel> --dry-run`.
+
+channels:
+  seek:
+    enabled: false
+    search:
+      # SEEK discovery is intentionally broad. Relevance belongs in the agent
+      # classification layer, not in overly exact search phrases. Broad terms
+      # maximise recall; targeted variants counter SEEK ranking/page limits.
+      # search_keywords from resumes.yaml are added automatically.
+      keywords:
+        - Solution Architect
+        - Delivery Manager
+        - Technical Lead
+        - Software Engineer
+      location: All Australia      # or a city, e.g. "Sydney NSW"
+      work_type: [contract, casual] # contract | casual | full_time | part_time
+      remote: any                  # any | full | hybrid
+      posted_within_days: 7
+      max_pages_per_keyword: 5     # SEEK returns 32 cards/page; broad terms require pagination
+    rate_limit_per_min: 10
+
+  linkedin_jobs:
+    enabled: false
+    search:
+      # LinkedIn is slower per query than SEEK (2 page loads + pacing per term,
+      # plus one job-view load per new row for the JD), so keep this list to
+      # the broad heads of each positioning. search_keywords from resumes.yaml
+      # are added automatically.
+      keywords:
+        - Solution Architect
+        - Delivery Manager
+        - Technical Lead
+      geo: Australia               # location ranking happens in the scorer; keep the search wide
+      job_type: [contract]         # contract | full_time | part_time | temporary
+      posted_within_days: 7
+      max_pages: 2                 # 25 cards per page, newest first
+      enrich_limit: 60             # job views opened per run to pull the full JD + apply method for new rows
+    rate_limit_per_min: 5
+
+  linkedin_posts:
+    enabled: false
+    scan:
+      # Free-text searches over recent posts by recruiters and hiring managers.
+      query_terms:
+        - "looking for contractor <your country>"
+        - "hiring contract <your role> <your city>"
+        - "hiring <your role> remote"
+      posted_within_hours: 48
+    rate_limit_per_min: 5
+
+  hays:
+    enabled: false                 # stubbed; enable only after adapter is implemented
+    search:
+      categories: [IT - Architects, IT - Project & Program Management, IT - Other]
+      location: <your city>
+      contract_type: contract
+
+  talenza:
+    enabled: false                 # stubbed; enable only after adapter is implemented
+    search:
+      query: "Architect OR Engineering Lead OR Director"
+      location: <your city>
+
+  paxus:
+    enabled: false                 # stubbed; enable only after adapter is implemented
+    search:
+      query: "Architect"
+      location: <your city>
+
+  robert_half:
+    enabled: false                 # stubbed; enable only after adapter is implemented
+    search:
+      function: Technology
+      role_type: Contract
+      location: <your city>
+
+  peoplebank:
+    enabled: false                 # stubbed; enable only after adapter is implemented
+    search:
+      query: "Architect OR Lead OR Director"
+      location: <your city>
+
+  hn_who_is_hiring:
+    enabled: false                 # monthly Hacker News thread; mostly remote / global
+    scan:
+      remote_only: false
+      contract_only: true
+      include_tags: []             # anywhere; contract_only removes permanent/full-time noise
+
+  wellfound:
+    enabled: false                 # opt in if you want startup roles
+    search:
+      role: "Engineering Lead"
+      location: Remote

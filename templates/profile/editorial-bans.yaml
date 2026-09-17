@@ -1,0 +1,74 @@
+# Machine-readable editorial bans for this profile's rendered CVs.
+#
+# WHY
+# ---
+# `resume-editorial-rules.md` is prose: resume-writer reads it, then can still
+# render the exact wording it forbids and report the row as compliant. This
+# file is the mechanical subset of those rules, enforced deterministically by
+# `tools/resume/lib/editorial-bans.ts` and folded into `npm run resume:audit`
+# as `gates.editorial`. A fail here is a hard stop, like any other gate.
+#
+# It is a SUBSET on purpose. Anything needing judgement (tone, bullet counts,
+# whether a claim is over-reaching) stays a model responsibility in the prose
+# file. Only add a rule here when a violation is decidable from the text alone.
+# The prose file remains the source of truth; this file must never contradict
+# it. When a prose rule changes, update both.
+#
+# SCHEMA (version 1)
+# ------------------
+# version: 1
+# rules:
+#   - id:            stable slug, used as `rule_id` in audit issues (required)
+#     note:          free text, why the rule exists (optional)
+#     scope:         where the rule applies (required, exactly one of the two forms)
+#       company:     regex, case-insensitive, matched against `experience.company`.
+#                    Scopes the rule to that experience's title, summary,
+#                    bullets and one_liner.
+#       field:       one of `headline` | `summary` | `highlights` | `skills` |
+#                    `any`, or a list of them (the rule applies to the union).
+#                    `any` covers every rendered text field: headline, summary,
+#                    highlights, skill block names/summaries/bullets, the
+#                    additional-skills summary, credentials, and every
+#                    experience title/company/summary/bullet/one_liner.
+#     resumes:       optional list of resume ids. The rule applies ONLY to those
+#                    positionings.
+#     except_resumes: optional list of resume ids. The rule applies to every
+#                    positioning EXCEPT those. Mutually exclusive with
+#                    `resumes`. Use this when a word is a demotion on most
+#                    resumes but the whole point on one of them.
+#     title_must_equal:  exact string the scoped experience's `title` must equal
+#                        (company scope only). Any other title is an issue.
+#     forbidden_phrases: plain phrases. Matched case-insensitively with a word
+#                        boundary at the START of the phrase; the end is
+#                        stem-tolerant, so "incorporat" catches "incorporated"
+#                        and "incorporation". Set `match: word` on the rule for
+#                        strict whole-word matching at both ends.
+#     forbidden_regex:   JavaScript regex sources, applied case-insensitively.
+#                        Use these when phrase matching is too blunt.
+#     match:         `stem` (default) | `word`: end-boundary behaviour for
+#                    `forbidden_phrases`. `forbidden_regex` is unaffected.
+#     severity:      `fail` (default) | `warn`.
+
+version: 1
+
+rules: []
+
+# Example: keep a side venture out of Career Highlights and pin its title.
+#
+#  - id: venture-not-in-highlights
+#    note: Career Highlights never feature side ventures (resume-editorial-rules.md).
+#    scope:
+#      field: highlights
+#    forbidden_phrases:
+#      - "Example Venture"
+#    severity: fail
+#
+#  - id: venture-title
+#    note: The venture renders with build/design verbs, never ownership framing.
+#    scope:
+#      company: "Example Venture"
+#    title_must_equal: "Founding Engineer"
+#    forbidden_phrases:
+#      - "founder"
+#      - "incorporat"
+#    severity: fail

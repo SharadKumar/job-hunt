@@ -1,0 +1,8 @@
+# Codex CLI config for the job-hunt harness.
+# Codex reads ../AGENTS.md natively (the canonical agent contract; CLAUDE.md imports it).
+# Skills live in ../.agents/skills/ (symlinked to ../.claude/skills/).
+# Custom prompts/commands are deprecated in both CLIs — everything is a skill now.
+
+model = "gpt-5.6-sol"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"

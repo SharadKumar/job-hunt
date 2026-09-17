@@ -1,0 +1,10 @@
+# Provenance for state/profile/cv-source.md, the canonical CV corpus every
+# resume is composed from. `/refresh-cv` (tools/cv/markdownify-cv.ts) reads
+# `source_file` and regenerates cv-source.md, then updates `parsed_at`.
+source_file: ~/Documents/Resume/master-cv.docx   # your master CV; a symlink to the current authoring .docx works well
+parsed_at:                                        # set automatically by /refresh-cv
+parser: tools/cv/markdownify-cv.ts
+notes: >-
+  Edit the .docx (or cv-source.md directly for facts that never reach the
+  .docx) and re-run /refresh-cv. Never edit rendered CVs by hand; every render
+  starts from cv-source.md.

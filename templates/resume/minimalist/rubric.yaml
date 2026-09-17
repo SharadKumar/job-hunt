@@ -1,0 +1,76 @@
+# minimalist template — research-backed composition policy.
+
+template: minimalist
+description: Bare-typography CV in Helvetica. Design-aware companies, agencies, founder-network advisory.
+
+allowed_headings:
+  - Summary
+  - Experience
+  - Skills
+  - Highlights
+  - Education
+
+page_budget:
+  preferred: 2
+  hard_max: 2
+  reason: Minimalist forces editorial restraint. A 24-year career compressed to 2pp is the design statement; 3pp on this template undermines the aesthetic. If the corpus genuinely needs 3pp, use classic instead.
+  last_page_min_fill_pct: 90
+
+summary:
+  min_chars: 200
+  max_chars: 360
+  candidate_narrative: true
+  shape: "1-2 sentence prose. Punchy and person-led: candidate identity, accomplishment pattern, current capability. The summary IS the lead — bullets fill in."
+
+highlights:
+  min: 0
+  max: 4
+  label: Highlights
+  notes: Treated as collateral; placed AFTER skills if present.
+
+skills:
+  min_blocks: 2
+  max_blocks: 3
+  bullets_per_block:
+    min: 3
+    max: 5
+
+experiences:
+  featured:
+    min: 3
+    max: 5
+    bullets_per_featured:
+      min: 3
+      max: 5
+  mentioned:
+    min: 0
+    max: 3
+
+bullets:
+  max_chars: 210
+  weak_starts:
+    - Responsible for
+    - Worked on
+    - Helped
+    - Assisted
+    - Tasked with
+
+line_units:
+  earlier_one_liner:
+    desired_chars: "Minimalist compact experience mention: the role/company/date row is rendered separately as a heading, so this unit is the SUMMARY PROSE ONLY — full-width, same column as a featured experience summary. Target one well-filled line, allowing two balanced lines only when the evidence is clearly worth it."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 90
+    max_lines: 2
+    severity: fail
+  credential:
+    desired_chars: "Minimalist credential bullet: keep each education/certification item to one rendered line; shorten long certification names rather than wrapping."
+    max_lines: 1
+    severity: fail
+
+claims_referenced:
+  - standard-section-headings
+  - ats-standard-experience-keyword
+  - grouped-skills
+  - recruiter-scan-discipline
+  - action-verbs-natural-language
+  - evidence-backed-competencies

@@ -1,0 +1,126 @@
+/*
+ * minimalist / styles.css — "Bare" in Arimo (Helvetica-metric, Apache).
+ *
+ * THE DESIGN (signed-off target; runtime stylesheet). Maximum restraint:
+ * monochrome, no accent colour, no rules, the name at REGULAR weight (the
+ * understatement IS the design), and generous air. For design-aware companies,
+ * agencies, and founder-network advisory. @font-face (bundled Arimo) is
+ * injected by the shared builder — do not add it here.
+ */
+
+@page { size: A4; margin: 22mm 20mm 18mm; }
+
+:root {
+  --ink:   #1c1c1c;
+  --soft:  #444444;
+  --muted: #7a7a7a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+body {
+  font-family: 'Arimo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-size: 10pt;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ---- Header (no rule; air does the work) -------------------------------- */
+header { display: block; }
+h1 {
+  margin: 0;
+  font-size: 23pt;
+  font-weight: 400;            /* regular weight — the understatement */
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.tagline {
+  margin-top: 2px;
+  font-size: 11pt;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+.contact {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 9pt;
+}
+.contact a { color: var(--muted); }
+.contact .sep { padding: 0 8px; color: #c9c9c9; }
+
+/* ---- Sections (label only, no rule, lots of space) ---------------------- */
+section { margin-top: 21px; }
+.resume-section-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+.resume-xp-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+h2 {
+  margin: 0 0 9px;
+  font-size: 8pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: var(--muted);
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.summary { font-size: 10.5pt; line-height: 1.55; }
+
+/* ---- Bulleted lists (bare en-dash, muted) ------------------------------- */
+ul { margin: 0; padding: 0; list-style: none; }
+li { position: relative; padding-left: 16px; margin: 0 0 5px; }
+li::before {
+  content: "–";
+  position: absolute;
+  left: 0; top: 0;
+  color: var(--muted);
+}
+
+/* ---- Experience --------------------------------------------------------- */
+.xp { margin-bottom: 13px; }
+.xp:last-child { margin-bottom: 0; }
+.xp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+.role { font-weight: 700; font-size: 10pt; }
+.org  { font-weight: 700; }
+.where { color: var(--muted); font-weight: 400; }
+.dates {
+  color: var(--muted);
+  font-size: 9pt;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.xp-sum { color: var(--soft); margin: 1px 0 5px; }
+
+/* ---- Skills ------------------------------------------------------------- */
+.skill { margin-bottom: 5px; }
+.skill:last-child { margin-bottom: 0; }
+.skill b { font-weight: 700; }
+.skill .detail { color: var(--soft); }
+
+/* ---- Compact mentions ---------------------------------------------------
+ * Same heading row as a featured experience (bold role, company, right-aligned
+ * date column); only the density differs — one short summary line, no bullets,
+ * tighter bottom margin so the run of mentions still reads as a compact list.
+ */
+.xp-mention { margin-bottom: 6px; }
+.xp-mention:last-child { margin-bottom: 0; }
+.xp-mention .xp-sum { margin: 1px 0 0; }

@@ -1,0 +1,143 @@
+# classic template — research-backed composition policy.
+#
+# Bound to docs/resume-research/claims.yaml. Cross-references claim ids; the
+# evaluator (npm run resume:evaluate) reads this file + the universal claims
+# to produce structural verdicts. resume-writer reads this as part of step 1
+# (target context).
+
+template: classic
+description: Executive serif CV in EB Garamond. Senior architect / consulting / government / executive audiences.
+
+allowed_headings:
+  - Professional Summary
+  - Career Highlights
+  - Skills
+  - Core Skills
+  - Professional Experience
+  - Education
+
+section_order:
+  - summary
+  - highlights
+  - skills
+  - experience
+
+section_ordering:
+  summary: "Narrative order: candidate identity, target-fit proof pattern, current capability/outlook."
+  highlights: "Order by employer relevance and evidence weight, not chronology; strongest target signal first."
+  skills: "Order skill blocks by target-fit priority; within each block, list core differentiators before adjacent breadth."
+  experience: "Reverse chronological by start date, current roles first; end date only breaks a same-start tie. Featured blocks and compact mention rows both remain inside Experience and preserve date order."
+  credentials: "Order by relevance to the resume positioning; use recency/date only as a tie-breaker. Education does not default to chronological order."
+
+page_budget:
+  preferred: 3
+  hard_max: 3
+  reason: Senior architects with 20+ years of evidence routinely need 3 pages. Two-page compression sacrifices target-fit anchors.
+  last_page_min_fill_pct: 90
+
+summary:
+  min_chars: 270
+  max_chars: 453
+  candidate_narrative: true
+  shape: 2-3 sentence prose paragraph. Lead with the candidate identity and operating range; use cover_letter_angle as positioning context, not as a project-led first clause.
+
+highlights:
+  min: 3
+  max: 6
+  label: unheaded impact bullets
+  presentation_unheaded: true
+  line_fill:
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    tolerance_pct: 0
+    max_lines: 3
+    severity: fail
+
+skills:
+  min_blocks: 3
+  max_blocks: 5
+  bullets_per_block:
+    min: 2
+    max: 5
+
+experiences:
+  featured:
+    min: 4
+    max: 12
+    bullets_per_featured:
+      min: 3
+      max: 7
+  mentioned:
+    min: 0
+    max: 4
+
+bullets:
+  max_chars: 227
+  line_fill:
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    tolerance_pct: 0
+    max_lines: 3
+    severity: fail
+  weak_starts:
+    - Responsible for
+    - Worked on
+    - Helped
+    - Assisted
+    - Tasked with
+
+line_units:
+  summary:
+    desired_chars: "Classic full-width prose: target 95-108 chars per rendered line; compose 3-4 well-filled lines, not a short trailing fragment."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  impact_bullet:
+    desired_chars: "Classic unheaded impact bullet: target 95-104 chars for a single line, or 186-207 chars for two balanced lines."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 3
+    severity: fail
+  skill_summary:
+    desired_chars: "Classic skill-group lede continues inline after the heading in normal style; target one compact rendered line, normally 97-106 chars including the heading prefix."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 1
+    severity: fail
+  skill_item:
+    desired_chars: "Classic skill sub-bullet under a bold skill-group heading; target one rendered line, normally 96-104 chars, never wrapping unless source wording cannot be shortened without losing meaning."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 1
+    severity: fail
+  additional_skills_summary:
+    desired_chars: "Classic full-width skills breadth paragraph: target 95-108 chars per line and avoid a short final line."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  experience_summary:
+    desired_chars: "Classic full-width experience summary: target 96-109 chars per line; expand/trim so the final rendered line is substantive."
+    wrapped_last_line_min_fill_pct: 75
+    severity: fail
+  experience_bullet:
+    desired_chars: "Classic experience bullet: target 97-106 chars for one line, or 189-211 chars for two balanced lines."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 75
+    max_lines: 3
+    severity: fail
+  earlier_one_liner:
+    desired_chars: "Classic compact experience mention: the role/company/date row is rendered separately as a heading, so this unit is the SUMMARY PROSE ONLY — full-width, same column as experience_summary. Target one well-filled line, allowing two balanced lines only for distinct target-fit proof. Measured capacity ~107.7 chars per rendered line: target 99-108 chars on one line or 193-215 chars across two balanced lines."
+    single_line_min_fill_pct: 90
+    wrapped_last_line_min_fill_pct: 90
+    max_lines: 2
+    severity: fail
+  credential:
+    desired_chars: "Classic credential bullet: keep each education/certification item to one rendered line; shorten long certification names rather than wrapping. Measured capacity ~107.8 chars per rendered line: target 97-106 chars on the single rendered line."
+    max_lines: 1
+    severity: fail
+
+claims_referenced:
+  - standard-section-headings
+  - ats-standard-experience-keyword
+  - grouped-skills
+  - recruiter-scan-discipline
+  - action-verbs-natural-language
+  - evidence-backed-competencies

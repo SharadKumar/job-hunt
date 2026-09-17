@@ -1,0 +1,135 @@
+{
+  "frontmatter": {
+    "name": "Alex Morgan",
+    "email": "alex.morgan@example.com",
+    "phone": "+61 400 000 000",
+    "citizenship": "Australian Citizen",
+    "location": {
+      "city": "Melbourne",
+      "country": "AU"
+    },
+    "linkedin_url": "https://www.linkedin.com/in/alex-morgan-example"
+  },
+  "summary": "Senior technology operator with 15 years of experience turning complex service, data, and platform programs into reliable business outcomes. Trusted by executive sponsors to simplify ambiguous problems, shape practical roadmaps, and lead cross-functional teams through regulated change.",
+  "highlights": [
+    "Led a $24m service transformation across 18 business units, reducing critical incident volume by 38 percent while improving audit traceability.",
+    "Built a product operating model for a 70-person platform group, cutting quarterly planning cycle time from six weeks to two.",
+    "Recovered a delayed customer data migration by resetting scope, governance, and release sequencing, then landing the first production release within 11 weeks."
+  ],
+  "skills": [
+    {
+      "name": "Operating Model and Strategy",
+      "bullets": [
+        "Technology strategy, capability mapping, executive roadmaps, investment cases, portfolio governance",
+        "Product operating models, platform ownership, service design, change adoption",
+        "Executive workshops, investment framing, dependency mapping, benefits tracking",
+        "Governance cadence, decision rights, operating rhythm, portfolio health reporting"
+      ]
+    },
+    {
+      "name": "Delivery Leadership",
+      "bullets": [
+        "Program recovery, vendor coordination, risk management, release governance, stakeholder cadence",
+        "Agile and hybrid delivery across cloud, data, service management, and digital channels",
+        "Release planning, business readiness, cutover governance, defect triage",
+        "Delivery coaching, supplier accountability, cross-functional team leadership"
+      ]
+    },
+    {
+      "name": "Architecture and Platforms",
+      "bullets": [
+        "Enterprise integration, identity and access, API platforms, data migration, observability",
+        "AWS, Azure, Salesforce, ServiceNow, Snowflake, MuleSoft, Power BI",
+        "Data migration, workflow automation, reporting platforms, service management",
+        "API onboarding, platform standards, resilience patterns, operational telemetry"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "placement": "feature",
+      "title": "Director, Technology Transformation",
+      "company": "Northbank Health Group",
+      "location": "Melbourne",
+      "start": "2022-03",
+      "end": "current",
+      "summary": "Accountable for the enterprise technology transformation portfolio across clinical operations, shared services, data platforms, and customer channels.",
+      "bullets": [
+        "Reset a fragmented transformation portfolio into six value streams with clear executive owners, measurable outcomes, and fortnightly risk decisions.",
+        "Stabilised a service platform rollout by simplifying the release plan, clarifying data ownership, and removing duplicate configuration work.",
+        "Built a reusable migration playbook covering cutover readiness, exception handling, and business verification for 4.2m customer records.",
+        "Established a portfolio health dashboard that connected delivery status, spend, benefits, and operational risk into one executive view.",
+        "Reduced external delivery spend by 17 percent through clearer work packages, acceptance criteria, and supplier performance reviews."
+      ]
+    },
+    {
+      "placement": "feature",
+      "title": "Head of Platform Delivery",
+      "company": "CivicPay",
+      "location": "Sydney",
+      "start": "2018-07",
+      "end": "2022-02",
+      "summary": "Led platform delivery for a payments and identity SaaS provider serving councils, utilities, and member organisations.",
+      "bullets": [
+        "Created a platform roadmap that balanced product growth, operational resilience, customer commitments, and compliance work.",
+        "Moved release governance from project-by-project escalation to a predictable monthly release train with automated readiness checks.",
+        "Partnered with architecture and security leads to retire legacy integration patterns and standardise API onboarding for new customers.",
+        "Improved implementation margin by 12 points by introducing reusable discovery artefacts, cutover templates, and configuration standards."
+      ]
+    },
+    {
+      "placement": "feature",
+      "title": "Senior Program Manager",
+      "company": "Harbour Retail Group",
+      "location": "Brisbane",
+      "start": "2014-05",
+      "end": "2018-06",
+      "summary": "Owned omnichannel and supply-chain technology programs spanning stores, distribution centres, digital product, and finance operations.",
+      "bullets": [
+        "Recovered a stalled order-management implementation by re-baselining scope, separating must-have release outcomes from backlog demand, and rebuilding supplier accountability.",
+        "Delivered store inventory visibility to 240 sites, improving online fulfilment availability and reducing manual reconciliation effort.",
+        "Introduced business-readiness checkpoints that cut post-release priority defects by 31 percent across three major deployments."
+      ]
+    },
+    {
+      "placement": "feature",
+      "title": "Technology Delivery Lead",
+      "company": "Bluefield Logistics",
+      "location": "Perth",
+      "start": "2010-02",
+      "end": "2014-04",
+      "summary": "Managed integration, reporting, and workflow systems for transport scheduling and warehouse operations.",
+      "bullets": [
+        "Delivered a transport scheduling workflow used by 900 drivers and operations staff across three states.",
+        "Coordinated vendors, analysts, testers, and operations teams through staged releases with minimal disruption to dispatch.",
+        "Built benefits reporting that helped executives prioritise automation opportunities with measurable service impact."
+      ]
+    },
+    {
+      "placement": "mention",
+      "title": "Business Systems Analyst",
+      "company": "Metro Mutual",
+      "location": "Adelaide",
+      "start": "2007-01",
+      "end": "2010-01",
+      "one_liner": "Analysed claims operations workflows, wrote requirements, and supported early CRM and reporting implementations."
+    },
+    {
+      "placement": "mention",
+      "title": "Application Support Consultant",
+      "company": "Kite Systems",
+      "location": "Melbourne",
+      "start": "2004-02",
+      "end": "2006-12",
+      "one_liner": "Provided customer-facing application support, release testing, and implementation assistance for mid-market business systems."
+    }
+  ],
+  "dropped_experiences": [
+    {
+      "id": "university-tutor",
+      "reason": "Early-career teaching work is credible but not relevant enough for a senior technology operator resume."
+    }
+  ],
+  "resumeId": "sample-senior-operator",
+  "resumeTag": "sample"
+}
