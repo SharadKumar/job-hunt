@@ -186,6 +186,49 @@ test("app.js parses", () => {
   }
 });
 
+test("the type is the serif stack, not the system UI font", () => {
+  // One family for everything, headings and numbers included, so the page reads
+  // as a document rather than as a dashboard.
+  assert.match(css, /font-family:\s*Charter,/, "app.css must lead the font stack with Charter");
+  assert.match(css, /"Bitstream Charter"/, "app.css must fall back to Bitstream Charter");
+  assert.match(css, /"Iowan Old Style"/, "app.css must fall back to Iowan Old Style");
+  assert.match(css, /Georgia,\s*serif/, "app.css must end the stack at Georgia and serif");
+  assert.match(css, /font-variant-numeric:\s*tabular-nums/, "figures must be tabular so scores line up");
+});
+
+test("the five queue tabs are named as the person names them", () => {
+  const labels = ["Needs you", "Waiting", "Shortlisted", "Parked", "Sent"];
+  let at = -1;
+  for (const label of labels) {
+    const found = js.indexOf(`"${label}"`);
+    assert.ok(found > -1, `app.js is missing the queue tab label: ${label}`);
+    assert.ok(found > at, `queue tab "${label}" is out of order`);
+    at = found;
+  }
+  // The labels must still map onto the pipeline statuses the API filters by.
+  for (const status of ["manual_action_needed", "awaiting_approval", "shortlisted", "parked", "submitted"]) {
+    assert.ok(js.includes(status), `app.js does not map a tab onto the status: ${status}`);
+  }
+});
+
+test("the row detail carries the gate strip", () => {
+  assert.match(js, /gate-strip/, "app.js must build the gate strip on the row detail");
+  assert.match(css, /\.gate-strip\s*\{/, "app.css must style the gate strip");
+  assert.match(css, /\.gate\.fail\s*\{/, "a failed gate must be styled apart from a passed one");
+  for (const stamp of ["Critic blocked", "Critic pass", "not recorded", "Gate waiting", "Gate passed"]) {
+    assert.ok(js.includes(stamp), `the gate strip never says: ${stamp}`);
+  }
+});
+
+test("the stylesheet keeps to the flat, unshouted house style", () => {
+  // Prose in a comment must not satisfy or break the check, so read the rules only.
+  const css = read(CSS_PATH).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/box-shadow/i.test(css), "app.css must not use box-shadow: surfaces are flat");
+  assert.ok(!/text-transform:\s*uppercase/i.test(css), "app.css must not set uppercase: no shouted labels");
+  assert.ok(!/letter-spacing/i.test(css), "app.css must not set letter-spacing: no tracked-out labels");
+  assert.match(css, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
+});
+
 test("app.js stays small enough to read in one sitting", () => {
   const lines = js.split("\n").length;
   assert.ok(lines <= 900, `app.js is ${lines} lines; the budget is 900`);

@@ -11,15 +11,30 @@
   </head>
   <body>
     <!--
-      Local harness UI. No build step, no framework, no CDN: every asset here is
-      served from the same local origin as the API, so the page works offline and
-      nothing about the person's pipeline leaves the machine.
+      Local harness UI. No build step, no framework, no CDN, no web font: every
+      asset here is served from the same local origin as the API, so the page
+      works offline and nothing about the person's pipeline leaves the machine.
     -->
-    <header class="app-header">
-      <div class="header-top">
+    <header class="masthead">
+      <div class="headline">
         <a class="brand" href="#/queue">Harness</a>
-        <div class="header-flags" id="flags" aria-live="polite"></div>
-        <button type="button" class="ghost" id="refresh" title="Reload from the API">Refresh</button>
+        <p class="standing" id="standing" aria-live="polite"></p>
+        <details class="token" id="token-box">
+          <summary>API token</summary>
+          <div class="token-row">
+            <label for="token-input">Stored in this browser only.</label>
+            <input
+              type="password"
+              id="token-input"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Paste once"
+            />
+            <button type="button" id="token-save">Save</button>
+            <button type="button" class="quiet" id="token-clear">Clear</button>
+            <span class="state" id="token-state"></span>
+          </div>
+        </details>
       </div>
 
       <nav class="nav" aria-label="Views">
@@ -28,25 +43,6 @@
         <a href="#/today" data-nav="today">Today</a>
         <a href="#/digest" data-nav="digest">Digest</a>
       </nav>
-
-      <div class="counts" id="counts" aria-label="Pipeline counts"></div>
-
-      <details class="token-box" id="token-box">
-        <summary>Token</summary>
-        <div class="token-row">
-          <label for="token-input">API token (stored in this browser only)</label>
-          <input
-            type="password"
-            id="token-input"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="paste once"
-          />
-          <button type="button" id="token-save">Save</button>
-          <button type="button" class="ghost" id="token-clear">Clear</button>
-          <span class="muted" id="token-state"></span>
-        </div>
-      </details>
     </header>
 
     <main id="view" class="view" tabindex="-1">
