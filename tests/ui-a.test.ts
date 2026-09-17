@@ -347,14 +347,43 @@ await test("health reports the last run, the next one and the logins", async () 
   assert.equal(health.notify_url_set, false);
 });
 
-await test("a run with no finish line reads as a run that did not finish", async () => {
+/**
+ * A log with a start line and no finish line, whose start stamp is `minutes`
+ * ago and whose mtime is `touchedMinutes` ago. The two are separate because
+ * that is the whole test: the same bytes are a run in progress or a run that
+ * was killed, and only the mtime says which.
+ */
+function runningLog(dir: string, minutes: number, touchedMinutes: number): string {
+  const startedAt = new Date(Date.now() - minutes * 60_000);
+  const file = path.join(dir, "2026-09-18.log");
+  fs.writeFileSync(file, fs.readFileSync(path.join(FIXTURES, "running-run.log"), "utf8")
+    .replace("{{STARTED_AT}}", startedAt.toISOString()));
+  const touched = new Date(Date.now() - touchedMinutes * 60_000);
+  fs.utimesSync(file, touched, touched);
+  return file;
+}
+
+await test("a log still being written to is a run in progress, not a run that failed", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-a-log-"));
-  fs.writeFileSync(path.join(dir, "2026-09-18.log"), "=== 2026-09-18T07:00:05+10:00 starting daily run via claude ===\n");
+  runningLog(dir, 24, 0);
   const last = await screening.readLastRun(dir);
-  assert.equal(last?.exit_code, null);
-  assert.equal(last?.running, true);
+  assert.equal(last?.running, true, "a fresh log with no finish line is the run that is going now");
+  assert.equal(last?.exit_code, null, "a run still going has no exit code to report");
+  assert.equal(last?.finished_at, null, "and no finish time, whatever the file mtime says");
   assert.equal(last?.date, "2026-09-18");
+  assert.ok(
+    last!.duration_seconds! >= 24 * 60 && last!.duration_seconds! < 25 * 60,
+    `the duration is how long it has been going so far, got ${last?.duration_seconds}`,
+  );
   assert.equal(await screening.readLastRun(path.join(dir, "nothing-here")), null, "no log dir is no last run");
+});
+
+await test("a log nobody has written to for hours is a run that was killed", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-a-stale-"));
+  runningLog(dir, 260, 240);
+  const last = await screening.readLastRun(dir);
+  assert.equal(last?.running, false, "four hours untouched is not a run in progress");
+  assert.equal(last?.exit_code, null, "it never wrote an exit code");
 });
 
 await test("no plist installed is said out loud rather than guessed at", async () => {

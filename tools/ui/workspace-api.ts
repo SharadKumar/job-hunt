@@ -61,6 +61,18 @@ const MAX_RUN_LIMIT = 365;
 /** How much of each end of a launchd log is read. The middle is a transcript. */
 const LOG_EDGE_BYTES = 8192;
 
+/**
+ * How long a log with no finish line is still read as a run in progress.
+ *
+ * A run brackets its log with a start line and a finish line, so a log with
+ * only the start line is either a run still going or a run that was killed
+ * before it could write the second bracket. The file's own mtime separates
+ * them: the run writes to it constantly, so a log touched in the last three
+ * hours is live and an older one is a corpse. Three hours is comfortably more
+ * than the wrapper's own timeout, so a slow run is never called dead.
+ */
+const RUN_LIVE_MS = 3 * 60 * 60 * 1000;
+
 /** A standing rule is one or two sentences; anything longer is a paste error. */
 const RULE_MAX = 1200;
 
@@ -117,10 +129,18 @@ export type RunSummary = {
   sent: number | null;
   /** The manual backlog the run left behind, same table. */
   blocked: number | null;
+  /** null while a run is in progress, and null for a run that was killed. */
   exit_code: number | null;
+  /** The wall time of a finished run, or how long a running one has been going. */
   duration_s: number | null;
   summary_path: string | null;
   has_summary: boolean;
+  /** Whether the launchd log exists at all, which is not the same as a summary. */
+  has_log: boolean;
+  /** A run whose log is still being written to, so nothing about it is final. */
+  running: boolean;
+  /** Why there is no exit code, when the reason is worth saying. */
+  note: string | null;
 };
 
 export type RunDetail = {
@@ -178,7 +198,7 @@ export function runTally(markdown: string): { sent: number | null; blocked: numb
 }
 
 /** The first and last `LOG_EDGE_BYTES` of a file, without reading the middle. */
-async function readEnds(file: string): Promise<{ head: string; tail: string } | null> {
+async function readEnds(file: string): Promise<{ head: string; tail: string; mtime_ms: number } | null> {
   let handle;
   try {
     handle = await fsp.open(file, "r");
@@ -187,38 +207,56 @@ async function readEnds(file: string): Promise<{ head: string; tail: string } | 
     throw error;
   }
   try {
-    const { size } = await handle.stat();
+    const { size, mtimeMs } = await handle.stat();
     const headLength = Math.min(size, LOG_EDGE_BYTES);
     const headBuffer = Buffer.alloc(headLength);
     await handle.read(headBuffer, 0, headLength, 0);
     const tailLength = Math.min(size, LOG_EDGE_BYTES);
     const tailBuffer = Buffer.alloc(tailLength);
     await handle.read(tailBuffer, 0, tailLength, Math.max(0, size - tailLength));
-    return { head: headBuffer.toString("utf8"), tail: tailBuffer.toString("utf8") };
+    return { head: headBuffer.toString("utf8"), tail: tailBuffer.toString("utf8"), mtime_ms: mtimeMs };
   } finally {
     await handle.close();
   }
 }
 
 /**
- * The exit code and the wall time of one run, from the two lines scripts/daily.sh
- * brackets the log with:
+ * What one run did, from the two lines scripts/daily.sh brackets the log with:
  *
  *   === 2026-09-16T07:00:05+10:00 starting daily run via claude ===
  *   === 2026-09-16T08:13:26+10:00 finished daily run (exit 0) ===
+ *
+ * Both lines present is a finished run: the exit code is its own, and the wall
+ * time is the gap. Only the start line is ambiguous, and `mtime_ms` resolves
+ * it. A log still being written to is a run in progress, and its duration is
+ * how long it has been going so far, not a final time. An older one is a run
+ * that was killed, and it has no duration to report, only the note that it
+ * never wrote a finish line. Reporting the second as the first is what put
+ * "did not finish" on Home at 07:24 while the 07:00 run was still working.
  */
-export function parseRunLog(head: string, tail: string): { exit_code: number | null; duration_s: number | null } {
+export function parseRunLog(
+  head: string,
+  tail: string,
+  opts: { mtime_ms?: number; now?: number } = {},
+): { exit_code: number | null; duration_s: number | null; running: boolean; note: string | null } {
   const started = /===\s*(\S+)\s+starting daily run/.exec(head);
   const finishes = [...tail.matchAll(/===\s*(\S+)\s+finished daily run \(exit (-?\d+)\)/g)];
   const last = finishes.length ? finishes[finishes.length - 1] : null;
-  const exit_code = last ? Number(last[2]) : null;
-  let duration_s: number | null = null;
-  if (started && last) {
-    const from = new Date(started[1]).getTime();
+  const from = started ? new Date(started[1]).getTime() : Number.NaN;
+
+  if (last) {
     const to = new Date(last[1]).getTime();
-    if (Number.isFinite(from) && Number.isFinite(to) && to >= from) duration_s = Math.round((to - from) / 1000);
+    const measured = Number.isFinite(from) && Number.isFinite(to) && to >= from ? Math.round((to - from) / 1000) : null;
+    return { exit_code: Number(last[2]), duration_s: measured, running: false, note: null };
   }
-  return { exit_code, duration_s };
+
+  const now = opts.now ?? Date.now();
+  const touched = opts.mtime_ms ?? now;
+  if (started && now - touched <= RUN_LIVE_MS) {
+    const soFar = Number.isFinite(from) ? Math.max(0, Math.round((now - from) / 1000)) : null;
+    return { exit_code: null, duration_s: soFar, running: true, note: null };
+  }
+  return { exit_code: null, duration_s: null, running: false, note: "no finish line" };
 }
 
 function parseLimit(value: string | number | null | undefined, fallback: number): number {
@@ -253,7 +291,9 @@ export async function getRuns(
     const markdown = await readTextIfExists(summaryFile);
     const tally = markdown ? runTally(markdown) : { sent: null, blocked: null };
     const ends = await readEnds(path.join(launchdDir, `${date}.log`));
-    const fromLog = ends ? parseRunLog(ends.head, ends.tail) : { exit_code: null, duration_s: null };
+    const fromLog = ends
+      ? parseRunLog(ends.head, ends.tail, { mtime_ms: ends.mtime_ms })
+      : { exit_code: null, duration_s: null, running: false, note: null };
     runs.push({
       date,
       sent: tally.sent,
@@ -262,6 +302,9 @@ export async function getRuns(
       duration_s: fromLog.duration_s,
       summary_path: markdown === null ? null : relativeToRepo(summaryFile),
       has_summary: markdown !== null,
+      has_log: ends !== null,
+      running: fromLog.running,
+      note: fromLog.note,
     });
   }
   return { runs, total: ordered.length };

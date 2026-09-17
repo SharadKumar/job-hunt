@@ -146,6 +146,60 @@ await test("a run detail for a day with nothing is empty, not an error", async (
   assert.deepEqual((res.body as any).letters_sent, []);
 });
 
+/**
+ * The running fixture on disk for one date: a start line whose stamp is
+ * `minutes` ago, no finish line, and an mtime `touchedMinutes` ago. The same
+ * bytes are a run in progress or a run that was killed, and the mtime is the
+ * only thing that says which, so the test sets it rather than inheriting it.
+ */
+function placeRunningLog(date: string, minutes: number, touchedMinutes: number): string {
+  const file = path.join(root, "state/journal/launchd", `${date}.log`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const startedAt = new Date(Date.now() - minutes * 60_000);
+  fs.writeFileSync(file, fs.readFileSync(path.join(FIXTURES, "launchd-running.log"), "utf8")
+    .replace("{{STARTED_AT}}", startedAt.toISOString()));
+  const touched = new Date(Date.now() - touchedMinutes * 60_000);
+  fs.utimesSync(file, touched, touched);
+  return file;
+}
+
+await test("a log still being written to is a run in progress, with the time so far", async () => {
+  const file = placeRunningLog("2026-09-18", 24, 0);
+  const res = await call("GET", "/api/runs");
+  const live = (res.body as any).runs.find((r: any) => r.date === "2026-09-18");
+  assert.equal(live.running, true, "a fresh log with no finish line is the run going right now");
+  assert.equal(live.exit_code, null, "a run still going has no exit code");
+  assert.equal(live.note, null, "and nothing has gone wrong to note");
+  assert.equal(live.has_log, true, "the log is there, so has_log is true whatever the summary says");
+  assert.equal(live.has_summary, false, "the summary is written at the end, so it is not there yet");
+  assert.ok(
+    live.duration_s >= 24 * 60 && live.duration_s < 25 * 60,
+    `the duration is the time so far, not a final time, got ${live.duration_s}`,
+  );
+  fs.rmSync(file);
+});
+
+await test("a log nobody has written to for hours is a run that was killed", async () => {
+  const file = placeRunningLog("2026-09-18", 260, 240);
+  const res = await call("GET", "/api/runs");
+  const dead = (res.body as any).runs.find((r: any) => r.date === "2026-09-18");
+  assert.equal(dead.running, false, "four hours untouched is not a run in progress");
+  assert.equal(dead.exit_code, null);
+  assert.equal(dead.note, "no finish line", "the reason there is no exit code is said out loud");
+  assert.equal(dead.duration_s, null, "a killed run has no wall time to claim");
+  assert.equal(dead.has_log, true);
+  fs.rmSync(file);
+});
+
+await test("a finished run is never mistaken for a running one", async () => {
+  const res = await call("GET", "/api/runs");
+  for (const run of (res.body as any).runs) {
+    assert.equal(run.running, false, `${run.date} finished, so it must not read as running`);
+    assert.equal(run.has_log, true, "both fixture days have a launchd log");
+    assert.equal(run.note, null);
+  }
+});
+
 await test("a bad date and a bad limit are refused", async () => {
   const badDate = await call("GET", "/api/runs/17-09-2026");
   assert.equal(badDate.status, 400);

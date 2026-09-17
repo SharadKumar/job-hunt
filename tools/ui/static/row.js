@@ -212,8 +212,11 @@ function sendsThrough(row) {
 function decisionFields() {
   const reason = h("input", { type: "text", id: "decide-reason", placeholder: "Optional" });
   const notes = h("textarea", { id: "decide-notes", placeholder: "Optional" });
+  // The aside belongs on the label's own line. A `.field` is a grid, so a
+  // second span stacked "goes into the history" under "Reason" and made a
+  // four-word hint look like a second field.
   const labelled = (control, text, help) => h("label", { class: "field", for: control.id },
-    h("span", { class: "field-label", text }), h("span", { class: "field-help grey small", text: help }), control);
+    h("span", { class: "field-label", text: help ? `${text} (${help})` : text }), control);
   const notesField = labelled(notes, "Notes for the next run", "edits to the letter or package");
   notesField.hidden = true;
   return {
