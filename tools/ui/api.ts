@@ -19,6 +19,9 @@
  * handler never returns a success shape for a failed operation.
  */
 
+import * as healthExt from "./health-api.ts";
+import * as rowsExt from "./rows-ext-api.ts";
+import * as workspaceExt from "./workspace-api.ts";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 
@@ -563,6 +566,11 @@ export type ApiResult = {
  * server layer only has to write the result out.
  */
 export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<ApiResult> {
+  // Extension modules (one per work package) get first refusal; see *-api.ts.
+  for (const ext of [healthExt, rowsExt, workspaceExt]) {
+    const hit = await ext.handle(req, ctx).catch((e: unknown) => (e instanceof ApiError ? { status: e.status, body: { error: e.message } } : { status: 500, body: { error: String((e as Error)?.message ?? e) } }));
+    if (hit) return hit;
+  }
   const query = req.query ?? new URLSearchParams();
   const method = req.method.toUpperCase();
   const pathname = req.pathname.replace(/\/+$/, "") || "/";
