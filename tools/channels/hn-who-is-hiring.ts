@@ -20,7 +20,7 @@
 import YAML from "yaml";
 import { promises as fs } from "node:fs";
 import { fetch } from "undici";
-import { upsert, opportunityIdFor } from "../pipeline.ts";
+import { upsertMany, opportunityIdFor } from "../pipeline.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
 const ALGOLIA = "https://hn.algolia.com/api/v1";
@@ -145,11 +145,8 @@ async function main() {
   const roles = await hnWhoIsHiring.search(cfg);
   console.error(`[hn-who-is-hiring] matched ${roles.length} roles`);
   if (upsertFlag) {
-    for (const r of roles) {
-      const id = opportunityIdFor(r.channel, r.url);
-      const partial: any = { ...r, id, status: "discovered" };
-      await upsert(partial);
-    }
+    // One transaction for the whole thread, not one pipeline rewrite per post.
+    await upsertMany(roles.map((r) => ({ ...r, id: opportunityIdFor(r.channel, r.url), status: "discovered" as const })));
     console.error(`[hn-who-is-hiring] upserted ${roles.length} roles`);
   } else {
     console.log(JSON.stringify(roles, null, 2));

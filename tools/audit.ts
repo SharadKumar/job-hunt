@@ -111,27 +111,46 @@ export function fingerprintFor(company: string, title: string): string {
 }
 
 export async function log(event: Omit<AuditEvent, "ts"> & { ts?: string }): Promise<void> {
+  await logMany([event]);
+}
+
+/** Events that create a "we acted on this role" trail and so feed the dedup index. */
+const TRAILING_EVENTS: AuditEventType[] = ["discovered", "drafted", "approved", "submitted", "manual_action_completed", "response_received", "interview_scheduled", "interview_completed", "offered"];
+
+/**
+ * Batched twin of log(): one append for the log, one rewrite of the dedup
+ * index, one append for contacts. A channel hunt logs hundreds of `discovered`
+ * events at once; rewriting the whole dedup index per event made that
+ * quadratic and dominated the ingest.
+ */
+export async function logMany(events: (Omit<AuditEvent, "ts"> & { ts?: string })[]): Promise<void> {
+  if (!events.length) return;
   await fs.mkdir(AUDIT_DIR, { recursive: true });
-  const e: AuditEvent = { ts: event.ts ?? new Date().toISOString(), ...event };
-  await fs.appendFile(LOG_PATH, JSON.stringify(e) + "\n");
-  // Maintain dedup index for events that create a "we acted on this role" trail
-  const trailingEvents: AuditEventType[] = ["discovered", "drafted", "approved", "submitted", "manual_action_completed", "response_received", "interview_scheduled", "interview_completed", "offered"];
-  if (trailingEvents.includes(e.event_type) && e.role_id) {
+  const stamped: AuditEvent[] = events.map((event) => ({ ts: event.ts ?? new Date().toISOString(), ...event }));
+  await fs.appendFile(LOG_PATH, stamped.map((e) => JSON.stringify(e)).join("\n") + "\n");
+
+  let idx: Awaited<ReturnType<typeof loadDedupIndex>> | null = null;
+  for (const e of stamped) {
+    if (!TRAILING_EVENTS.includes(e.event_type) || !e.role_id) continue;
     const company = (e.details?.company as string) ?? (e.contact?.company as string) ?? "";
     const title = (e.details?.title as string) ?? "";
-    if (company && title) {
-      const fp = fingerprintFor(company, title);
-      const idx = await loadDedupIndex();
-      idx[fp] = idx[fp] ?? [];
-      // Only append if not already recorded for this role+event combination
-      if (!idx[fp].some((entry) => entry.role_id === e.role_id && entry.status === e.event_type)) {
-        idx[fp].push({ role_id: e.role_id, ts: e.ts, status: e.event_type });
-      }
-      await fs.writeFile(DEDUP_PATH, JSON.stringify(idx, null, 2));
+    if (!company || !title) continue;
+    idx ??= await loadDedupIndex();
+    const fp = fingerprintFor(company, title);
+    idx[fp] = idx[fp] ?? [];
+    // Only append if not already recorded for this role+event combination
+    if (!idx[fp].some((entry) => entry.role_id === e.role_id && entry.status === e.event_type)) {
+      idx[fp].push({ role_id: e.role_id, ts: e.ts, status: e.event_type });
     }
   }
-  if (e.contact) {
-    await fs.appendFile(CONTACTS_PATH, JSON.stringify({ ts: e.ts, role_id: e.role_id, contact: e.contact, event_type: e.event_type, actor: e.actor }) + "\n");
+  if (idx) await fs.writeFile(DEDUP_PATH, JSON.stringify(idx, null, 2));
+
+  const contacts = stamped.filter((e) => e.contact);
+  if (contacts.length) {
+    await fs.appendFile(
+      CONTACTS_PATH,
+      contacts.map((e) => JSON.stringify({ ts: e.ts, role_id: e.role_id, contact: e.contact, event_type: e.event_type, actor: e.actor })).join("\n") + "\n",
+    );
   }
 }
 

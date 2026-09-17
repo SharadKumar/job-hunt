@@ -1,0 +1,56 @@
+[
+  {
+    "id": "seek-aaaaaaaaaaaa",
+    "channel": "seek",
+    "title": "Solution Architect",
+    "company": "Fictional Utilities Co",
+    "location": "Sydney NSW",
+    "url": "https://example.test/jobs/1",
+    "description": "Invented job ad used only by the pipeline store tests. Owns the target-state architecture for a billing platform replacement.",
+    "postedAt": "2026-09-01T00:00:00.000Z",
+    "workArrangement": "hybrid",
+    "applyMethod": "quick_apply",
+    "status": "shortlisted",
+    "score": 71,
+    "history": [
+      { "at": "2026-09-01T00:00:00.000Z", "from": null, "to": "discovered" },
+      { "at": "2026-09-02T00:00:00.000Z", "from": "discovered", "to": "shortlisted", "reason": "score 71" }
+    ]
+  },
+  {
+    "id": "linkedin_jobs-bbbbbbbbbbbb",
+    "channel": "linkedin_jobs",
+    "title": "Integration Architect",
+    "company": "Placeholder Freight Group",
+    "location": "Remote, Australia",
+    "url": "https://example.test/jobs/2",
+    "description": "Invented job ad used only by the pipeline store tests. Integration patterns across a fleet-management estate.",
+    "status": "submitted",
+    "score": 64,
+    "submittedAt": "2026-09-10T00:00:00.000Z",
+    "userSaved": true,
+    "history": [
+      { "at": "2026-09-05T00:00:00.000Z", "from": null, "to": "discovered" },
+      { "at": "2026-09-06T00:00:00.000Z", "from": "discovered", "to": "shortlisted" },
+      { "at": "2026-09-07T00:00:00.000Z", "from": "shortlisted", "to": "drafted" },
+      { "at": "2026-09-08T00:00:00.000Z", "from": "drafted", "to": "awaiting_approval" },
+      { "at": "2026-09-09T00:00:00.000Z", "from": "awaiting_approval", "to": "approved" },
+      { "at": "2026-09-10T00:00:00.000Z", "from": "approved", "to": "submitted", "reason": "quick apply" }
+    ]
+  },
+  {
+    "id": "hn_who_is_hiring-cccccccccccc",
+    "channel": "hn_who_is_hiring",
+    "title": "Platform Engineering Lead",
+    "company": "Nonexistent Labs",
+    "url": "https://example.test/jobs/3",
+    "description": "Invented job ad used only by the pipeline store tests. Platform team leadership, mostly remote.",
+    "status": "parked",
+    "score": 48,
+    "parkedReason": "interstate onsite",
+    "history": [
+      { "at": "2026-09-03T00:00:00.000Z", "from": null, "to": "discovered" },
+      { "at": "2026-09-04T00:00:00.000Z", "from": "discovered", "to": "parked", "reason": "interstate onsite" }
+    ]
+  }
+]

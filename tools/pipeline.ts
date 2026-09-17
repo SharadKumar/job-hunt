@@ -1,25 +1,36 @@
 #!/usr/bin/env tsx
 /**
- * pipeline.ts — CRUD + status transitions for state/pipeline/opportunities.json.
+ * pipeline.ts — CRUD + status transitions for the opportunity pipeline.
  *
  * Single source of truth for every opportunity's status, score, draft path, and
  * submission outcome. Anything mutating opportunities MUST go through this module
  * so we have one place enforcing invariants (status transitions, dedup,
  * required fields per status).
  *
+ * Rows live in SQLite (state/pipeline/pipeline.db, see tools/pipeline-store.ts).
+ * The legacy 7 MB JSON array is imported once with `migrate` and can be
+ * reproduced at any time with `export`.
+ *
  * CLI:
- *   tsx tools/pipeline.ts get [--id <opportunity-id>] [--status <status>]
+ *   tsx tools/pipeline.ts get <opportunity-id> | get [--id <id>] [--status <status>]
+ *   tsx tools/pipeline.ts list [--status <s>] [--channel <c>] [--format json|table]
  *   tsx tools/pipeline.ts upsert --json '{...}'
  *   tsx tools/pipeline.ts set-status --id <opportunity-id> --status <status> [--reason "..."]
- *   tsx tools/pipeline.ts dedup
- *   tsx tools/pipeline.ts summary
+ *   tsx tools/pipeline.ts patch --id <id> --json '{...}' [--actor <a>] [--reason "..."]
+ *   tsx tools/pipeline.ts remove --id <id>[,<id>] [--reason "..."]
+ *   tsx tools/pipeline.ts summary [--brief] [--top]
+ *   tsx tools/pipeline.ts export [--out <path>]
+ *   tsx tools/pipeline.ts migrate [--from <path>] [--dry-run] [--force]
+ *
+ * `--db <path>` (or PIPELINE_DB) points any command at another database file;
+ * the digest and the JSON export follow it, so a dry run never touches state/.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { repoPath } from "./repo-root.ts";
-import { log as auditLog, checkDuplicate, type AuditEventType } from "./audit.ts";
+import { log as auditLog, logMany as auditLogMany, loadDedupIndex, fingerprintFor, type AuditEventType } from "./audit.ts";
+import { store, type ListFilter } from "./pipeline-store.ts";
 import type { Classification } from "./classify-jd.ts";
 
 // Map pipeline statuses to canonical audit event types so the audit log
@@ -109,9 +120,6 @@ export type Opportunity = {
   history: { at: string; from: PipelineStatus | null; to: PipelineStatus; reason?: string }[];
 };
 
-const PIPELINE_PATH = repoPath("state/pipeline/opportunities.json");
-const PIPELINE_MD_PATH = repoPath("state/pipeline/opportunities.md");
-
 const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   discovered: ["shortlisted", "parked", "awaiting_external", "rejected", "manual_action_needed"],
   awaiting_external: ["shortlisted", "rejected", "withdrawn"],
@@ -141,36 +149,55 @@ export function opportunityIdFor(channel: string, url: string): string {
   return `${channel}-${h}`;
 }
 
+// ---------------------------------------------------------------------------
+// Storage
+// ---------------------------------------------------------------------------
+
+/**
+ * The digest and the JSON export live beside whatever database is in use, so a
+ * test or a dry-run migrate pointed at a temp database can never write over the
+ * real state/pipeline/ artefacts.
+ */
+function sidecar(name: string): string {
+  return path.join(path.dirname(store().path), name);
+}
+
+/** Every row, fully hydrated (JD included). Kept for readers that want the lot. */
 export async function load(): Promise<Opportunity[]> {
-  try {
-    const txt = await fs.readFile(PIPELINE_PATH, "utf8");
-    return JSON.parse(txt) as Opportunity[];
-  } catch (e: any) {
-    if (e.code === "ENOENT") return [];
-    throw e;
-  }
+  return store().list({ withDescription: true });
+}
+
+/** One row by id, or null. */
+export async function get(id: string): Promise<Opportunity | null> {
+  return store().get(id);
+}
+
+/** Filtered rows. `withDescription` is off by default: the JD is the bulk of the data. */
+export async function list(filter: ListFilter = {}): Promise<Opportunity[]> {
+  return store().list(filter);
 }
 
 /**
- * Atomic write: stage to a sibling temp file, fsync-free rename into place.
- * `fs.rename` is atomic on POSIX, so a crash mid-write can never leave a
- * half-written or truncated target — readers see either the old file or the
- * complete new one. Used for both the JSON and its human digest so the pair
- * can't drift if the process dies between the two writes.
+ * @deprecated Legacy whole-array write, kept so callers that mutate a loaded
+ * array in place keep working. It replaces the stored set with `roles`
+ * (rows absent from the array are deleted, as the JSON file did). Migrate to
+ * `patch()` / `upsertMany()` / `remove()`, which touch only what changed.
  */
-async function writeAtomic(target: string, data: string): Promise<void> {
-  const tmp = `${target}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, data);
-  await fs.rename(tmp, target);
-}
-
 export async function save(roles: Opportunity[]): Promise<void> {
-  await fs.mkdir(path.dirname(PIPELINE_PATH), { recursive: true });
-  await writeAtomic(PIPELINE_PATH, JSON.stringify(roles, null, 2));
-  await writeHumanDigest(roles);
+  const s = store();
+  s.transaction(() => {
+    const keep = new Set(roles.map((r) => r.id));
+    const stale = s.ids().filter((id) => !keep.has(id));
+    if (stale.length) s.remove(stale);
+    const now = new Date().toISOString();
+    for (const role of roles) s.replaceRow(role, now);
+  });
+  await writeDigest();
 }
 
-async function writeHumanDigest(roles: Opportunity[]): Promise<void> {
+/** Rewrite state/pipeline/opportunities.md from the current rows. */
+export async function writeDigest(): Promise<void> {
+  const roles = store().list();
   const byStatus: Record<string, Opportunity[]> = {};
   for (const r of roles) (byStatus[r.status] ||= []).push(r);
   const lines: string[] = ["# Pipeline digest", ""];
@@ -192,80 +219,174 @@ async function writeHumanDigest(roles: Opportunity[]): Promise<void> {
     if (items.length > 10) lines.push(`- … and ${items.length - 10} more`);
     lines.push("");
   }
-  await writeAtomic(PIPELINE_MD_PATH, lines.join("\n"));
+  const target = sidecar("opportunities.md");
+  const tmp = `${target}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, lines.join("\n"));
+  await fs.rename(tmp, target);
 }
 
-export async function upsert(opportunity: Partial<Opportunity> & { channel: string; url: string; title: string; company: string }): Promise<Opportunity> {
-  const all = await load();
-  const id = opportunity.id ?? opportunityIdFor(opportunity.channel, opportunity.url);
-  const existing = all.find((r) => r.id === id);
+// ---------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------
+
+export type UpsertInput = Partial<Opportunity> & { channel: string; url: string; title: string; company: string };
+
+/** Duplicate lookup against the audit dedup index, from an index loaded once. */
+function duplicatesFrom(
+  idx: Record<string, { role_id: string; ts: string; status: string }[]>,
+  company: string,
+  title: string,
+  withinDays = 60,
+): { role_id: string; ts: string; status: string }[] {
+  const since = new Date(Date.now() - withinDays * 86_400_000).toISOString();
+  return (idx[fingerprintFor(company, title)] ?? []).filter((m) => m.ts >= since);
+}
+
+type PendingAudit = Parameters<typeof auditLog>[0];
+
+/**
+ * Insert or refresh one row. A refresh never rewinds status or history:
+ * channel searches always describe their results as `discovered`, and that is
+ * an insertion default, not permission to undo a workflow.
+ */
+export async function upsert(opportunity: UpsertInput): Promise<Opportunity> {
+  const [row] = await upsertMany([opportunity], { digest: true });
+  return row;
+}
+
+/** Insert or refresh many rows in one transaction, then write the digest once. */
+export async function upsertMany(rows: UpsertInput[], opts: { digest?: boolean } = {}): Promise<Opportunity[]> {
+  if (!rows.length) return [];
+  const s = store();
   const now = new Date().toISOString();
-  if (existing) {
-    // Channel refreshes always describe their results as `discovered`. Treat
-    // that as the insertion default, never as permission to rewind an existing
-    // workflow. Status transitions and history are owned by setStatus().
-    const { status: _status, history: _history, ...refreshFields } = opportunity;
-    Object.assign(existing, refreshFields, { id });
-    await save(all);
-    return existing;
-  }
+  const dedupIndex = await loadDedupIndex();
+  const events: PendingAudit[] = [];
 
-  // Cross-channel dedup check: have we already acted on this company+role-family
-  // in the last 60 days? If so, log a duplicate_detected event so the opportunity-finder
-  // can decide whether to merge or skip. We still insert here (so the user can
-  // see both occurrences), but the audit trail flags it.
-  const dup = await checkDuplicate(opportunity.company, opportunity.title, 60);
-  if (dup.duplicate) {
-    await auditLog({
-      event_type: "duplicate_detected",
-      role_id: id,
-      actor: "pipeline.upsert",
-      channel: opportunity.channel,
-      details: {
-        company: opportunity.company,
-        title: opportunity.title,
-        existing_role_ids: dup.matches.map((m) => m.role_id),
-        existing_statuses: dup.matches.map((m) => m.status),
-      },
-      provenance: { url: opportunity.url, channel: opportunity.channel },
-    });
-  }
+  const out = s.transaction(() => {
+    const result: Opportunity[] = [];
+    for (const opportunity of rows) {
+      const id = opportunity.id ?? opportunityIdFor(opportunity.channel, opportunity.url);
+      if (s.has(id)) {
+        const { status: _status, history: _history, ...refreshFields } = opportunity;
+        result.push(s.updateFields(id, refreshFields, now)!);
+        continue;
+      }
 
-  const next: Opportunity = {
-    ...opportunity,
-    id,
-    status: opportunity.status ?? "discovered",
-    history: [{ at: now, from: null, to: opportunity.status ?? "discovered" }],
-  } as Opportunity;
-  all.push(next);
-  await save(all);
+      // Cross-channel dedup check: have we already acted on this company +
+      // role family recently? We still insert (the user should see both), but
+      // the audit trail flags it for the opportunity-finder.
+      const dup = duplicatesFrom(dedupIndex, opportunity.company, opportunity.title, 60);
+      if (dup.length) {
+        events.push({
+          event_type: "duplicate_detected",
+          role_id: id,
+          actor: "pipeline.upsert",
+          channel: opportunity.channel,
+          details: {
+            company: opportunity.company,
+            title: opportunity.title,
+            existing_role_ids: dup.map((m) => m.role_id),
+            existing_statuses: dup.map((m) => m.status),
+          },
+          provenance: { url: opportunity.url, channel: opportunity.channel },
+        });
+      }
 
-  await auditLog({
-    event_type: STATUS_TO_EVENT[next.status] ?? "discovered",
-    role_id: id,
-    actor: "pipeline.upsert",
-    channel: opportunity.channel,
-    details: { company: opportunity.company, title: opportunity.title, score: next.score, duplicate_of: dup.matches.map((m) => m.role_id) },
-    provenance: { url: opportunity.url, channel: opportunity.channel },
+      const next: Opportunity = {
+        ...opportunity,
+        id,
+        status: opportunity.status ?? "discovered",
+        history: [{ at: now, from: null, to: opportunity.status ?? "discovered" }],
+      } as Opportunity;
+      s.insert(next, now);
+      result.push(next);
+
+      events.push({
+        event_type: STATUS_TO_EVENT[next.status] ?? "discovered",
+        role_id: id,
+        actor: "pipeline.upsert",
+        channel: opportunity.channel,
+        details: { company: opportunity.company, title: opportunity.title, score: next.score, duplicate_of: dup.map((m) => m.role_id) },
+        provenance: { url: opportunity.url, channel: opportunity.channel },
+      });
+    }
+    return result;
   });
 
-  return next;
+  await auditLogMany(events);
+  if (opts.digest !== false) await writeDigest();
+  return out;
 }
 
-export async function setStatus(id: string, next: PipelineStatus, reason?: string, extras?: { contact?: any; details?: Record<string, unknown>; actor?: string }): Promise<Opportunity> {
-  const all = await load();
-  const role = all.find((r) => r.id === id);
+/**
+ * Update fields on an existing row without moving it. Appends a `field_update`
+ * history entry so an enrichment pass is visible in the row's own trail.
+ */
+export async function patch(
+  id: string,
+  fields: Partial<Opportunity>,
+  actor: string,
+  reason?: string,
+): Promise<Opportunity> {
+  const [row] = await patchMany([{ id, fields, reason }], actor);
+  return row;
+}
+
+/** Many patches in one transaction (channel enrichment writes back this way). */
+export async function patchMany(
+  entries: { id: string; fields: Partial<Opportunity>; reason?: string }[],
+  actor: string,
+): Promise<Opportunity[]> {
+  if (!entries.length) return [];
+  const s = store();
+  const now = new Date().toISOString();
+  return s.transaction(() => {
+    const out: Opportunity[] = [];
+    for (const { id, fields, reason } of entries) {
+      const { status: _s, history: _h, ...rest } = fields;
+      const updated = s.updateFields(id, rest, now);
+      if (!updated) throw new Error(`role not found: ${id}`);
+      const names = Object.keys(rest).join(", ");
+      const entry = {
+        at: now,
+        from: updated.status,
+        to: updated.status,
+        reason: `field_update: ${names}${reason ? ` (${reason})` : ""}${actor ? ` [${actor}]` : ""}`,
+      };
+      s.appendHistory(id, entry);
+      updated.history = [...updated.history, entry];
+      out.push(updated);
+    }
+    return out;
+  });
+}
+
+export async function setStatus(
+  id: string,
+  next: PipelineStatus,
+  reason?: string,
+  extras?: { contact?: any; details?: Record<string, unknown>; actor?: string },
+): Promise<Opportunity> {
+  const s = store();
+  const role = s.get(id);
   if (!role) throw new Error(`role not found: ${id}`);
   const allowed = VALID_TRANSITIONS[role.status] ?? [];
   if (!allowed.includes(next)) {
     throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
   }
   const from = role.status;
-  role.history.push({ at: new Date().toISOString(), from, to: next, reason });
-  role.status = next;
-  if (next === "submitted" && !role.submittedAt) role.submittedAt = new Date().toISOString();
-  if (next === "responded" && !role.responseAt) role.responseAt = new Date().toISOString();
-  await save(all);
+  const at = new Date().toISOString();
+  const extraFields: Partial<Opportunity> = {};
+  if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
+  if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
+
+  const updated = s.transaction(() => {
+    const row = s.setStatusColumn(id, next, extraFields, at)!;
+    const entry = { at, from, to: next, ...(reason ? { reason } : {}) };
+    s.appendHistory(id, entry);
+    row.history = [...row.history, entry];
+    return row;
+  });
 
   await auditLog({
     event_type: STATUS_TO_EVENT[next] ?? "discovered",
@@ -277,55 +398,183 @@ export async function setStatus(id: string, next: PipelineStatus, reason?: strin
     provenance: { url: role.url, channel: role.channel },
   });
 
-  return role;
+  return updated;
 }
 
-export async function dedup(): Promise<{ removed: number }> {
-  const all = await load();
-  const byId = new Map<string, Opportunity>();
-  for (const r of all) {
-    if (!byId.has(r.id)) byId.set(r.id, r);
-    else {
-      // Keep the newer/longer history entry
-      const a = byId.get(r.id)!;
-      const merged = a.history.length >= r.history.length ? a : r;
-      byId.set(r.id, merged);
+/** Delete rows, leaving the removal in each row's history and in the audit log. */
+export async function remove(ids: string[], actor: string, reason: string): Promise<{ removed: number }> {
+  const s = store();
+  const removed: Opportunity[] = [];
+  const at = new Date().toISOString();
+  s.transaction(() => {
+    for (const id of ids) {
+      const role = s.get(id, { withDescription: false });
+      if (!role) continue;
+      s.appendHistory(id, { at, from: role.status, to: role.status, reason: `removed: ${reason} [${actor}]` });
+      s.remove([id]);
+      removed.push(role);
     }
+  });
+  for (const role of removed) {
+    await auditLog({
+      event_type: "withdrawn",
+      role_id: role.id,
+      actor,
+      channel: role.channel,
+      details: { company: role.company, title: role.title, status: role.status, reason, removed: true },
+      provenance: { url: role.url, channel: role.channel },
+    });
   }
-  const before = all.length;
-  await save([...byId.values()]);
-  return { removed: before - byId.size };
+  if (removed.length) await writeDigest();
+  return { removed: removed.length };
+}
+
+/**
+ * Duplicate ids are impossible now that `id` is the primary key; the command
+ * stays so scripts and docs that call it keep working.
+ */
+export async function dedup(): Promise<{ removed: number }> {
+  return { removed: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Import / export
+// ---------------------------------------------------------------------------
+
+/** Write the rows out as a compact JSON array (backup, or a hand-off format). */
+export async function exportJson(outPath?: string): Promise<{ out: string; rows: number }> {
+  const target = outPath ? path.resolve(outPath) : sidecar("opportunities.json");
+  const rows = store().list({ withDescription: true });
+  const tmp = `${target}.${process.pid}.tmp`;
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(tmp, JSON.stringify(rows));
+  await fs.rename(tmp, target);
+  return { out: target, rows: rows.length };
+}
+
+/**
+ * Import the legacy JSON array. Verifies the row count and that every id round
+ * trips before renaming the source aside. `--dry-run` fills the database but
+ * leaves the source file alone.
+ */
+export async function migrate(opts: { from?: string; dryRun?: boolean; force?: boolean } = {}): Promise<Record<string, unknown>> {
+  const source = opts.from ? path.resolve(opts.from) : sidecar("opportunities.json");
+  const s = store();
+  const existing = s.count();
+  if (existing > 0 && !opts.force) {
+    throw new Error(`pipeline database already holds ${existing} rows (${s.path}); pass --force to import anyway`);
+  }
+  const rows = JSON.parse(await fs.readFile(source, "utf8")) as Opportunity[];
+  if (!Array.isArray(rows)) throw new Error(`${source} is not a JSON array`);
+
+  const now = new Date().toISOString();
+  s.transaction(() => {
+    for (const row of rows) {
+      if (!row?.id) throw new Error(`row without an id in ${source}`);
+      s.replaceRow({ ...row, history: row.history ?? [] }, now);
+    }
+  });
+
+  const missing = rows.filter((r) => !s.has(r.id)).map((r) => r.id);
+  const expected = new Set(rows.map((r) => r.id)).size;
+  const actual = s.count();
+  if (missing.length) throw new Error(`migrate: ${missing.length} id(s) did not round-trip, e.g. ${missing.slice(0, 3).join(", ")}`);
+  if (actual < expected) throw new Error(`migrate: expected at least ${expected} rows in the database, found ${actual}`);
+
+  let renamedTo: string | null = null;
+  if (!opts.dryRun) {
+    renamedTo = path.join(path.dirname(source), `opportunities.migrated-${new Date().toISOString().slice(0, 10)}.json`);
+    await fs.rename(source, renamedTo);
+  }
+  await writeDigest();
+  return {
+    source,
+    db: s.path,
+    read: rows.length,
+    unique_ids: expected,
+    rows_in_db: actual,
+    by_status: s.countsByStatus(),
+    dry_run: !!opts.dryRun,
+    renamed_to: renamedTo,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+function briefCounts(): { line: string; top: string | null } {
+  const s = store();
+  const counts = s.countsByStatus();
+  const n = (k: string) => counts[k] ?? 0;
+  const line = `${s.count()} pipeline | ${n("shortlisted")} queue | ${n("parked")} parked | ${n("awaiting_approval")} awaiting | ${n("manual_action_needed")} manual | ${n("submitted")} submitted`;
+  const tray = s.list({ status: "awaiting_approval" }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+  return { line, top: tray ? `${tray.score} ${String(tray.title).slice(0, 40)} @ ${tray.company}` : null };
 }
 
 async function main() {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
   const args: Record<string, string> = {};
+  const positional: string[] = [];
   for (let i = 1; i < argv.length; i++) {
     if (argv[i].startsWith("--")) args[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
+    else positional.push(argv[i]);
   }
+  if (args.db) process.env.PIPELINE_DB = args.db;
+
   if (cmd === "get") {
-    const all = await load();
-    let out = all;
-    if (args.id) out = out.filter((r) => r.id === args.id);
+    const id = positional[0] ?? args.id;
+    if (id && !args.status) {
+      const row = await get(id);
+      if (!row) { console.error(`role not found: ${id}`); process.exit(1); }
+      console.log(JSON.stringify(row, null, 2));
+      return;
+    }
+    let out = await load();
+    if (id) out = out.filter((r) => r.id === id);
     if (args.status) out = out.filter((r) => r.status === args.status);
     console.log(JSON.stringify(out, null, 2));
+  } else if (cmd === "list") {
+    const rows = await list({ status: args.status, channel: args.channel, since: args.since });
+    if (args.format === "table") {
+      for (const r of rows) console.log(`${r.id}\t${r.status}\t${r.score ?? ""}\t${r.title} @ ${r.company}`);
+    } else {
+      console.log(JSON.stringify(rows, null, 2));
+    }
   } else if (cmd === "upsert") {
-    const role = JSON.parse(args.json);
-    const r = await upsert(role);
-    console.log(JSON.stringify(r, null, 2));
+    console.log(JSON.stringify(await upsert(JSON.parse(args.json)), null, 2));
   } else if (cmd === "set-status") {
-    const r = await setStatus(args.id, args.status as PipelineStatus, args.reason);
-    console.log(JSON.stringify(r, null, 2));
+    console.log(JSON.stringify(await setStatus(args.id, args.status as PipelineStatus, args.reason), null, 2));
+  } else if (cmd === "patch") {
+    console.log(JSON.stringify(await patch(args.id, JSON.parse(args.json), args.actor ?? "cli", args.reason), null, 2));
+  } else if (cmd === "remove") {
+    const ids = (args.id ?? positional.join(",")).split(",").map((x) => x.trim()).filter(Boolean);
+    console.log(JSON.stringify(await remove(ids, args.actor ?? "cli", args.reason ?? "removed from the CLI"), null, 2));
   } else if (cmd === "dedup") {
     console.log(JSON.stringify(await dedup(), null, 2));
   } else if (cmd === "summary") {
-    const all = await load();
-    const byStatus: Record<string, number> = {};
-    for (const r of all) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-    console.log(JSON.stringify({ total: all.length, byStatus }, null, 2));
+    if (args.brief === "true") {
+      const { line, top } = briefCounts();
+      console.log(line);
+      if (args.top === "true" && top) console.log(top);
+      return;
+    }
+    const s = store();
+    const total = s.count();
+    console.log(JSON.stringify({ total, byStatus: s.countsByStatus() }, null, 2));
+    // Refresh the human digest from the same read, but never let a summary run
+    // against an empty or not-yet-migrated database overwrite a real digest.
+    if (total > 0) await writeDigest();
+  } else if (cmd === "export") {
+    console.log(JSON.stringify(await exportJson(args.out), null, 2));
+  } else if (cmd === "migrate") {
+    console.log(JSON.stringify(await migrate({ from: args.from, dryRun: args["dry-run"] === "true", force: args.force === "true" }), null, 2));
   } else {
-    console.error(`Usage: tsx tools/pipeline.ts (get|upsert|set-status|dedup|summary) [--id ...] [--status ...] [--json '{...}']`);
+    console.error(
+      "Usage: tsx tools/pipeline.ts (get <id> | list | upsert | set-status | patch | remove | dedup | summary [--brief] | export | migrate) " +
+        "[--id ...] [--status ...] [--channel ...] [--json '{...}'] [--format json|table] [--out path] [--from path] [--dry-run] [--db path]",
+    );
     process.exit(2);
   }
 }
