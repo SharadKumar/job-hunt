@@ -246,7 +246,12 @@ export async function viewApplications(view, which, query) {
       detail.append(await todayWorkDetail(null));
       return;
     }
-    const candidates = [...rows, ...(data.followups || [])];
+    // A follow-up is the same application with extra, time-sensitive context.
+    // Prefer that enriched shape when its id also appears in the submitted
+    // rows, otherwise the selected pane loses its Mark responded action.
+    const candidates = state.segment.key === "sent"
+      ? [...(data.followups || []), ...rows]
+      : [...rows, ...(data.followups || [])];
     const selected = candidates.find((row) => row.id === state.selected) || candidates[0] || null;
     for (const section of sections(state, rows, data, selected && selected.id)) list.append(section);
     detail.append(await todayWorkDetail(selected, () => refresh(selected && selected.id)));
