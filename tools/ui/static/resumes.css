@@ -10,6 +10,7 @@
 
    Local additions (nothing here belongs in app.css):
      .fills / .fill      the row of page-fill bars, this screen only
+     .resume-page        the authenticated rendered-page preview
      .cover              a coverage bar with its label and fraction on one line
      .verdict-line       a gate, critic or cloud reading, 15 px ink
      .answers           the four fixed keyword answers under a list row */
@@ -18,7 +19,7 @@
 
 .resume-workbench {
   display: grid;
-  grid-template-columns: minmax(220px, 25%) minmax(340px, 1fr) minmax(280px, 31%);
+  grid-template-columns: minmax(220px, 25%) minmax(340px, 1fr) minmax(320px, 37%);
   min-height: 680px;
   border: 1px solid var(--rule);
   border-radius: 4px;
@@ -79,11 +80,23 @@
 }
 .resume-section-note { margin: 0; color: var(--muted); font-size: 13px; }
 
-.resume-quality { min-width: 0; padding: 32px 24px; background: var(--wash); border-left: 1px solid var(--rule); }
+.resume-inspector { min-width: 0; background: var(--wash); border-left: 1px solid var(--rule); }
+.resume-inspector-tabs { padding: 24px 24px 0; border-bottom: 1px solid var(--rule); }
+.resume-quality { min-width: 0; padding: 24px; }
 .resume-quality-head h2 { margin: 0; font-size: 21px; }
 .resume-quality-head p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .resume-quality-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
 .resume-quality-section > .eyebrow { margin-bottom: 8px; }
+
+.resume-preview { padding: 24px; }
+.resume-page-tabs { gap: 16px; margin-bottom: 16px; }
+.resume-page {
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
+.resume-preview-image { display: block; width: 100%; height: auto; }
 
 .cloud-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .cloud-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13px; }
@@ -179,7 +192,9 @@
 
 /* --- Files and approval -------------------------------------------------- */
 
-.resume-files { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.resume-files { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 0; }
+.resume-file-link { font-size: 13px; }
+.resume-file-link.disabled { color: var(--muted); text-decoration: none; }
 
 /* A file that would not open says so under the buttons, in the server's words. */
 .file-note { margin: 8px 0 0; font-size: 13px; color: var(--fail); max-width: var(--measure); }
@@ -227,9 +242,11 @@
   .cover { grid-template-columns: minmax(0, 1fr) auto; }
   .cover .bar { grid-column: 1 / -1; grid-row: 2; }
 
-  .resume-workbench { margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .resume-workbench { grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
   .resume-overview { grid-row: 1; padding: 24px 16px; }
-  .resume-quality { grid-row: 2; padding: 24px 16px; border-left: 0; border-top: 1px solid var(--rule); }
+  .resume-inspector { grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
+  .resume-inspector-tabs { padding-right: 16px; padding-left: 16px; }
+  .resume-quality, .resume-preview { padding-right: 16px; padding-left: 16px; }
   .resume-browser { grid-row: 3; border-right: 0; border-top: 1px solid var(--rule); }
   .resume-overview-head { flex-direction: column; gap: 12px; }
   .resume-head-actions { justify-content: flex-start; }
@@ -238,5 +255,5 @@
 @media (min-width: 720px) and (max-width: 1099px) {
   .resume-workbench { grid-template-columns: minmax(240px, 32%) minmax(0, 1fr); }
   .resume-browser { grid-row: 1 / span 2; }
-  .resume-quality { grid-column: 2; border-top: 1px solid var(--rule); border-left: 0; }
+  .resume-inspector { grid-column: 2; border-top: 1px solid var(--rule); border-left: 0; }
 }
