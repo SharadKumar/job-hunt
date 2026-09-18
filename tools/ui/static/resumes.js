@@ -7,12 +7,10 @@
  * the market wants is actually true of this person. Answering one changes what
  * the next render may say, so they belong on the same screen.
  *
- * A baseline is a distinct object the person opens and approves, so it keeps
- * its card (the brief, section 7: that is what a card is for). Inside the card
- * everything reads as one verdict per line: the page fills as a row of short
- * bars with the percentage in ink, the gates as a tally with the warnings
- * folded under it, the critic as a count that opens its findings, and the
- * files as one primary and two secondary buttons.
+ * Baselines use the same selection pattern as Pipeline, with one extra level:
+ * the positioning list, the selected baseline, and its quality evidence. This
+ * keeps comparison, action and assurance visible without repeating six large
+ * cards down the page.
  *
  * AGENTS.md section 5: a production CV comes from resume-writer and the content
  * review comes from resume-critic, so there is no render button here. There is
@@ -257,7 +255,7 @@ function cloudLine(clouds) {
   return `Keyword clouds: ${list.length} current${stale ? `, ${stale} stale` : ""}`;
 }
 
-// --- The card ------------------------------------------------------------
+// --- Three-level baseline workbench -------------------------------------
 
 /** The stamp, with its date said the way every other date in the UI is said. */
 function stampFor(item) {
@@ -297,53 +295,106 @@ function approveControl(item) {
   return h("div", { class: "approve" }, box, note);
 }
 
-/** One positioning, as one card. */
-function resumeCard(item) {
-  const card = h("article", { class: "card resume" });
+function selectionHref(query, id) {
+  const q = new URLSearchParams(query);
+  q.set("selected", id);
+  return `#/resumes?${q.toString()}`;
+}
+
+function openQualityCount(item) {
+  return (item.gates || []).filter((gate) => !isPass(gate)).length;
+}
+
+function resumeBrowserItem(item, selected, query) {
+  const label = item.label || item.id;
+  const link = h("a", {
+    class: `resume-browser-item${selected ? " selected" : ""}`,
+    href: selectionHref(query, item.id),
+  });
+  if (selected) link.setAttribute("aria-current", "true");
+  const findings = (item.critic || {}).findings_count || 0;
+  link.append(
+    h("div", { class: "resume-browser-title" }, h("strong", { text: label }), stampFor(item)),
+    h("p", { class: "resume-browser-positioning", text: item.positioning || "No positioning recorded" }),
+    h("p", { class: "resume-browser-quality", text: `${plural(openQualityCount(item), "open gate")}, ${plural(findings, "critic finding")}` }),
+  );
+  return link;
+}
+
+function resumeOverview(item) {
+  const panel = h("section", { class: "resume-overview", "aria-label": "Selected resume" });
   const label = item.label || item.id;
   const note = h("p", { class: "file-note" });
-
-  const head = h("div", { class: "card-head" });
-  head.append(h("h2", { text: label }));
-  const actions = h("div", { class: "card-head-actions" }, stampFor(item));
+  const head = h("header", { class: "resume-overview-head" });
+  const title = h("div", {}, h("p", { class: "eyebrow", text: "Selected baseline" }), h("h2", { text: label }));
+  const actions = h("div", { class: "resume-head-actions" }, stampFor(item));
   const approved = (item.stamp || {}).kind === "approved";
   const criticPassed = ((item.critic || {}).verdict || "") === "pass";
   if (criticPassed && !approved) actions.append(approveControl(item));
-  head.append(actions);
-  card.append(head);
+  head.append(title, actions);
+  panel.append(head);
 
   const meta = [
     item.positioning || "",
     item.last_render_at ? `rendered ${when(item.last_render_at)}` : "never rendered",
   ].filter(Boolean).join(", ");
-  card.append(h("p", { class: "resume-meta", title: whenFull(item.last_render_at), text: meta }));
+  panel.append(h("p", { class: "resume-meta", title: whenFull(item.last_render_at), text: meta }));
 
   const pages = item.pages || [];
+  panel.append(h("div", { class: "resume-section-head" },
+    h("p", { class: "eyebrow", text: "Page fill" }),
+    h("p", { class: "resume-section-note", text: `${plural(pages.length, "rendered page")}` })));
   if (pages.length) {
     const fills = h("div", { class: "fills" });
     for (const page of pages.slice(0, 4)) fills.append(pageFill(page, note));
-    card.append(fills);
+    panel.append(fills);
   } else {
-    card.append(h("p", { class: "verdict-why", text: "No rendered pages on disk." }));
+    panel.append(h("p", { class: "verdict-why", text: "No rendered pages on disk." }));
   }
 
-  card.append(gatesBlock(item.gates || []));
-  card.append(criticBlock(item.critic || {}));
   const keywords = item.keywords || {};
-  card.append(h("div", { class: "covers" },
+  panel.append(h("div", { class: "resume-section-head" }, h("p", { class: "eyebrow", text: "Market coverage" })));
+  panel.append(h("div", { class: "covers" },
     coverageBar("Must have", keywords.must_have),
     coverageBar("Renderable", keywords.renderable)));
-  card.append(h("p", { class: "verdict-line", text: cloudLine(item.clouds) }));
 
   const files = item.files || {};
-  card.append(h("div", { class: "resume-files" },
+  panel.append(h("div", { class: "resume-files" },
     fileButton("Open PDF", files.pdf, true, note),
     fileButton("DOCX", files.docx, false, note),
     fileButton("Markdown", files.md, false, note)), note);
-  return card;
+  return panel;
 }
 
-async function baselines(view, count) {
+function cloudsBlock(clouds) {
+  const list = clouds || [];
+  const box = h("section", { class: "resume-quality-section" },
+    h("p", { class: "eyebrow", text: "Keyword clouds" }),
+    h("p", { class: "verdict-line", text: cloudLine(list) }));
+  if (!list.length) return box;
+  const rows = h("ul", { class: "cloud-list" });
+  for (const cloud of list) rows.append(h("li", {},
+    h("span", { text: cloud.label || cloud.id }),
+    h("span", { class: cloud.stale ? "cloud-age stale" : "cloud-age", text: cloud.stale ? "stale" : `weight ${cloud.weight || 0}` })));
+  box.append(rows);
+  return box;
+}
+
+function resumeQuality(item) {
+  const panel = h("aside", { class: "resume-quality", "aria-label": "Resume quality" });
+  panel.append(
+    h("header", { class: "resume-quality-head" },
+      h("p", { class: "eyebrow", text: "Quality evidence" }),
+      h("h2", { text: "Gates and review" }),
+      h("p", { text: "Recorded evidence for this exact render." })),
+    h("section", { class: "resume-quality-section" }, h("p", { class: "eyebrow", text: "Deterministic gates" }), gatesBlock(item.gates || [])),
+    h("section", { class: "resume-quality-section" }, h("p", { class: "eyebrow", text: "Independent critic" }), criticBlock(item.critic || {})),
+    cloudsBlock(item.clouds),
+  );
+  return panel;
+}
+
+async function baselines(view, count, query) {
   const host = h("div", {});
   host.append(placeholderRows(3));
   view.append(host);
@@ -356,9 +407,14 @@ async function baselines(view, count) {
     host.append(h("p", { class: "empty", text: `No positionings yet. Run /onboarding, then /resume-review. ${APPROVE_GATE}` }));
     return;
   }
-  const grid = h("div", { class: "cards resume-grid" });
-  for (const item of items) grid.append(resumeCard(item));
-  host.append(grid);
+  const params = query instanceof URLSearchParams ? query : new URLSearchParams();
+  const selected = items.find((item) => item.id === params.get("selected")) || items[0];
+  const browser = h("section", { class: "resume-browser", "aria-label": "Resume positionings" },
+    h("header", { class: "resume-browser-head" }, h("p", { class: "eyebrow", text: "Positionings" }), h("h2", { text: "Baselines" })),
+    h("nav", { class: "resume-browser-list" }));
+  const list = browser.querySelector(".resume-browser-list");
+  for (const item of items) list.append(resumeBrowserItem(item, item.id === selected.id, params));
+  host.append(h("div", { class: "resume-workbench" }, browser, resumeOverview(selected), resumeQuality(selected)));
 }
 
 /**
@@ -366,10 +422,10 @@ async function baselines(view, count) {
  * "evidence" is the keyword questions, which keep their own module and render
  * under this screen's header rather than a second one.
  */
-export async function viewResumes(view, which) {
+export async function viewResumes(view, which, query) {
   const active = which === "evidence" ? "evidence" : "baselines";
   const count = h("p", { class: "page-count" });
   view.append(pageHeader({ title: "Resumes", lede: count, aside: tabStrip(active) }));
   if (active === "evidence") return viewKeywords(view, { lede: count });
-  return baselines(view, count);
+  return baselines(view, count, query);
 }

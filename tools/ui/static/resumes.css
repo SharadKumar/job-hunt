@@ -3,10 +3,10 @@
    come from app.css; nothing here introduces a colour, a radius or a shadow
    of its own.
 
-   One card per positioning, because a baseline is a distinct object the person
-   opens and approves. Inside it, one verdict per line, and a page fill is a
-   short horizontal bar with the percentage in ink: never red, because a page
-   at 88 percent against a 90 percent floor is worth a look, not a failure.
+   Baselines use three adjacent levels: positioning browser, selected resume,
+   and the evidence for that exact render. A page fill remains a short
+   horizontal bar with the percentage in ink: never red, because a page at 88
+   percent against a 90 percent floor is worth a look, not a failure.
 
    Local additions (nothing here belongs in app.css):
      .fills / .fill      the row of page-fill bars, this screen only
@@ -14,20 +14,81 @@
      .verdict-line       a gate, critic or cloud reading, 15 px ink
      .answers           the four fixed keyword answers under a list row */
 
-/* Two positionings to a row on a desktop, one under 960 px. */
-.resume-grid { grid-template-columns: minmax(0, 1fr); }
+/* --- Three-level baseline workbench ------------------------------------- */
 
-@media (min-width: 960px) {
-  .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.resume-workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 25%) minmax(340px, 1fr) minmax(280px, 31%);
+  min-height: 680px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
 }
 
-.resume-grid > p { grid-column: 1 / -1; }
+.resume-browser { min-width: 0; background: var(--wash); border-right: 1px solid var(--rule); }
+.resume-browser-head { padding: 24px; }
+.resume-browser-head .eyebrow { margin-bottom: 4px; }
+.resume-browser-head h2 { margin: 0; }
+.resume-browser-list { display: block; border-top: 1px solid var(--rule); }
 
-/* The title, the stamp and the one approval this screen offers, on one line. */
-.resume .card-head { align-items: center; }
-.resume .card-head-actions { flex-wrap: wrap; gap: 12px; }
+.resume-browser-item {
+  position: relative;
+  display: block;
+  padding: 16px 24px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+}
+.resume-browser-item:hover { background: var(--paper); text-decoration: none; }
+.resume-browser-item.selected { background: var(--paper); }
+.resume-browser-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+
+.resume-browser-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.resume-browser-title strong { font-size: 15px; font-weight: 600; }
+.resume-browser-title .stamp { flex: 0 0 auto; font-size: 13px; }
+.resume-browser-positioning, .resume-browser-quality {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.resume-browser-quality { color: var(--ink); }
+
+.resume-overview { min-width: 0; padding: 32px; }
+.resume-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.resume-overview-head h2 { margin: 0; font-size: 27px; }
+.resume-head-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 .resume-meta { margin: 0 0 16px; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+
+.resume-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+.resume-section-note { margin: 0; color: var(--muted); font-size: 13px; }
+
+.resume-quality { min-width: 0; padding: 32px 24px; background: var(--wash); border-left: 1px solid var(--rule); }
+.resume-quality-head h2 { margin: 0; font-size: 21px; }
+.resume-quality-head p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.resume-quality-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.resume-quality-section > .eyebrow { margin-bottom: 8px; }
+
+.cloud-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.cloud-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.cloud-age { flex: 0 0 auto; color: var(--muted); }
+.cloud-age.stale { color: var(--warn); }
 
 /* --- Page fill ----------------------------------------------------------- */
 
@@ -165,4 +226,17 @@
   .answers .btn, .answers button { flex: 1 1 100%; }
   .cover { grid-template-columns: minmax(0, 1fr) auto; }
   .cover .bar { grid-column: 1 / -1; grid-row: 2; }
+
+  .resume-workbench { margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .resume-overview { grid-row: 1; padding: 24px 16px; }
+  .resume-quality { grid-row: 2; padding: 24px 16px; border-left: 0; border-top: 1px solid var(--rule); }
+  .resume-browser { grid-row: 3; border-right: 0; border-top: 1px solid var(--rule); }
+  .resume-overview-head { flex-direction: column; gap: 12px; }
+  .resume-head-actions { justify-content: flex-start; }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .resume-workbench { grid-template-columns: minmax(240px, 32%) minmax(0, 1fr); }
+  .resume-browser { grid-row: 1 / span 2; }
+  .resume-quality { grid-column: 2; border-top: 1px solid var(--rule); border-left: 0; }
 }

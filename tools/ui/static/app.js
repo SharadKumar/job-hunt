@@ -457,7 +457,7 @@ export async function render() {
       else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the pipeline." }));
     } else if (route === "pipeline") await viewApplications(view, id, query);
     // `id` is the Resumes tab: "" is Baselines, "evidence" is the questions.
-    else if (route === "resumes") await viewResumes(view, id);
+    else if (route === "resumes") await viewResumes(view, id, query);
     else if (route === "guardrails") await viewRules(view);
     else if (route === "runs") await viewRuns(view, id);
     else if (route === "settings") viewSettings(view);
