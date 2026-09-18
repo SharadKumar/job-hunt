@@ -1,0 +1,92 @@
+/* settings.css - the token, the kill switch, the schedule and the channel
+   sign-in state (#/settings). Tokens, type and every shared primitive come
+   from app.css; nothing here introduces a colour, a radius or a shadow of its
+   own.
+
+   Local additions (nothing here belongs in app.css):
+     .token-box   a field with a show/hide control inside its own border
+     .readings    the two-column definition list the Harness block is */
+
+/* --- The token field ----------------------------------------------------- */
+
+.token-field { max-width: 420px; margin: 12px 0; }
+
+/* The eye sits inside the field's border, so showing the token is not a third
+   button competing with Save and Clear (the brief, section 6, Settings). */
+.token-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.token-box:focus-within { outline: 2px solid var(--you); outline-offset: 2px; }
+
+.token-box input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.token-box input:focus-visible { outline: none; }
+.token-box .eye { flex: 0 0 auto; }
+
+/* --- Safety -------------------------------------------------------------- */
+
+.safety-state { margin: 0 0 8px; font-size: 15px; color: var(--ink); }
+.safety .measure { margin: 0 0 12px; font-size: 15px; color: var(--muted); }
+.safety .field-help:empty { display: none; }
+
+/* --- The harness readings ------------------------------------------------ */
+
+/* Two columns: a 13 px key and a 15 px value. A file path is on the value's
+   title attribute, not a third grey line under it. */
+.readings {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+.readings dt { font-size: 13px; color: var(--muted); }
+
+.readings dd {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.readings dd[title] { cursor: help; }
+
+@media (max-width: 719px) {
+  .readings { grid-template-columns: minmax(0, 1fr); gap: 0 0; }
+  .readings dt { margin-top: 12px; }
+  .readings dt:first-child { margin-top: 0; }
+}
+
+/* --- How to run ---------------------------------------------------------- */
+
+/* The ways to start this server, quoted as the commands they are. */
+.commands {
+  margin: 0 0 12px;
+  padding: 16px;
+  overflow: auto;
+  background: var(--wash);
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  font-variant-ligatures: none;
+}

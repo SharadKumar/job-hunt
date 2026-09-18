@@ -3,7 +3,7 @@ name: onboarding
 description: One-time career intake for a new profile. Reads the person's CV plus any supplementary URLs, proposes 3-6 credible resume positionings, confirms them with the user, and writes state/profile/resumes.yaml. Use for first setup after a fork or when resumes.yaml has no active entries. For later strategy changes, use resume-strategy instead.
 ---
 
-# /onboarding — create the initial resume positionings
+# /onboarding: create the initial resume positionings
 
 This is the first-run career intake. It turns a person's CV evidence into the initial `state/profile/resumes.yaml` strategy file.
 
@@ -17,7 +17,7 @@ It is intentionally agent-driven. There are no paid SDK calls. The agent does th
 
 ## Sequence
 
-Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its output as the base for every path below; never assume cwd.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 ### 1. Check prerequisites
 
@@ -44,11 +44,11 @@ This returns the holistic CV (cv-source.md) plus URL text, rate anchors, work ar
 
 Using agent judgement, propose 3-6 candidate resume positionings. Each candidate should include:
 
-- `id` — kebab-case stable identifier.
-- `label` — human-readable resume positioning.
-- `rationale` — 1-2 sentences.
-- `confidence` — high / medium / low.
-- `evidence_from_cv` — 1-3 concrete experiences or outcomes from cv-source.md supporting it.
+- `id`: kebab-case stable identifier.
+- `label`: human-readable resume positioning.
+- `rationale`: 1-2 sentences.
+- `confidence`: high / medium / low.
+- `evidence_from_cv`: 1-3 concrete experiences or outcomes from cv-source.md supporting it.
 
 Guidance:
 
@@ -85,7 +85,7 @@ For each confirmed positioning, draft:
 
 Critical grounding rules:
 
-- Never invent experiences or evidence — every claim in `cover_letter_angle` and `should` must be traceable to cv-source.md.
+- Never invent experiences or evidence: every claim in `cover_letter_angle` and `should` must be traceable to cv-source.md.
 - `market_lens` may describe what the market expects even when the CV is weak, but it must distinguish safe aliases from proof questions. `acceptable_if_source_mentions` must contain source-specific evidence patterns, not generic keywords. Do not turn proof questions into rendered claims.
 - If a proof question is valuable but unanswered, add it to `market_lens.proof_questions`; do not ask broad "what else?" questions.
 - When a user answers a proof question during onboarding, record the answer in `state/profile/market-confirmations.yaml`. Confirmed facts still must be added to `cv-source.md` before `resume-writer` can render them.
@@ -107,7 +107,7 @@ The script validates required fields and appends/replaces the entry under `resum
 
 ### 8. Verify and route next step
 
-Run `npm run verify:plan`.
+Run `npm run verify:plan -- --plan <path>` (the `--plan` flag is required; point it at the plan document being verified).
 
 Then ask:
 

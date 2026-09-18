@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Local approval UI, kept running by launchd.
+
+  Rendered and installed by scripts/install-ui-launchd.sh, which substitutes
+  this checkout's path, the current PATH and the port. Do not copy this file
+  into ~/Library/LaunchAgents by hand; the placeholders are taken literally.
+
+  It binds 127.0.0.1 only, so nothing outside this machine can reach it and no
+  token is needed. The installer additionally registers a portless route when
+  portless is on PATH, so the same local server answers on
+  https://job-hunt.localhost as well; that proxy is local too and changes
+  nothing about the binding here.
+
+  To reach it from a phone over Tailscale or the LAN, append
+  --host <address> to the command below and uncomment HARNESS_UI_TOKEN with a
+  long random value (the server refuses a non-local bind without one), then
+  kickstart the job.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.job-hunt-harness.ui</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd "__REPO_DIR__" &amp;&amp; exec npm run -s ui -- --port __PORT__</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO_DIR__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>REPO_DIR</key>
+    <string>__REPO_DIR__</string>
+    <key>TMPDIR</key>
+    <string>/tmp</string>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <!-- Required only when the server is bound beyond 127.0.0.1:
+    <key>HARNESS_UI_TOKEN</key>
+    <string>replace-with-a-long-random-token</string>
+    -->
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__REPO_DIR__/state/journal/launchd/ui.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO_DIR__/state/journal/launchd/ui.log</string>
+</dict>
+</plist>

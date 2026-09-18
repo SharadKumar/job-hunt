@@ -1,11 +1,11 @@
 ---
 name: resume-review
-description: Walk the user through reviewing and approving baseline CVs for every active resume. Use this skill whenever the user says "review my CVs", "approve my baselines", "are my CVs ready", "let me check the baselines", or before any first /apply on a resume. Also use after /onboarding populates new resumes (no baselines yet), after CV/source edits (existing approvals go stale), after positioning edits in resumes.yaml, or when the /apply orchestration reports a stale or missing baseline. This skill invokes resume-writer per resume — it never bypasses resume-writer to render baselines directly (which would skip quality auditing).
+description: Walk the user through reviewing and approving baseline CVs for every active resume. Use this skill whenever the user says "review my CVs", "approve my baselines", "are my CVs ready", "let me check the baselines", or before any first /apply on a resume. Also use after /onboarding populates new resumes (no baselines yet), after CV/source edits (existing approvals go stale), after positioning edits in resumes.yaml, or when the /apply orchestration reports a stale or missing baseline. This skill invokes resume-writer per resume, and it never bypasses resume-writer to render baselines directly (which would skip quality auditing).
 ---
 
-# /resume-review — per-positioning baseline review + approval
+# /resume-review: per-positioning baseline review + approval
 
-Each active resume gets one approved baseline CV — the version that gets sent across many opportunities matching that positioning. This skill keeps all baselines current and explicitly approved.
+Each active resume gets one approved baseline CV, the version that gets sent across many opportunities matching that positioning. This skill keeps all baselines current and explicitly approved.
 
 **Quality checks**: resume-writer (invoked per resume by this skill) applies the universal CV quality checks at `.claude/skills/resume-render/references/quality-checks.md` plus any per-template overrides. Same contract; same checks; consistent across all resumes.
 
@@ -18,10 +18,10 @@ for each active resume:
 
 ## When this runs
 
-- **First time after `/onboarding`** populates resumes — no baselines exist yet.
-- **After a new experience, CV-source edit, or positioning edit** — existing approvals invalidate because content hashes drift.
-- **Before first `/apply` on a resume** — the /apply orchestration blocks on unapproved baselines.
-- **Periodic re-review** (monthly during active hunt) — sanity check that nothing's drifted unnoticed.
+- **First time after `/onboarding`** populates resumes, so no baselines exist yet.
+- **After a new experience, CV-source edit, or positioning edit**, existing approvals invalidate because content hashes drift.
+- **Before first `/apply` on a resume**, the /apply orchestration blocks on unapproved baselines.
+- **Periodic re-review** (monthly during active hunt), a sanity check that nothing's drifted unnoticed.
 
 ## Sequence
 
@@ -31,27 +31,34 @@ If one or more resumes have `market_alignment.confirmation_needed` or `market_al
 
 ### 0. Drain pending keyword confirmations
 
-Baselines render from `cv-source.md`, so unanswered keyword questions are the cheapest quality win available before any render. Start here:
+Baselines render from `cv-source.md`, so unanswered keyword questions are the cheapest quality win available before any render. Run the `keyword-triage` skill first: it applies the deterministic rejects and answers everything the corpus can answer, so the table below only ever puts a genuine skill question to the user. Then start here:
 
 ```
-npm run resume:keyword-confirm -- pending --group-by term
+npm run resume:keyword-confirm -- pending --group-by term --format table --limit 20
 ```
 
-That groups outstanding `kind: keyword` rows by term across resumes and opportunities (queued by unattended `/daily` runs and by earlier "Unsure / keep pending" answers), busiest term first. If the count is 0, say so and go to step 1.
+That prints one aligned line per outstanding `kind: keyword` term across resumes and opportunities (queued by unattended `/daily` runs and by earlier "Unsure / keep pending" answers), busiest term first, with the resumes it is open under and the JD context it was asked against. If the count is 0, say so and go to step 1. There are hundreds of them, so drain in bundles; never one CLI call per term.
 
-Otherwise drain them in batches of **at most 4** per `AskUserQuestion`, highest `count` first, with exactly these four reusable options:
+Otherwise drain the screen in bundles of **at most 4 terms per `AskUserQuestion`**, highest `count` first, one question per term even when several opportunities queued it, with exactly these four reusable options in this order:
 - `Confirm and update source (Recommended)`
-- `Bring in as familiarity` — the user did not deliver it but can credibly prepare and speak to it; recorded as `--status familiarity`, it renders once in a familiarity-framed skills line and is listed under `interview_prep_terms`, never as delivered work
 - `Not applicable`
+- `Bring in as familiarity`: the user did not deliver it but can credibly prepare and speak to it; it renders once in a familiarity-framed skills line and is listed under `interview_prep_terms`, never as delivered work
 - `Unsure / keep pending`
 
-Question text = the row's `question` plus its `evidence_hint`. One question per term even when several opportunities queued it. Then, per answer:
-- Record it: `npm run resume:keyword-confirm -- record --plan <plan-path> --term "<term>" --status confirmed|not_applicable|familiarity|pending --origin attended` (use the plan the row came from, or regenerate one with `npm run resume:keywords -- --resume <id> --proactive`).
-- On `Confirm and update source`, show the proposed bullet and ask `Apply this wording (Recommended)` / `Edit wording` / `Skip`, then `npm run resume:keyword-confirm -- apply-patch --term "<term>" --resume <id> --role-heading "<heading substring>" --bullet "<final text>"` (add `--skills` for a Skills-section fact). It prints the diff it applied. Remind the user the master `.docx` must carry the same fact.
-- `Bring in as familiarity` records `--status familiarity`: a term the user did not deliver but can credibly prepare and speak to. No source patch. The re-run plan marks it `preppable` with `render_as: "familiarity"`, so resume-writer renders it once in a familiarity-framed skills line ("Familiar with ...", "Working knowledge of ...", "Prepared on ...") and lists it under `interview_prep_terms`. It is answered, so it is never re-asked.
-- A confirmed term that was never patched stays unrenderable; do not treat the ledger row as permission.
+Question text = the row's `question` plus its `evidence_hint`. Then:
 
-Any resume whose `cv-source.md` changed here is now stale — expect it in the `STALE` bucket in step 1 and re-render it.
+1. Write the whole screen's answers to one temp YAML (`/tmp/keyword-answers-<date>-<n>.yaml`), a `term: answer` line each (`note:` per term optional), and record them in one pass:
+
+   ```
+   TMPDIR=/tmp npm run resume:keyword-confirm -- record --file /tmp/keyword-answers-<date>-<n>.yaml --origin attended
+   ```
+
+   The four exact labels and the short aliases `confirm|na|familiarity|pending` are both accepted. It records every matching pending row across resumes, prints `{ recorded, skipped_already_answered, unmatched, invalid }`, and a re-run of the same file changes nothing. Read `unmatched` and `invalid` rather than assuming the batch landed.
+2. Re-run the table and repeat until pending is 0 or the user stops. Ask after each screen whether to keep going.
+3. A confirmed term authorises nothing until `cv-source.md` carries the fact (AGENTS.md section 9). So for each `Confirm and update source`, show the proposed bullet and ask `Apply this wording (Recommended)` / `Edit wording` / `Skip`, then `npm run resume:keyword-confirm -- apply-patch --term "<term>" --resume <id> --role-heading "<heading substring>" --bullet "<final text>"` (add `--skills` for a Skills-section fact). It prints the diff it applied. Remind the user the master `.docx` must carry the same fact.
+4. `Bring in as familiarity` needs no source patch. The re-run plan marks the term `preppable` with `render_as: "familiarity"`, so resume-writer renders it once in a familiarity-framed skills line ("Familiar with ...", "Working knowledge of ...", "Prepared on ...") and lists it under `interview_prep_terms`. It is answered, so it is never re-asked.
+
+Any resume whose `cv-source.md` changed here is now stale, so expect it in the `STALE` bucket in step 1 and re-render it.
 
 ### 1. Status snapshot
 
@@ -75,7 +82,7 @@ MISSING (L): (no baseline rendered yet)
 
 ### 1.4 Keyword cloud is current (mandatory, per resume)
 
-Market narrative comes first: no positioning is rendered against a stale or absent keyword cloud. For every resume that step 1 put in `missing`, `fresh` or `stale` — i.e. every resume this run might re-render — run:
+Market narrative comes first: no positioning is rendered against a stale or absent keyword cloud. For every resume that step 1 put in `missing`, `fresh` or `stale`, i.e. every resume this run might re-render, run:
 
 ```
 npm run resume:context -- --resume <resume-id> [--profile <profile-id>]
@@ -83,7 +90,7 @@ npm run resume:context -- --resume <resume-id> [--profile <profile-id>]
 
 Read the brief's `clouds` block (`present`, `missing`, `stale`, `term_count`, `unknown_cloud_ids`, and a `clouds[]` row per referenced cloud with its `id`, `label`, `weight`, `refreshed_at`, `age_days` and `stale`):
 
-- `missing: true` (the positioning references no clouds), or `stale: true` (a load-bearing cloud, weight >= 4, older than `stale_after_days` or with no readable `refreshed_at`) → **do not render that resume**. Run the `/resume-strategy` cloud refresh (steps 3b + 3c) for the named cloud now, in this session, then re-run the command. Only then continue. A cloud is shared, so one refresh may clear the gate for several resumes in this batch at once — do them together rather than one per resume.
+- `missing: true` (the positioning references no clouds), or `stale: true` (a load-bearing cloud, weight >= 4, older than `stale_after_days` or with no readable `refreshed_at`) → **do not render that resume**. Run the `/resume-strategy` cloud refresh (steps 3b + 3c) for the named cloud now, in this session, then re-run the command. Only then continue. A cloud is shared, so one refresh may clear the gate for several resumes in this batch at once, so do them together rather than one per resume.
 - `unknown_cloud_ids` non-empty → fix the reference (or create the cloud) before rendering.
 - Otherwise report the cloud count, total term count and the heaviest cloud's refresh date in the status line for that resume.
 
@@ -93,7 +100,7 @@ The refresh ends in the evidence interview (`/resume-strategy` step 3c), which m
 
 ### 2. Render any missing baselines via resume-writer
 
-For each resume with status `missing` (no per-resume render yet), invoke the **resume-writer subagent** (mode: baseline). When there are multiple missing baselines (3 or more), spawn resume-writer subagents in parallel — each in its own context window — by sending multiple Agent tool calls in one message.
+For each resume with status `missing` (no per-resume render yet), invoke the **resume-writer subagent** (mode: baseline). When there are multiple missing baselines (3 or more), spawn resume-writer subagents in parallel, each in its own context window, by sending multiple Agent tool calls in one message.
 
 For team profiles, resolve paths under `state/profiles/<profile-id>/`; default individual mode remains `state/profile/`.
 
@@ -112,14 +119,14 @@ Collect each resume-writer's quality report.
 
 ### 3. Walk each resume needing attention
 
-For every resume whose status is `missing`, `fresh`, or `stale` — and after resume-writer has produced a fresh render where needed:
+For every resume whose status is `missing`, `fresh`, or `stale`, and after resume-writer has produced a fresh render where needed:
 
 0. Enforce the profile's `render_efficiency` budget. A writer that reaches `hard_stop_minutes` must return its current artefacts and a complete flagged report; do not leave batch review waiting on an open-ended subagent loop. Check the report's `audit.cycles` against `max_full_render_iterations`; more cycles than allowed means the writer ignored its budget, so mark `human_review_needed: true` and note it.
 
 1. **Surface what's there**:
    - `missing` → "First time rendering for `<resume.label>`. Here's the proposed baseline:"
    - `fresh` → "Rendered but never approved. Here's the baseline waiting for sign-off:"
-   - `stale` → "Content has drifted since approval. Show the diff between `cv.md` (current) and `approved-cv.md` (snapshot from last approval) — focus on bullets added/removed, summary changes."
+   - `stale` → "Content has drifted since approval. Show the diff between `cv.md` (current) and `approved-cv.md` (snapshot from last approval), focusing on bullets added/removed, summary changes."
 
 2. **Enforce report completeness** for each resume-writer report (apply `.claude/skills/resume-render/references/enforce-quality-report.md`): every declared check id (universal + per-template) must appear with a verdict. Missing → reject + re-invoke or surface hard error. Also require `artefacts.composition_json`, `artefacts.provenance_json` and `checks.structural.source_provenance`; missing or failed provenance blocks approval because the CV cannot be traced back to source.
 
@@ -135,7 +142,7 @@ For every resume whose status is `missing`, `fresh`, or `stale` — and after re
    - If `source_update_required` exists, do not ask again. Tell the user the fact was already confirmed and still needs to be added to `cv-source.md`.
    - If `suppressed_confirmations` exists, keep those claims out by default because the user previously declined or marked them not applicable.
 
-2.5. **Independent content review** — invoke the critique skill per resume, after the gates in step 2 pass and before any approval is offered:
+2.5. **Independent content review**: invoke the critique skill per resume, after the gates in step 2 pass and before any approval is offered:
 
    ```
    Skill(skill: "resume-critique", args: "<resume-id> --rounds 2 [--profile <profile-id>]")
@@ -143,7 +150,7 @@ For every resume whose status is `missing`, `fresh`, or `stale` — and after re
 
    It owns the whole loop: spawn resume-critic, persist `<prefix>.critic.json`, then one `npm run resume:edit -- --resume <id> --edits <findings-or-edits>.json` that applies the findings, re-anchors provenance and re-audits in a single process, re-run the critic once, stamp `metadata.json`, append any finding that has now recurred across two or more resumes to `<profile-dir>/resume-editorial-rules.md`. Do not spawn resume-critic directly from here and do not re-implement the rounds.
 
-   Run it one resume at a time even when step 2 rendered several in parallel: each critique round ends in a deterministic apply-and-re-audit against that resume's composition, and the learned-rules pass reads every sibling review. That apply step is the only way the composition may change — never hand-edit `<prefix>.composition.json` or its provenance sidecar.
+   Run it one resume at a time even when step 2 rendered several in parallel: each critique round ends in a deterministic apply-and-re-audit against that resume's composition, and the learned-rules pass reads every sibling review. That apply step is the only way the composition may change; never hand-edit `<prefix>.composition.json` or its provenance sidecar.
 
    - `pass` → offer approval in step 4.
    - `revise` at the round cap → offer approval only with the open findings named in the question text, and mark `human_review_needed: true`.
@@ -181,7 +188,7 @@ Deterministic render utilities are low-level plumbing only. They:
 - Do not run the multimodal visual review or template-quality report.
 - Provide nothing actionable to the user about why a CV looks the way it does or what might need attention.
 
-resume-writer (the subagent), invoked per resume, produces auditable artefacts AND a structured report that drives this skill's approve/edit/skip decision tree. That's the whole point of the architecture — every CV that lands in `state/profile/resumes/<id>/` should have been audited by resume-writer, not just dumped there by a script.
+resume-writer (the subagent), invoked per resume, produces auditable artefacts AND a structured report that drives this skill's approve/edit/skip decision tree. That's the whole point of the architecture: every CV that lands in `state/profile/resumes/<id>/` should have been audited by resume-writer, not just dumped there by a script.
 
 ## Boundaries
 
@@ -189,7 +196,7 @@ resume-writer (the subagent), invoked per resume, produces auditable artefacts A
 - **Never offer approval before the critique skill returns a pass** for that resume. `npm run resume:approve` refuses a missing, blocking or stale critic verdict anyway, so skipping the step only produces an error the user has to decode.
 - **Never edit canonical content from inside this skill.** CV-source content and resume positioning fields are profile changes that route to `/onboarding`, `/resume-strategy`, `/refresh-cv`, or direct file editing. This skill triggers re-renders after such changes; it doesn't make them itself.
 - **The approval flow gates drafting, not hunting.** Hunts still run, opportunities still classify and score; only the /apply draft orchestration consults baseline approval status.
-- **No bypassing resume-writer.** Always route through the subagent for renders — even for a quick "let me see what changed". The cost is small; the contract value is large.
+- **No bypassing resume-writer.** Always route through the subagent for renders, even for a quick "let me see what changed". The cost is small; the contract value is large.
 
 ## When to ask vs decide silently
 

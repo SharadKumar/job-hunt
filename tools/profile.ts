@@ -17,13 +17,54 @@ export type ProfileFrontmatter = {
   phone?: string;
   citizenship?: string;
   location?: { city?: string; country?: string; timezone?: string };
-  locale?: { english_variant?: string; date_format?: string };
+  locale?: { english_variant?: string; date_format?: string; timezone?: string; language?: string; currency?: string };
   cv_source_dir?: string;
   linkedin_url?: string;
   github_url?: string;
 };
 
 const DEFAULT_PROFILE_PATH = repoPath("state/profile/profile.md");
+
+/** Timezone, BCP-47 language tag and currency for everything user-facing. */
+export type ResolvedLocale = { timezone: string; language: string; currency: string };
+
+/**
+ * Applied when profile.md carries no `locale` block, or an incomplete one.
+ * These are the values the harness used before the block existed, so an
+ * untouched profile behaves exactly as it did.
+ */
+export const LOCALE_DEFAULTS: ResolvedLocale = Object.freeze({
+  timezone: "Australia/Sydney",
+  language: "en-AU",
+  currency: "AUD",
+});
+
+/**
+ * Resolve the locale from already-parsed frontmatter. `locale.timezone` wins,
+ * then the long-standing `location.timezone`, then the default; `locale.language`
+ * falls back to `locale.english_variant` before the default.
+ */
+export function resolveLocale(frontmatter?: ProfileFrontmatter | null): ResolvedLocale {
+  const locale = frontmatter?.locale;
+  return {
+    timezone: locale?.timezone || frontmatter?.location?.timezone || LOCALE_DEFAULTS.timezone,
+    language: locale?.language || locale?.english_variant || LOCALE_DEFAULTS.language,
+    currency: locale?.currency || LOCALE_DEFAULTS.currency,
+  };
+}
+
+/**
+ * Read profile.md and resolve its locale. An unreadable or absent profile is not
+ * an error here: the defaults are returned, so a tool that only needs a date
+ * format still runs on a fresh clone.
+ */
+export async function loadLocale(profileId?: string | null): Promise<ResolvedLocale> {
+  try {
+    return resolveLocale(await loadProfile(profileId));
+  } catch {
+    return { ...LOCALE_DEFAULTS };
+  }
+}
 
 /** Read profile.md and parse YAML frontmatter. Throws if the file or frontmatter is malformed. */
 export async function loadProfile(profileId?: string | null): Promise<ProfileFrontmatter> {

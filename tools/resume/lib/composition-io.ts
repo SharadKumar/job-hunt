@@ -16,8 +16,9 @@
  *     the inline field on older artefacts. Callers therefore need no migration.
  */
 
+import { sha256 } from "../../lib/hash.ts";
+import { readJsonIfExists } from "../../lib/fs.ts";
 import { promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
 import type { ResumeContent, ResumeSourceProvenance } from "../../../templates/resume/_interface.ts";
 
 export type LoadedComposition = {
@@ -38,8 +39,9 @@ export function provenanceSidecarPath(compositionPath: string): string {
   return compositionPath.replace(/\.json$/, "") + ".provenance.json";
 }
 
+/** Tolerant on purpose: a missing or corrupt sidecar falls back to inline provenance. */
 async function readJson(file: string): Promise<any | null> {
-  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return null; }
+  return readJsonIfExists(file).catch(() => null);
 }
 
 /**
@@ -106,7 +108,7 @@ export async function writeComposition(
  */
 export function compositionHash(content: ResumeContent): string {
   const { content: stripped } = splitProvenance(content);
-  return createHash("sha256").update(JSON.stringify(stripped)).digest("hex");
+  return sha256(JSON.stringify(stripped));
 }
 
 /**

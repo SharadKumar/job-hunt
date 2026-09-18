@@ -1,0 +1,176 @@
+/* guardrails.css - the Guardrails three-level workspace.
+   The persistent app sidebar is level one. The compact rules, themes or
+   reference browser is level two. One selected item is level three. */
+
+.view[data-route="guardrails"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="guardrails"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
+
+.guard-tabs .tally { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.guard-stage { flex: 1 1 auto; min-height: 0; }
+
+.guard-workbench {
+  display: grid;
+  grid-template-columns: minmax(280px, 30%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.guard-browser {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--wash);
+  border-right: 1px solid var(--rule);
+}
+
+.guard-browser-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+}
+.guard-browser-head .eyebrow { margin-bottom: 4px; }
+.guard-browser-head h2 { margin: 0; }
+.guard-browser-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+.guard-browser-list { display: block; border-top: 1px solid var(--rule); }
+
+.guard-browser-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--rule);
+  color: inherit;
+  text-decoration: none;
+}
+.guard-browser-item:hover { background: var(--paper); text-decoration: none; }
+.guard-browser-item.selected { background: var(--paper); }
+.guard-browser-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+
+.guard-browser-copy { min-width: 0; display: flex; flex-direction: column; }
+.guard-browser-kicker { margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+.guard-browser-item strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.guard-browser-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.guard-browser-number { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.guard-selected { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.guard-selected > .empty { margin: 32px; }
+.guard-selected-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+  padding: 24px 32px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.guard-selected-head .eyebrow { margin-bottom: 4px; }
+.guard-selected-head h2 { margin: 0; font-size: 27px; }
+.guard-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.guard-selected-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 24px 32px 32px; }
+.guard-selected-lede { margin: 0 0 24px; color: var(--muted); font-size: 13px; max-width: var(--measure); }
+.guard-rule-text { margin: 0; color: var(--ink); font-family: var(--serif); font-size: 21px; line-height: 1.55; max-width: var(--measure); overflow-wrap: anywhere; }
+.guard-source { margin: 32px 0 0; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; max-width: var(--measure); }
+.guard-detail-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.guard-detail-section .eyebrow { margin-bottom: 8px; }
+
+.rule-note { margin: 12px 0 0; color: var(--fail); font-size: 13px; max-width: var(--measure); }
+.rule-note:empty { display: none; }
+.rule-editor { margin: 0; }
+.rule-editor textarea {
+  width: 100%;
+  max-width: var(--measure);
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+.rule-editor textarea:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
+.rule-editor .action-buttons { margin: 8px 0 0; }
+
+.theme-sample {
+  margin: 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.55;
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+.pattern {
+  display: inline-block;
+  max-width: var(--measure);
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ref-fix { margin: 0; color: var(--muted); font-size: 15px; max-width: var(--measure); }
+
+@media (max-width: 719px) {
+  .view[data-route="guardrails"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="guardrails"] > .page-header { margin: 32px 0 24px; }
+  .guard-tabs { overflow-x: auto; }
+  .guard-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .guard-selected { grid-row: 1; overflow: visible; }
+  .guard-selected-head { grid-template-columns: minmax(0, 1fr); padding-right: 16px; padding-left: 16px; }
+  .guard-head-actions { justify-content: flex-start; }
+  .guard-selected-body { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .guard-browser { grid-row: 2; overflow: visible; border-top: 1px solid var(--rule); border-right: 0; }
+  .guard-browser-item { padding-right: 16px; padding-left: 16px; }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .guard-workbench { grid-template-columns: minmax(260px, 34%) minmax(0, 1fr); }
+}

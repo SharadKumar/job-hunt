@@ -5,6 +5,7 @@
  * output; the CLI is now a thin wrapper.
  */
 
+import { exists } from "../../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -91,10 +92,6 @@ export type FitReport = {
   };
   artefacts: { html: string; pdf: string; temp_render: boolean };
 };
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
 
 /** Resolve the page policy: template rubric defaults, overridden by resume then format policy. */
 export async function resolvePagePolicy(args: { resume?: string; template?: string; profile?: string; format?: string }): Promise<{ policy: PagePolicy; templateName: string; rubric: any }> {

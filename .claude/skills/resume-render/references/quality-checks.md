@@ -1,17 +1,17 @@
 # CV quality checks (universal)
 
-The checks resume-writer runs against EVERY rendered CV, regardless of template. These are template-agnostic — they describe what makes any CV proper at a structural and visual level.
+The checks resume-writer runs against EVERY rendered CV, regardless of template. These are template-agnostic: they describe what makes any CV proper at a structural and visual level.
 
-resume-writer reads this file first, then optionally overlays per-template overrides from `templates/resume/<name>/quality-checks.md` (rare — only used when a template genuinely contradicts or extends a universal check).
+resume-writer reads this file first, then optionally overlays per-template overrides from `templates/resume/<name>/quality-checks.md` (rare, and only used when a template genuinely contradicts or extends a universal check).
 
 Each check declares:
 - **id**: short, machine-readable identifier (becomes a key in resume-writer's `checks` report)
 - **what**: human description
 - **how**: how resume-writer checks (which tool + what to look for)
 - **auto_fix**: if resume-writer can fix it without surfacing, the action to take
-- **severity**: `pass | warn | fail` — `fail` means human review needed; `warn` is logged but doesn't block
+- **severity**: `pass | warn | fail`, where `fail` means human review needed; `warn` is logged but doesn't block
 
-resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <path>`) with the Read tool to perform visual checks. Multimodal — the subagent literally looks at the images.
+resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <path>`) with the Read tool to perform visual checks. Multimodal: the subagent literally looks at the images.
 
 ---
 
@@ -19,14 +19,14 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 
 ### page_count
 - **what**: total pages ≤ target's max (default 3, configurable via `--max-pages`)
-- **how**: `npm run resume:page-fill -- --content-json <composition.json> --resume <id>` — returns page count, per-page fill %, the gap expressed in rendered lines, and ranked candidate edits addressed by composition path. Prefer this over a bare `pdfinfo <pdf>`: it measures page count and fill in one pass and says what to change to close the gap.
+- **how**: `npm run resume:page-fill -- --content-json <composition.json> --resume <id>` returns page count, per-page fill %, the gap expressed in rendered lines, and ranked candidate edits addressed by composition path. Prefer this over a bare `pdfinfo <pdf>`: it measures page count and fill in one pass and says what to change to close the gap.
 - **auto_fix**: resume-writer applies the ladder rung that closes the reported line gap (drop a featured experience to mention; trim bullets per featured; shave a ragged tail to reclaim a line); re-render; re-measure. Up to 6 attempts.
 - **severity**: fail if can't converge after 6 attempts; pass otherwise
 
 ### required_sections
 - **what**: every CV must contain `## Professional Summary`, `## Skills`, `## Professional Experience`
 - **how**: grep rendered `cv.md`
-- **auto_fix**: none — missing section indicates content layer bug
+- **auto_fix**: none, since a missing section indicates a content layer bug
 - **severity**: fail
 
 ### bullet_density
@@ -36,9 +36,9 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 - **severity**: warn for high density; fail for zero bullets per experience
 
 ### ats_lint
-- **what**: docx is free of MECHANICAL ATS hazards (no embedded images/icons, no objects/SVG, no tables, page count within budget, JD keyword overlap). Section/heading soundness is NOT checked here — it's a semantic judgement made by the resume-writer's visual review (templates legitimately letter-space headings or show an unlabeled summary, so literal heading matching is unreliable).
+- **what**: docx is free of MECHANICAL ATS hazards (no embedded images/icons, no objects/SVG, no tables, page count within budget, JD keyword overlap). Section/heading soundness is NOT checked here; it's a semantic judgement made by the resume-writer's visual review (templates legitimately letter-space headings or show an unlabeled summary, so literal heading matching is unreliable).
 - **how**: `npm run resume:lint:ats -- --file <docx>`
-- **auto_fix**: `warn` accepted; `fail` surface — template producing ATS-hostile output
+- **auto_fix**: `warn` accepted; `fail` surface, because the template is producing ATS-hostile output
 - **severity**: fail blocks; warn logs
 
 ### research_rubric
@@ -50,7 +50,7 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 ### no_markdown_artefact_leak
 - **what**: no escape leakage from the parser (`\(`, `\.`, `&#x2F;`, `&amp;`)
 - **how**: grep `cv.md`
-- **auto_fix**: none — parser bug; surface for upstream fix
+- **auto_fix**: none; parser bug, so surface for upstream fix
 - **severity**: fail
 
 ### source_provenance
@@ -66,9 +66,9 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 - **severity**: fail
 
 ### term_grounding
-- **what**: no term the CV asserts is borrowed from the job description but absent from the candidate's real corpus. `source_provenance` only proves a claim *cites* a valid line; it does NOT prove the cited line *supports* the claim — so a tailored bullet can lift a JD feature-word ("quote generation", "underwriting threshold", "cover expiry"), attach a plausible-but-irrelevant citation, and pass provenance. This check closes that hole. It is the durable fix for the 2026-06-18 AGI incident where an entire skills block + highlights mirrored JD insurance terms (Death/TPD/IP, underwriting, quote engine, accepted/declined) that appear nowhere in cv-source.md.
+- **what**: no term the CV asserts is borrowed from the job description but absent from the candidate's real corpus. `source_provenance` only proves a claim *cites* a valid line; it does NOT prove the cited line *supports* the claim, so a tailored bullet can lift a JD feature-word ("quote generation", "underwriting threshold", "cover expiry"), attach a plausible-but-irrelevant citation, and pass provenance. This check closes that hole. It is the durable fix for the 2026-06-18 AGI incident where an entire skills block + highlights mirrored JD insurance terms (Death/TPD/IP, underwriting, quote engine, accepted/declined) that appear nowhere in cv-source.md.
 - **how**: run `npm run resume:term-grounding -- --content-json <prefix>.composition.json --jd <jd-path> --profile <id>`. It greps every distinctive term in the rendered CV against `cv-source.md` + `profile.md`. `jd_injected` flags (term ∈ JD ∧ term ∉ corpus) are the high-precision fabrication signal; `ungrounded` flags are a softer worklist. Baseline (non-tailored) renders run it without `--jd` for the ungrounded sweep only.
-- **auto_fix**: resolve EVERY `jd_injected` flag by one of three moves, per the 3-tier honesty policy: (1) **corpus-backed** — the source really supports it under a synonym; add the citation; (2) **preppable domain knowledge** — reframe as honest familiarity ("working knowledge of …", never "delivered/built …") AND add the term to `composition.interview_prep_terms` so the caller can log it for the candidate to study before interview; (3) **unfakeable** — remove it. Never leave a JD term rendered as delivered work the corpus doesn't support.
+- **auto_fix**: resolve EVERY `jd_injected` flag by one of three moves, per the 3-tier honesty policy: (1) **corpus-backed**: the source really supports it under a synonym; add the citation; (2) **preppable domain knowledge**: reframe as honest familiarity ("working knowledge of …", never "delivered/built …") AND add the term to `composition.interview_prep_terms` so the caller can log it for the candidate to study before interview; (3) **unfakeable**: remove it. Never leave a JD term rendered as delivered work the corpus doesn't support.
 - **severity**: fail when any `jd_injected` term renders as an experiential/delivered-work claim; warn for ungrounded or for terms legitimately reframed to familiarity.
 
 ### market_alignment
@@ -151,10 +151,10 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 
 ---
 
-## Visual (multimodal — resume-writer reads page PNGs)
+## Visual (multimodal, resume-writer reads page PNGs)
 
 ### layout_balance
-- **what**: each page looks balanced — not "all text top, vast white below" or vice versa
+- **what**: each page looks balanced, not "all text top, vast white below" or vice versa
 - **how**: read each page PNG; judge: where does the text density sit? Top-heavy / bottom-heavy / centred?
 - **auto_fix**: top-heavy may indicate next page is mostly empty → consider absorbing; bottom-heavy may indicate orphan content
 - **severity**: warn
@@ -174,25 +174,25 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 ### no_overflow
 - **what**: no text bleeding past page margins; no bullets running off the right edge; no horizontal scroll
 - **how**: read each page PNG; verify all text sits inside visible margins
-- **auto_fix**: none — overflow indicates a long bullet, table, or unhandled long URL; surface
+- **auto_fix**: none; overflow indicates a long bullet, table, or unhandled long URL; surface
 - **severity**: fail
 
 ### no_browser_print_chrome
-- **what**: no browser-print artefacts on any page — top strip showing the document title repeated, a date stamp, page numbers in `N/M` format the user didn't ask for, or a `file:///…` URL strip at the bottom. These are signs the PDF was printed via a browser engine (Chrome headless, wkhtmltopdf) that left its default print chrome on. None of this belongs on a CV.
+- **what**: no browser-print artefacts on any page: no top strip showing the document title repeated, a date stamp, page numbers in `N/M` format the user didn't ask for, or a `file:///…` URL strip at the bottom. These are signs the PDF was printed via a browser engine (Chrome headless, wkhtmltopdf) that left its default print chrome on. None of this belongs on a CV.
 - **how**: read each page PNG; scan the top 5% and bottom 5% of the page. Flag any of: small grey text repeating the H1 (name); a date in `dd/mm/yyyy` or `mm/dd/yyyy` format pinned at a corner; a `file://...` or `http://...` strip; a "Page N of M" footer the template didn't intend; the literal text "about:blank"
-- **auto_fix**: none — this is a renderer bug. Surface with the specific artefact seen, the page(s) it appears on, and the suspected source (Playwright `page.pdf()` header/footer defaults, a stray `@page` margin box). The fix lives in the template's render path (`templates/resume/_html-helpers.ts`, which drives Playwright Chromium) — add `@page` CSS and keep `displayHeaderFooter` off
+- **auto_fix**: none, because this is a renderer bug. Surface with the specific artefact seen, the page(s) it appears on, and the suspected source (Playwright `page.pdf()` header/footer defaults, a stray `@page` margin box). The fix lives in the template's render path (`templates/resume/_html-helpers.ts`, which drives Playwright Chromium); add `@page` CSS and keep `displayHeaderFooter` off
 - **severity**: fail (this is the most obvious "this CV was machine-generated and not checked" tell)
 
 ### section_hierarchy_distinct
-- **what**: section headings (## Professional Experience, ## Skills, etc.) visually stand out from body text — bigger, bolder, or with visible spacing above
+- **what**: section headings (## Professional Experience, ## Skills, etc.) visually stand out from body text: bigger, bolder, or with visible spacing above
 - **how**: read page PNGs; judge whether headings look like headings or blend into body
-- **auto_fix**: none — template-level concern (reference.docx or render.ts)
+- **auto_fix**: none; template-level concern (reference.docx or render.ts)
 - **severity**: warn
 
 ### dates_visible_per_experience
-- **what**: each experience block clearly shows its date range — not buried inline, not missing
+- **what**: each experience block clearly shows its date range, not buried inline and not missing
 - **how**: read each page PNG; verify dates appear near each company/role line
-- **auto_fix**: none — content or template level
+- **auto_fix**: none; content or template level
 - **severity**: warn
 
 ### section_ordering
@@ -204,11 +204,11 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 ### last_page_substantive
 - **what**: if the CV spills onto a final page, that page must be at least 75% filled unless the source corpus is genuinely too thin after the full fill-up ladder. A 2-3 line orphan page is always suspect; a page that ends 50% down usually means the composition should absorb the spill or fill the page. The evaluator applies this as a global warning by default and a hard failure when the template or target declares `last_page_min_fill_pct`.
 - **how**: read the last page PNG
-- **auto_fix**: prefer fill-up when the user has more cv-source.md evidence to offer; prefer absorb when the existing featured-experience set is already substantive. Decide based on remaining target-fit material — if dropped/mention experiences score well, promote them rather than trim away strong content from earlier pages.
-- **severity**: fail (was warn — tightened 2026-05-28 alongside whitespace_density)
+- **auto_fix**: prefer fill-up when the user has more cv-source.md evidence to offer; prefer absorb when the existing featured-experience set is already substantive. Decide based on remaining target-fit material: if dropped/mention experiences score well, promote them rather than trim away strong content from earlier pages.
+- **severity**: fail (was warn, tightened 2026-05-28 alongside whitespace_density)
 
 ### first_page_lead_strong
-- **what**: page 1 carries the lead-with hook — name, contact, full Professional Summary visible, and ideally Highlights too. Reader should grok "who is this" in 5 seconds.
+- **what**: page 1 carries the lead-with hook: name, contact, full Professional Summary visible, and ideally Highlights too. Reader should grok "who is this" in 5 seconds.
 - **how**: read page 1 PNG; verify Summary block is fully visible (not just heading)
 - **auto_fix**: if Summary truncated to page 2, consider trimming Highlights to make room
 - **severity**: warn

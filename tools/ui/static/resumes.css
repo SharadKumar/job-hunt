@@ -1,0 +1,281 @@
+/* resumes.css - the CV baselines and the evidence questions
+   (#/resumes, #/resumes/evidence). Tokens, type and every shared primitive
+   come from app.css; nothing here introduces a colour, a radius or a shadow
+   of its own.
+
+   Baselines use three levels including the app shell: persistent navigation,
+   positioning browser, and one selected resume with five views. A page fill remains a short
+   horizontal bar with the percentage in ink: never red, because a page at 88
+   percent against a 90 percent floor is worth a look, not a failure.
+
+   Local additions (nothing here belongs in app.css):
+     .fills / .fill      the row of page-fill bars, this screen only
+     .resume-pdf         the authenticated PDF in the third panel
+     .cover              a coverage bar with its label and fraction on one line
+     .verdict-line       a gate, critic or cloud reading, 15 px ink
+     .answers           the four fixed keyword answers under a list row */
+
+/* --- Three-level baseline workbench ------------------------------------- */
+
+.view[data-route="resumes"] {
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="resumes"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
+
+.resume-stage {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.view[data-route="resumes"]:has(.resume-workbench) {
+  display: flex;
+  flex-direction: column;
+}
+
+.resume-workbench {
+  display: grid;
+  grid-template-columns: minmax(260px, 30%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.resume-browser { min-width: 0; overflow: auto; background: var(--wash); border-right: 1px solid var(--rule); }
+.resume-browser-head { padding: 24px; }
+.resume-browser-head h2 { margin: 0; }
+.resume-browser-list { display: block; border-top: 1px solid var(--rule); }
+
+.resume-browser-item {
+  position: relative;
+  display: block;
+  padding: 16px 24px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+}
+.resume-browser-item:hover { background: var(--paper); text-decoration: none; }
+.resume-browser-item.selected { background: var(--paper); }
+.resume-browser-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+
+.resume-browser-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.resume-browser-title strong { font-size: 15px; font-weight: 600; }
+.resume-browser-title .stamp { flex: 0 0 auto; font-size: 13px; }
+.resume-browser-positioning, .resume-browser-quality {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.resume-browser-quality { color: var(--ink); }
+
+.resume-selected { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.resume-selected-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 24px; padding: 24px 32px 16px; }
+.resume-selected-head h2 { margin: 0; font-size: 27px; }
+.resume-head-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+.resume-selected-tabs { flex: 0 0 auto; padding: 0 32px; border-bottom: 1px solid var(--rule); }
+.resume-overview { min-width: 0; overflow: auto; padding: 0 32px 32px; }
+
+.resume-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+.resume-section-note { margin: 0; color: var(--muted); font-size: 13px; }
+
+.resume-quality { flex: 1 1 auto; min-width: 0; overflow: auto; padding: 24px 32px 32px; background: var(--wash); }
+.resume-quality-head h2 { margin: 0; font-size: 21px; }
+.resume-quality-head p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.resume-quality-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.resume-quality-section > .eyebrow { margin-bottom: 8px; }
+
+.resume-preview { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+.resume-pdf-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+.resume-pdf { display: block; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--paper); }
+
+.cloud-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.cloud-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.cloud-age { flex: 0 0 auto; color: var(--muted); }
+.cloud-age.stale { color: var(--warn); }
+
+/* --- Page fill ----------------------------------------------------------- */
+
+.fills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 0 16px;
+}
+
+.fill { margin: 0; flex: 1 1 88px; min-width: 88px; }
+
+.fill-pct {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* app.css gives a bar 16 px of air under it; in this row the caption is the
+   air, so it is taken back here rather than changed for every screen. */
+.fill .bar { margin: 0; }
+
+/* A page under the render's own floor is warned about, never failed. */
+.fill.low .bar span { background: var(--warn); }
+
+.fill figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fill-page { color: var(--muted); text-decoration: none; }
+.fill-page:hover { color: var(--ink); text-decoration: underline; }
+.fill-low { color: var(--warn); }
+
+/* --- Gates, critic, clouds ----------------------------------------------- */
+
+.gates, .critic { margin: 0 0 12px; }
+
+/* One reading, in ink. The verdict colour lives on the pill beside the gate
+   name in the fold, not on the sentence: a tally is not a verdict. */
+.verdict-line { margin: 0 0 4px; font-size: 15px; color: var(--ink); }
+
+.verdict-list { list-style: none; margin: 0; padding: 0; }
+
+.verdict-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.verdict-list li:first-child { border-top: 0; }
+
+.verdict-name { font-size: 13px; color: var(--ink); }
+
+.verdict-why {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+/* --- Keyword coverage ---------------------------------------------------- */
+
+.covers { display: grid; gap: 8px; margin: 0 0 12px; }
+
+/* Label, bar and fraction on the one line: the fraction is the reading and it
+   used to sit above the bar where it read as a caption. */
+.cover {
+  display: grid;
+  grid-template-columns: 96px minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.cover .bar { margin: 0; }
+.cover-label { font-size: 13px; color: var(--muted); }
+.cover-count { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* --- Files and approval -------------------------------------------------- */
+
+.resume-file-link { font-size: 13px; }
+.resume-file-link.disabled { color: var(--muted); text-decoration: none; }
+
+/* A file that would not open says so under the buttons, in the server's words. */
+.file-note { margin: 0; padding: 0 24px 12px; font-size: 13px; color: var(--fail); max-width: var(--measure); }
+.file-note:empty { display: none; }
+
+.approve { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.approve-note { margin: 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+.approve-note:empty { display: none; }
+.approve-refusal { color: var(--fail); }
+
+/* --- Evidence questions -------------------------------------------------- */
+
+/* The evidence tab's banner: a nudge with a job attached, not an alarm. */
+.triage-banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--warn);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.term-search { max-width: 320px; margin: 0 0 16px; }
+
+.progress-line { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+
+.terms .term-name { font-weight: 600; }
+
+/* The four fixed answers run the width of the row, under the term they answer,
+   rather than squeezing into the action column and orphaning the fourth. */
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 719px) {
+  /* Two by two rather than three and a stray: a lone full-width bar under
+     three short ones reads as a different measurement. */
+  .fill { flex: 1 1 calc(50% - 8px); }
+
+  .answers .btn, .answers button { flex: 1 1 100%; }
+  .cover { grid-template-columns: minmax(0, 1fr) auto; }
+  .cover .bar { grid-column: 1 / -1; grid-row: 2; }
+
+  .view[data-route="resumes"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="resumes"] > .page-header { margin: 32px 0 24px; }
+  .resume-stage { min-height: 0; }
+  .resume-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .resume-selected { grid-row: 1; overflow: visible; }
+  .resume-selected-head { padding-right: 16px; padding-left: 16px; }
+  .resume-selected-tabs { padding-right: 16px; padding-left: 16px; overflow-x: auto; }
+  .resume-overview { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .resume-quality { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .resume-pdf { height: 640px; }
+  .resume-browser { grid-row: 2; overflow: visible; border-right: 0; border-top: 1px solid var(--rule); }
+  .resume-head-actions { justify-content: flex-start; }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .resume-workbench { grid-template-columns: minmax(240px, 32%) minmax(0, 1fr); }
+}

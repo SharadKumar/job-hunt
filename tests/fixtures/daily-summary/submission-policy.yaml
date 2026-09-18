@@ -1,0 +1,5 @@
+kill_switch: false
+autopilot:
+  enabled: true
+  max_per_day: 8
+  channels: [seek, linkedin_jobs]

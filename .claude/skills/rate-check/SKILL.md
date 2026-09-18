@@ -1,15 +1,15 @@
 ---
 name: rate-check
-description: Snapshot the market — median/p25/p75 day-rates for the user's target role families plus top in-demand skills, computed from the harness's recent role scrapes. Use when the user asks "what's the going rate", "rate intel", "what skills are hot right now", "is my rate competitive", "what's the market doing", or wants to know whether to adjust their target band. Arg: `[--days=30]`.
+description: Snapshot the market: median/p25/p75 day-rates for the user's target role families plus top in-demand skills, computed from the harness's recent role scrapes. Use when the user asks "what's the going rate", "rate intel", "what skills are hot right now", "is my rate competitive", "what's the market doing", or wants to know whether to adjust their target band. Arg: `[--days=30]`.
 ---
 
-# /rate-check — market intel snapshot
+# /rate-check: market intel snapshot
 
 Look across the recent role scrapes for what the market is actually paying for the user's target role-family, and what skills it's asking for.
 
 ## What to do
 
-Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its output as the base for every path below; never assume cwd.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 Invoke the `research` subagent with `--mode market`. It produces:
 

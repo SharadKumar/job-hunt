@@ -244,8 +244,12 @@ resume_types:
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    assert.equal(run.status, 0, run.stderr);
+    // Exit 1, not 0: a non-empty source_update_required means the positioning
+    // may not be rendered until cv-source.md carries the confirmed fact, and a
+    // fail-shaped report on a zero exit is a fail a caller can miss.
+    assert.equal(run.status, 1, run.stderr);
     const result = JSON.parse(run.stdout);
+    assert.equal(result.verdict, "fail");
     assert.equal(result.confirmation_needed.length, 0);
     assert.equal(result.open_questions.length, 0);
     assert.equal(result.source_update_required[0].signal, "formal LLM evals");

@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * submission-gate.ts — the single code-level chokepoint every submission MUST
+ * submission-gate.ts: the single code-level chokepoint every submission MUST
  * pass before a channel adapter is invoked.
  *
  * Until now the submission-safety contract ("never submit without explicit
@@ -32,6 +32,10 @@
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
  *      sha256 matches the current cover-letter.md      → else gate_failed
  *   7. tailored CV explicitly approved when required    → else gate_failed
+ *   7b. a baseline-by-reference package's `resume.ref` still hashes to the
+ *      recorded sha256, the baseline beside it is still approved, and its
+ *      approved_hash still matches the one recorded at prepare time
+ *                                                       → else gate_failed
  *   8. channel opted into auto_submit (and, for autopilot, listed in
  *      autopilot.channels)                              → else manual
  *   9. role not flagged red_flag_blocker                → else gate_failed (+ audit validation_gate_failed)
@@ -53,6 +57,7 @@
  */
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import YAML from "yaml";
@@ -60,21 +65,22 @@ import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { log as auditLog, query as auditQuery, checkDuplicate } from "./audit.ts";
 import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
+import { sha256 } from "./lib/hash.ts";
 
 const exec = promisify(execFile);
 
 const POLICY_PATH = repoPath("state/profile/submission-policy.yaml");
 const PROFILE_PATH = repoPath("state/profile/profile.md");
 
-// Channels that are ALWAYS manual regardless of any auto_submit flag — the
+// Channels that are ALWAYS manual regardless of any auto_submit flag: the
 // policy documents these as FORCED FALSE.
 const FORCED_MANUAL_CHANNELS = new Set(["recruiter_email", "manual"]);
 
 export type GateAction =
-  | "submit"          // all gates pass — caller may invoke the adapter
+  | "submit"          // all gates pass, caller may invoke the adapter
   | "manual"          // route to manual_action_needed (channel not opted in)
-  | "duplicate"       // prior submission exists — caller must ask the user
-  | "needs_approval"  // no approval token supplied — usage error / unsafe
+  | "duplicate"       // prior submission exists, caller must ask the user
+  | "needs_approval"  // no approval token supplied: usage error / unsafe
   | "gate_failed"     // a hard validation gate failed
   | "blocked"         // kill switch is on
   | "capped";         // daily cap reached
@@ -199,6 +205,58 @@ export function parseProvenance(approvedBy: string | undefined): { kind: Provena
   return { kind: m[1] as Provenance, ref: m[2] };
 }
 
+/**
+ * Verify a baseline-by-reference package. Returns null when the package is not
+ * one (tailored, legacy copy-based, or no metadata at all), else the verdict.
+ */
+export async function verifyBaselineRef(opts: { archiveDir: string; cvDocxPath?: string }): Promise<{ ok: boolean; detail: string } | null> {
+  const metaPath = path.join(opts.archiveDir, "metadata.json");
+  let meta: any;
+  try {
+    meta = JSON.parse(await fs.readFile(metaPath, "utf8"));
+  } catch (e: any) {
+    if (e?.code === "ENOENT") return null;
+    return { ok: false, detail: `package metadata at ${metaPath} is unreadable: ${e?.message ?? e}` };
+  }
+  const resume = meta?.resume;
+  if (!resume || typeof resume.ref !== "string") return null;
+  const ref: string = resume.ref;
+  const refPath = path.isAbsolute(ref) ? ref : repoPath(ref);
+
+  let bytes: Buffer;
+  try {
+    bytes = await fs.readFile(refPath);
+  } catch {
+    return { ok: false, detail: `metadata.resume.ref points at a file that is not there: ${ref}` };
+  }
+  const actual = sha256(bytes);
+  if (typeof resume.sha256 !== "string") return { ok: false, detail: `metadata.resume.ref is set but metadata.resume.sha256 is missing, so the reference cannot be verified` };
+  if (actual !== resume.sha256) {
+    return { ok: false, detail: `resume at ${ref} has changed since the package was prepared (sha256 ${actual.slice(0, 12)}, package recorded ${String(resume.sha256).slice(0, 12)})` };
+  }
+
+  // The referenced file must also be the currently approved baseline.
+  let baselineMeta: any = null;
+  try {
+    baselineMeta = JSON.parse(await fs.readFile(path.join(path.dirname(refPath), "metadata.json"), "utf8"));
+  } catch {
+    return { ok: false, detail: `no baseline metadata.json beside ${ref}; approval cannot be confirmed` };
+  }
+  if (baselineMeta.approval_status !== "approved" || !baselineMeta.approved_hash || baselineMeta.approved_hash !== baselineMeta.content_hash) {
+    return { ok: false, detail: `baseline beside ${ref} is '${baselineMeta.approval_status ?? "unapproved"}' (approved_hash ${String(baselineMeta.approved_hash).slice(0, 12)}, content_hash ${String(baselineMeta.content_hash).slice(0, 12)})` };
+  }
+  if (typeof resume.baseline_content_hash === "string" && resume.baseline_content_hash !== baselineMeta.approved_hash) {
+    return { ok: false, detail: `baseline was re-approved since the package was prepared (package ${resume.baseline_content_hash.slice(0, 12)}, resume-approve ${String(baselineMeta.approved_hash).slice(0, 12)})` };
+  }
+  if (opts.cvDocxPath) {
+    const sending = sha256(await fs.readFile(opts.cvDocxPath).catch(() => Buffer.alloc(0)));
+    if (sending !== actual) {
+      return { ok: false, detail: `the docx handed to the adapter (${path.basename(opts.cvDocxPath)}, sha256 ${sending.slice(0, 12)}) is not the package's referenced baseline` };
+    }
+  }
+  return { ok: true, detail: `baseline ref ${ref} verified (sha256 ${actual.slice(0, 12)}, approved ${String(baselineMeta.approved_at ?? "?").slice(0, 10)})` };
+}
+
 export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecision> {
   const nowISO = opts.nowISO ?? new Date().toISOString();
   const policy = opts.policy ?? (await loadPolicy());
@@ -235,7 +293,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     checks.push({ gate: "autopilot_enabled", ok: true, detail: `run ${prov.ref}` });
   }
 
-  // 2. Kill switch — never bypass.
+  // 2. Kill switch: never bypass.
   if (policy.kill_switch) {
     checks.push({ gate: "kill_switch", ok: false, detail: "kill_switch is on" });
     await auditLog({
@@ -243,7 +301,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("blocked", false, "kill_switch is on — all submissions halted");
+    return decide("blocked", false, "kill_switch is on, all submissions halted");
   }
   checks.push({ gate: "kill_switch", ok: true, detail: "off" });
 
@@ -255,7 +313,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, gate, detail, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("gate_failed", false, `validation gate failed: ${gate} — ${detail}`);
+    return decide("gate_failed", false, `validation gate failed: ${gate}, ${detail}`);
   };
 
   // Autopilot-only gates. Nobody has read this package, so the row's own
@@ -308,7 +366,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const tailoredStatus = opportunity.tailoredResume?.approvalStatus ?? "missing";
     if (tailoredStatus !== "approved") {
       checks.push({ gate: "tailored_resume_approval", ok: false, detail: `tailored resume status is '${tailoredStatus}'` });
-      return decide("gate_failed", false, `validation gate failed: tailored_resume_approval — tailored resume status is '${tailoredStatus}'`);
+      return decide("gate_failed", false, `validation gate failed: tailored_resume_approval, tailored resume status is '${tailoredStatus}'`);
     }
     checks.push({
       gate: "tailored_resume_approval",
@@ -317,19 +375,35 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     });
   }
 
+  // 3b. Baseline-by-reference integrity. A baseline package no longer copies
+  //     the approved CV into the archive; it records `resume.ref` (the path to
+  //     the approved baseline docx), its sha256, and the baseline's approved
+  //     content hash. A reference is only as good as its verification, so the
+  //     gate re-hashes the file on disk and refuses the send unless it is the
+  //     exact artefact the package was prepared from AND that baseline is still
+  //     approved with the same hash resume-approve recorded.
+  const refCheck = await verifyBaselineRef({
+    archiveDir: opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`),
+    cvDocxPath: opts.cvDocxPath,
+  });
+  if (refCheck) {
+    if (!refCheck.ok) return failGate("baseline_resume_ref", refCheck.detail);
+    checks.push({ gate: "baseline_resume_ref", ok: true, detail: refCheck.detail });
+  }
+
   // 4. Per-channel auto_submit opt-in. Not opted in (or forced-manual) → manual queue.
   //    Autopilot additionally requires the channel in autopilot.channels.
   const optedIn = !FORCED_MANUAL_CHANNELS.has(channel) && policy.channels?.[channel]?.auto_submit === true;
   if (!optedIn) {
     checks.push({ gate: "auto_submit", ok: false, detail: `channel '${channel}' not opted into auto_submit` });
-    return decide("manual", false, `channel '${channel}' is manual-only — route to manual_action_needed`);
+    return decide("manual", false, `channel '${channel}' is manual-only, route to manual_action_needed`);
   }
   checks.push({ gate: "auto_submit", ok: true, detail: `channel '${channel}' opted in` });
   if (autopilot) {
     const apChannels = ap.channels ?? [];
     if (!apChannels.includes(channel)) {
       checks.push({ gate: "autopilot_channel", ok: false, detail: `channel '${channel}' not in autopilot.channels [${apChannels.join(", ")}]` });
-      return decide("manual", false, `channel '${channel}' is not on autopilot — route to manual_action_needed`);
+      return decide("manual", false, `channel '${channel}' is not on autopilot, route to manual_action_needed`);
     }
     checks.push({ gate: "autopilot_channel", ok: true, detail: `channel '${channel}' on autopilot` });
   }
@@ -339,7 +413,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const method = opportunity.applyMethod ?? "unknown";
     if (method !== "easy_apply") {
       checks.push({ gate: "apply_method", ok: false, detail: `linkedin applyMethod is '${method}', adapter handles easy_apply only` });
-      return decide("manual", false, `linkedin ad is '${method}', not Easy Apply — route to manual_action_needed`);
+      return decide("manual", false, `linkedin ad is '${method}', not Easy Apply, route to manual_action_needed`);
     }
     checks.push({ gate: "apply_method", ok: true, detail: "linkedin Easy Apply" });
   }
@@ -363,7 +437,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
   }
   checks.push({ gate: "rate_set_in_profile", ok: true, detail: "rate set" });
 
-  // 6. Cross-channel dedup — a prior submission to the same company+role-family
+  // 6. Cross-channel dedup: a prior submission to the same company+role-family
   //    is a decision for the user, not an auto-submit.
   if ((hg.audit_dedup_check || hg.duplicate_check) && autopilot && userSaved && ap.saved_jobs_bypass_fit_gates !== false) {
     checks.push({ gate: "audit_dedup", ok: true, detail: "skipped: user-saved row is an order to apply regardless of duplicate status" });
@@ -373,13 +447,13 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     const priorSubmitted = dup.matches.filter((m) => m.status === "submitted");
     if (priorSubmitted.length) {
       checks.push({ gate: "audit_dedup", ok: false, detail: `prior submission(s) within ${within}d: ${priorSubmitted.map((m) => m.role_id).join(", ")}` });
-      return decide("duplicate", false, `already submitted to ${opportunity.company} for this role-family within ${within} days — needs a user decision`);
+      return decide("duplicate", false, `already submitted to ${opportunity.company} for this role-family within ${within} days, needs a user decision`);
     }
     checks.push({ gate: "audit_dedup", ok: true, detail: `no prior submission within ${within}d` });
   }
 
   // 7. Artefact checks. If the policy requires a check we cannot run (missing
-  //    artefact path), fail closed — never submit something we can't verify.
+  //    artefact path), fail closed: never submit something we can't verify.
   if (hg.cv_lint_ats_must_pass) {
     if (!opts.cvDocxPath) return failGate("cv_lint_ats_must_pass", "no CV docx supplied to verify ATS lint");
     const v = await runVerdict("resume:lint:ats", ["--file", opts.cvDocxPath]);
@@ -409,7 +483,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       details: { company: opportunity.company, title: opportunity.title, submitted_today: todayCount, cap, approved_by: opts.approvedBy },
       provenance: { url: opportunity.url, channel },
     });
-    return decide("capped", false, `daily cap reached (${todayCount}/${cap}) — try again tomorrow`);
+    return decide("capped", false, `daily cap reached (${todayCount}/${cap}), try again tomorrow`);
   }
   checks.push({ gate: "daily_cap", ok: true, detail: `${todayCount}/${cap} submitted today` });
 
@@ -425,7 +499,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
         details: { company: opportunity.company, title: opportunity.title, submitted_today: apCount, cap: apCap, approved_by: opts.approvedBy, scope: "autopilot" },
         provenance: { url: opportunity.url, channel },
       });
-      return decide("capped", false, `autopilot daily cap reached (${apCount}/${apCap}) — the rest waits for tomorrow`);
+      return decide("capped", false, `autopilot daily cap reached (${apCount}/${apCap}), the rest waits for tomorrow`);
     }
     checks.push({ gate: "autopilot_daily_cap", ok: true, detail: `${apCount}/${apCap} autopilot submissions today` });
   }

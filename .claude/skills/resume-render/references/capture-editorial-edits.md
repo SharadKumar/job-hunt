@@ -1,4 +1,4 @@
-# Editorial instruction capture (#10 — learning loop)
+# Editorial instruction capture (#10, the learning loop)
 
 Shared procedure used by both `/resume-render` and `/resume-review` skills. When the user edits a baseline before approving (or rejects a resume-writer suggestion), treat the feedback as a routing signal and materialise it into the narrowest durable instruction home that will improve future output. Do not maintain a separate feedback ledger when the instruction can be captured directly in source, profile rules, resume rules, or template code/rubric.
 
@@ -37,14 +37,14 @@ For template-level changes, change the template artifact directly and update its
 
 | Pattern | Format | Example |
 |---|---|---|
-| Bullet removed | `<ISO-date>  bullet-removed  "<text>"  — <reason>` | `2026-05-30  bullet-removed  "leveraged transformational change"  — slop phrase` |
-| Experience demoted | `<ISO-date>  experience-demoted  <id>  — <reason>` | `2026-05-30  experience-demoted  2021-03_ernst-young  — EA target should lead with hands-on delivery, not pure-advisory` |
-| Experience promoted | `<ISO-date>  experience-promoted  <id>  — <reason>` | `2026-05-30  experience-promoted  2022-04_apl  — user wants Next.js/full-stack signal stronger on EA` |
-| Summary edited | `<ISO-date>  summary-edited  "<delta>"  — <reason>` | `2026-05-30  summary-edited  "lead with GenAI prototype" → "lead with ServiceNow ESM transformation"  — user prefers programme-first framing` |
-| Phrase removed (per-resume) | `<ISO-date>  phrase-removed  "<text>"  — <reason>` | `2026-05-30  phrase-removed  "trusted advisor"  — overused; treat as per-resume slop on EA` |
-| Skill block removed | `<ISO-date>  skill-removed  "<name>"  — <reason>` | `2026-05-30  skill-removed  "Agile"  — not relevant for EA architecture pitch` |
+| Bullet removed | `<ISO-date>  bullet-removed  "<text>"  (<reason>)` | `2026-05-30  bullet-removed  "leveraged transformational change"  (slop phrase)` |
+| Experience demoted | `<ISO-date>  experience-demoted  <id>  (<reason>)` | `2026-05-30  experience-demoted  2021-03_ernst-young  (EA target should lead with hands-on delivery, not pure-advisory)` |
+| Experience promoted | `<ISO-date>  experience-promoted  <id>  (<reason>)` | `2026-05-30  experience-promoted  2022-04_apl  (user wants Next.js/full-stack signal stronger on EA)` |
+| Summary edited | `<ISO-date>  summary-edited  "<delta>"  (<reason>)` | `2026-05-30  summary-edited  "lead with GenAI prototype" → "lead with ServiceNow ESM transformation"  (user prefers programme-first framing)` |
+| Phrase removed (per-resume) | `<ISO-date>  phrase-removed  "<text>"  (<reason>)` | `2026-05-30  phrase-removed  "trusted advisor"  (overused; treat as per-resume slop on EA)` |
+| Skill block removed | `<ISO-date>  skill-removed  "<name>"  (<reason>)` | `2026-05-30  skill-removed  "Agile"  (not relevant for EA architecture pitch)` |
 
-Reasons are short — one clause. They give resume-writer context for edge-case judgement.
+Reasons are short: one clause. They give resume-writer context for edge-case judgement.
 
 ## Procedure
 
@@ -72,11 +72,11 @@ Profile-wide path: `state/profile/resume-editorial-rules.md`.
 
 If the target-level file doesn't exist, create it with a header:
 ```markdown
-# Editorial rules — <resume-id>
+# Editorial rules: <resume-id>
 
 resume-writer reads this file before composing for this resume. Each line below
 captures an edit the user made to a prior render. resume-writer treats them as
-soft preferences — strong resume-fit can override, but the writer should
+soft preferences, and strong resume-fit can override, but the writer should
 surface conflicts rather than ignore them silently.
 
 Append-only. Skills are the only writer.
@@ -98,7 +98,7 @@ For source-level changes, do not write an editorial rule if the source can be co
 
 For template-level changes, patch the template/rubric/quality-check file directly and run the relevant render/evaluate checks. If a template issue is discovered from this user's resume but applies generically to that template, it belongs in `templates/resume/<template>/`, not in profile state.
 
-### 3. Detect threshold crossing — promotion to wider scope
+### 3. Detect threshold crossing: promotion to wider scope
 
 If the same pattern appears twice within 7 days (e.g., the same phrase removed in two different per-resume rules files, OR removed twice from the SAME resume's rules file), surface to the user:
 

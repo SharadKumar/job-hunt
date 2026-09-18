@@ -59,10 +59,12 @@ import { openChromeContext } from "./_browser.ts";
 import {
   coverLetterToPlainText,
   decideQuestion,
+  isPlaceholderOption,
   loadScreeningAnswers,
+  normaliseQuestion,
   type PageQuestion,
   type QuestionDecision,
-  type ScreeningEntry,
+  type ScreeningAnswers,
 } from "./seek-submit.ts";
 
 export type SubmitLinkedInOptions = {
@@ -141,9 +143,68 @@ const FIND_DIALOG_JS = `
 `;
 
 /**
+ * Candidate label sources for one control, collected in the page realm. The
+ * choice between them is made in Node by chooseQuestionLabel() so it can be
+ * unit tested without a browser.
+ */
+export type LabelCandidates = {
+  /** <label for="<id>"> text. */
+  forLabel?: string;
+  /** aria-labelledby target text. */
+  labelledby?: string;
+  /** Enclosing fieldset > legend (or role=group/radiogroup label). */
+  legend?: string;
+  /** aria-label attribute. */
+  aria?: string;
+  /** Enclosing <label>, with the control's own text removed. */
+  wrap?: string;
+  /** Nearest preceding label-like element. */
+  preceding?: string;
+};
+
+/**
+ * True when `text` is nothing but the control's own placeholder and option
+ * text ("Select an option Yes No"). Such a string is never a question.
+ */
+export function isOptionEcho(text: string, optionLabels: string[] = []): boolean {
+  let s = normaliseQuestion(text);
+  if (!s) return true;
+  for (const o of optionLabels) {
+    const on = normaliseQuestion(o);
+    if (!on) continue;
+    s = s.split(on).join(" ");
+  }
+  s = s
+    .replace(/\b(select an option|please select|select|choose|an option|option|required|yes|no)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return s.length === 0;
+}
+
+/**
+ * Pick the question label from the candidates, in the order a screen reader
+ * would: <label for>, aria-labelledby, fieldset > legend, aria-label, the
+ * enclosing label, then the nearest preceding label-like element. A candidate
+ * that is only the control's placeholder or option text is skipped, so
+ * "Select an option Yes No" is never stored as a question. When nothing is
+ * left, say so rather than inventing a question.
+ */
+export function chooseQuestionLabel(c: LabelCandidates | undefined, optionLabels: string[] = []): string {
+  const order = [c?.forLabel, c?.labelledby, c?.legend, c?.aria, c?.wrap, c?.preceding];
+  for (const raw of order) {
+    const t = String(raw ?? "").replace(/\s+/g, " ").trim();
+    if (t && !isOptionEcho(t, optionLabels)) return t;
+  }
+  const near = optionLabels.filter((o) => o && !isPlaceholderOption(o)).slice(0, 4).join(", ");
+  return `(unlabelled question near: ${near || "no options"})`;
+}
+
+/**
  * Enumerate the form controls inside the Easy Apply dialog. Same shape as the
  * SEEK discovery so decideQuestion() applies unchanged, plus `numeric` for
  * LinkedIn's decimal-only inputs and `value` so prefilled fields are skipped.
+ * Every control carries its raw `labels` candidates; chooseQuestionLabel()
+ * resolves them in Node.
  * Browser-realm string: tsx may inject `__name` into transpiled callbacks.
  */
 const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
@@ -151,6 +212,21 @@ const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
   const root = dialog || document.body;
   const clean = function (s) { return (s || "").replace(/\\s+/g, " ").trim(); };
   const textOfIds = function (ids) { return clean(ids.split(/\\s+/).map(function (id) { const n = byId(id); return n ? n.innerText : ""; }).join(" ")); };
+  const FORMISH = /^(input|select|textarea|option|optgroup|button|script|style|svg)$/i;
+  const textExcluding = function (node, el) {
+    let out = "";
+    const kids = node.childNodes;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
+      if (c === el) continue;
+      if (c.nodeType === 1) {
+        if (FORMISH.test(c.tagName)) continue;
+        if (c.contains && c.contains(el)) { out += " " + textExcluding(c, el); continue; }
+      }
+      out += " " + (c.textContent || "");
+    }
+    return clean(out);
+  };
   const labelFor = function (el) {
     if (el.id) { const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) return clean(l.innerText); }
     const lb = el.getAttribute("aria-labelledby"); if (lb) { const t = textOfIds(lb); if (t) return t; }
@@ -172,36 +248,65 @@ const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
     }
     return "";
   };
+  const precedingLabel = function (el) {
+    let node = el;
+    let hops = 0;
+    while (node && node !== root && hops++ < 8) {
+      let sib = node.previousElementSibling;
+      while (sib) {
+        if (!FORMISH.test(sib.tagName)) {
+          const t = clean(sib.innerText || sib.textContent || "");
+          if (t && t.length <= 300) return t;
+        }
+        sib = sib.previousElementSibling;
+      }
+      node = node.parentElement;
+    }
+    return "";
+  };
+  const candidates = function (el) {
+    const out = {};
+    if (el.id) { const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) out.forLabel = textExcluding(l, el); }
+    const lb = el.getAttribute("aria-labelledby"); if (lb) out.labelledby = textOfIds(lb);
+    const lg = groupLabel(el); if (lg) out.legend = lg;
+    const al = el.getAttribute("aria-label"); if (al) out.aria = clean(al);
+    const wrap = el.closest("label"); if (wrap) out.wrap = textExcluding(wrap, el);
+    const pre = precedingLabel(el); if (pre) out.preceding = pre;
+    return out;
+  };
   const isRequired = function (el) { return el.required || el.getAttribute("aria-required") === "true" || /\\*|required/i.test(groupLabel(el) + labelFor(el)); };
   const out = [];
   root.querySelectorAll("select").forEach(function (s) {
-    out.push({ kind: "select", label: labelFor(s) || groupLabel(s), id: s.id || "", name: s.name || "", required: isRequired(s), numeric: false, value: s.value,
+    out.push({ kind: "select", label: "", labels: candidates(s), id: s.id || "", name: s.name || "", required: isRequired(s), numeric: false, value: s.value,
       options: Array.prototype.slice.call(s.options).map(function (o) { return { label: clean(o.textContent), id: o.value }; }) });
   });
   const groups = new Map();
   root.querySelectorAll('input[type="checkbox"],input[type="radio"]').forEach(function (i) {
     const key = i.type + ":" + (i.name || groupLabel(i) || i.id);
-    if (!groups.has(key)) groups.set(key, { kind: i.type, label: groupLabel(i), id: "", name: i.name || "", required: isRequired(i), numeric: false, value: "", options: [] });
+    if (!groups.has(key)) groups.set(key, { kind: i.type, label: "", labels: candidates(i), id: "", name: i.name || "", required: isRequired(i), numeric: false, value: "", options: [] });
     const g = groups.get(key);
     g.options.push({ label: labelFor(i), id: i.id || "" });
     if (i.checked) g.value = labelFor(i);
-    if (!g.label) g.label = labelFor(i);
   });
   groups.forEach(function (g) { out.push(g); });
   root.querySelectorAll('textarea,input[type="text"],input[type="number"],input[type="tel"],input[type="email"],input:not([type])').forEach(function (t) {
     const hint = clean((t.closest("div") && t.closest("div").innerText) || "");
-    out.push({ kind: "text", label: labelFor(t) || groupLabel(t), id: t.id || "", name: t.name || "", required: isRequired(t),
+    out.push({ kind: "text", label: "", labels: candidates(t), id: t.id || "", name: t.name || "", required: isRequired(t),
       numeric: t.type === "number" || /numeric/i.test(t.id || "") || t.inputMode === "numeric" || t.inputMode === "decimal" || /decimal number|whole number/i.test(hint),
       value: t.value || "", options: [] });
   });
   return out;
 })()`;
 
-type ModalQuestion = PageQuestion & { numeric: boolean; value: string };
+type ModalQuestion = PageQuestion & { numeric: boolean; value: string; labels?: LabelCandidates };
 
 async function discoverModalQuestions(page: Page): Promise<ModalQuestion[]> {
   const raw = (await page.evaluate(DISCOVER_MODAL_QUESTIONS_JS)) as ModalQuestion[];
-  return raw.filter((q) => q.label);
+  return raw
+    // A control with neither a label candidate nor a real option is furniture
+    // (LinkedIn's hidden inputs); it was skipped before and still is.
+    .filter((q) => Object.keys(q.labels ?? {}).length > 0 || q.options.some((o) => o.label && !isPlaceholderOption(o.label)))
+    .map((q) => ({ ...q, label: chooseQuestionLabel(q.labels, q.options.map((o) => o.label)) }));
 }
 
 const MODAL_TEXT_JS = `(() => { ${FIND_DIALOG_JS} return dialog ? dialog.innerText : ""; })()`;
@@ -299,7 +404,7 @@ async function modalErrors(page: Page): Promise<string[]> {
 }
 
 /** Answer every control on the current step; returns the first unanswerable question, if any. */
-async function answerStep(page: Page, entries: ScreeningEntry[], phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
+async function answerStep(page: Page, answers: ScreeningAnswers, phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
   const questions = await discoverModalQuestions(page);
   let coverLetterDelivered = false;
   for (const q of questions) {
@@ -328,7 +433,7 @@ async function answerStep(page: Page, entries: ScreeningEntry[], phone: string |
     // Already answered (remembered from an earlier application): leave alone.
     if (q.value && q.kind !== "checkbox") continue;
 
-    const decision = decideQuestion(q, entries);
+    const decision = decideQuestion(q, answers);
     if (decision.kind === "unmatched") {
       // A numeric field the profile answers in words is still answerable when the words carry a number.
       return { unmatched: q, coverLetterDelivered };
@@ -390,7 +495,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
   if (!opts?.resumeFilename) return { ok: false, reason: "resumeFilename is required", needsManual: true };
   const timeout = opts.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT;
   const shotDir = opts.screenshotDir;
-  const entries = await loadScreeningAnswers();
+  const answers = await loadScreeningAnswers();
   const phone = await loadProfilePhone();
   const coverLetter = coverLetterToPlainText(pkg.coverLetterMd);
   const log = (m: string) => console.error(`[linkedin-submit] ${opportunity.id}: ${m}`);
@@ -460,7 +565,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
       }
 
       // Form controls on this step (screening questions, phone, cover letter).
-      const answered = await answerStep(page, entries, phone, coverLetter, timeout, log);
+      const answered = await answerStep(page, answers, phone, coverLetter, timeout, log);
       coverLetterDelivered = coverLetterDelivered || answered.coverLetterDelivered;
       if (answered.unmatched) {
         const q = answered.unmatched;

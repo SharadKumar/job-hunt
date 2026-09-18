@@ -37,7 +37,7 @@
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { type Page } from "playwright";
-import { load as loadPipeline, save as savePipeline, upsert, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
@@ -325,6 +325,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
   if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
 
   const ctx = await openChromeContext("linkedin", { headless: true });
+  const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0, unchanged = 0, failed = 0;
   const startedAt = Date.now();
   try {
@@ -334,7 +335,21 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
       try {
         const data = await fetchLinkedInJob(page, role.url);
         if (!data.description || data.description.length < 80) throw new Error("job description empty or too short (DOM change?)");
-        if (applyLinkedInEnrichment(role, data)) enriched++; else unchanged++;
+        if (applyLinkedInEnrichment(role, data)) {
+          enriched++;
+          // Queue the enriched fields; they are written back in one transaction.
+          patches.push({
+            id: role.id,
+            fields: {
+              description: role.description,
+              postedAt: role.postedAt,
+              applyMethod: role.applyMethod,
+              workArrangement: role.workArrangement,
+              location: role.location,
+              notes: role.notes,
+            },
+          });
+        } else unchanged++;
       } catch (error) {
         failed++;
         const msg = (error as Error).message;
@@ -353,7 +368,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
   } finally {
     await ctx.close();
   }
-  if (enriched) await savePipeline(roles);
+  if (patches.length) await patchMany(patches, "linkedin:enrich");
   return { selected: candidates.length, enriched, unchanged, failed };
 }
 
@@ -382,14 +397,17 @@ async function main() {
     console.error(`[linkedin-jobs] discovered ${roles.length} roles`);
     if (!upsertFlag) { console.log(JSON.stringify(roles, null, 2)); return; }
     const newIds: string[] = [];
-    const existing = new Set((await loadPipeline()).map((r) => r.id));
+    const existing = new Set((await listPipeline()).map((r) => r.id));
+    const batch: (Partial<Opportunity> & { channel: string; url: string; title: string; company: string })[] = [];
     for (const r of roles) {
       const id = opportunityIdFor(r.channel, r.url);
       if (!existing.has(id)) newIds.push(id);
       // Never send an empty description: upsert refreshes fields and would clobber an enriched JD.
       const { description: _d, ...rest } = r;
-      await upsert({ ...rest, id, status: "discovered" });
+      batch.push({ ...rest, id, status: "discovered" });
     }
+    // One transaction for the whole result page, not one pipeline rewrite per card.
+    await upsertMany(batch);
     console.error(`[linkedin-jobs] upserted ${roles.length} (${newIds.length} new)`);
     if (!argv.includes("--no-enrich") && newIds.length) {
       const limit = cfg.enrich_limit ?? 60;

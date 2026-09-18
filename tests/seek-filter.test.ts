@@ -1,7 +1,19 @@
-import { applySeekEnrichment, buildSearchUrl, looksLikeContractWorkType, looksTechnicallyRelevant, mergeSearchKeywords, parseRelativePostedAt } from "../tools/channels/seek.ts";
+import { makeTempRoot } from "./helpers/temp-root.ts";
 import type { Opportunity } from "../tools/pipeline.ts";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import YAML from "yaml";
+
+// The taxonomy half of this test reads a channels.yaml and a resumes.yaml off
+// disk. Both live under the git-ignored state/profile/, so a fresh clone has
+// neither and the old cwd-relative reads only worked on the owner's machine.
+// A fixture repo root gives the same assertion something to stand on, and
+// keeps the person's own channel config out of the test.
+const { profileDir } = makeTempRoot("seek-filter-test-");
+
+const { applySeekEnrichment, buildSearchUrl, looksLikeContractWorkType, looksTechnicallyRelevant, mergeSearchKeywords, parseRelativePostedAt } =
+  await import("../tools/channels/seek.ts");
+const { activeResumes } = await import("../tools/resumes.ts");
 
 const cases: Array<[string, string, boolean]> = [
   ["Bid Manager", "Commercial bids for road and civil infrastructure projects", false],
@@ -70,28 +82,20 @@ if (
   console.log("  ✓ SEEK taxonomy supplements active-resume keywords without duplicate queries");
 }
 
-const seekConfig = YAML.parse(readFileSync("state/profile/channels.yaml", "utf8"));
-const profileResumes = YAML.parse(readFileSync("state/profile/resumes.yaml", "utf8"));
-const orgResumeTypes = YAML.parse(readFileSync("state/org/resume-types.yaml", "utf8"));
-const activeResumeIds = new Set(
-  profileResumes.resumes.filter((resume: { active?: boolean }) => resume.active).map((resume: { id: string }) => resume.id),
-);
-const activeResumeKeywords = orgResumeTypes.resume_types
-  .filter((resume: { id: string }) => activeResumeIds.has(resume.id))
-  .flatMap((resume: { search_keywords?: string[] }) => resume.search_keywords ?? []);
+const seekConfig = YAML.parse(readFileSync(path.join(profileDir, "channels.yaml"), "utf8"));
+const channelKeywords: string[] = seekConfig.channels.seek.search.keywords;
+// Every active positioning's own search terms, whether they are declared in
+// resumes.yaml or inherited from the org resume-types pool.
+const activeResumeKeywords = (await activeResumes()).flatMap((resume) => resume.search_keywords ?? []);
 const taxonomy = new Set(
-  mergeSearchKeywords(seekConfig.channels.seek.search.keywords, activeResumeKeywords)
+  mergeSearchKeywords(channelKeywords, activeResumeKeywords)
     .map((keyword: string) => keyword.toLocaleLowerCase("en-AU")),
 );
-const requiredFamilies = [
-  "AI Agent Developer",
-  "Solution Architect",
-  "SharePoint",
-  "Technology Project Manager",
-  "M&A",
-  "Fractional CTO",
-  "ServiceNow",
-];
+const requiredFamilies = [...channelKeywords, ...activeResumeKeywords];
+if (!channelKeywords.length || !activeResumeKeywords.length) {
+  console.error("  ✗ the fixture profile must declare both channel keywords and active-resume keywords");
+  failed++;
+}
 const missingFamilies = requiredFamilies.filter(
   (keyword) => !taxonomy.has(keyword.toLocaleLowerCase("en-AU")),
 );
@@ -99,7 +103,7 @@ if (missingFamilies.length) {
   console.error(`  ✗ SEEK taxonomy lost target-family coverage: ${missingFamilies.join(", ")}`);
   failed++;
 } else {
-  console.log("  ✓ SEEK taxonomy retains AI, architecture, M365, delivery, M&A and fractional coverage");
+  console.log("  ✓ SEEK taxonomy keeps every channel term and every active-positioning term");
 }
 
 for (const [label, expected] of [

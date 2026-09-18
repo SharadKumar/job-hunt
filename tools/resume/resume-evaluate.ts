@@ -17,14 +17,13 @@
  * arithmetic, ATS lint, provenance and term-grounding in one call.
  */
 
+import { exists, readYaml } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import type { ResumeContent } from "../../templates/resume/_interface.ts";
 import { withBrowserSession, openPrintPage } from "./lib/browser-session.ts";
 import { measureDocument, type DomMetrics } from "./lib/measure-document.ts";
 import { measurePdfPages, lastPageFill as lastPageFillOf } from "./lib/pdf-metrics.ts";
 import {
-  exists,
-  readYaml,
   readDocxText,
   readOptional,
   htmlToText,

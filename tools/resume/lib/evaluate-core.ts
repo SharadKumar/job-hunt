@@ -7,10 +7,10 @@
  * CLI is now a thin wrapper over this module.
  */
 
+import { exists, readYaml } from "../../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import mammoth from "mammoth";
-import YAML from "yaml";
 import type { ResumeContent, ExperienceFeatured } from "../../../templates/resume/_interface.ts";
 import { compareExperienceOrder } from "../../../templates/resume/_experience-order.ts";
 import { getResume } from "../../resumes.ts";
@@ -105,14 +105,6 @@ export const DEFAULT_LINE_FILL_RULE: BulletLineFillRule = {
   wrapped_last_line_min_fill_pct: 55,
   severity: "warn",
 };
-
-export async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
-
-export async function readYaml<T>(file: string): Promise<T> {
-  return YAML.parse(await fs.readFile(file, "utf8")) as T;
-}
 
 export async function readDocxText(file?: string): Promise<string> {
   if (!file) return "";

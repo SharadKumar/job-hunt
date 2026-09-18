@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Smoke tests for tools/submission-gate.ts — the submission-safety chokepoint.
+ * Smoke tests for tools/submission-gate.ts: the submission-safety chokepoint.
  *
  * Covers the policy-level decisions with fully injected state (roles, policy,
  * nowISO) so the tests touch neither disk nor the channel adapters. Artefact
@@ -11,7 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -22,7 +22,12 @@ import type { Opportunity } from "../tools/pipeline.ts";
 // real append-only trail. audit.ts reads AUDIT_DIR at module load, so the env
 // must be set before the dynamic import below. (Type-only imports above are
 // erased and don't trigger module execution.)
-process.env.AUDIT_DIR = mkdtempSync(path.join(tmpdir(), "gate-test-audit-"));
+const isolated = mkdtempSync(path.join(tmpdir(), "gate-test-audit-"));
+process.env.AUDIT_DIR = isolated;
+// Every case injects its own `opportunities`, but the gate falls back to the
+// pipeline store when a caller does not, and that fallback must never be the
+// person's own database. Set before the import for the same reason as above.
+process.env.PIPELINE_DB = path.join(isolated, "pipeline.db");
 
 const { evaluateSubmission } = await import("../tools/submission-gate.ts");
 const { log: auditLogEvent } = await import("../tools/audit.ts");
@@ -83,6 +88,42 @@ function coreRow(extra: Partial<Opportunity> = {}): Opportunity {
 }
 function apOpts(extra: Partial<EvaluateOpts> = {}): EvaluateOpts {
   return opts({ approvedBy: "autopilot:daily-test", policy: autopilotPolicy(), opportunities: [coreRow()], archiveDir: archive("pass"), homeCity: "Sydney", ...extra });
+}
+
+// --- Baseline-by-reference fixtures ----------------------------------------
+// A baseline package records a reference to the approved baseline docx plus its
+// sha256 instead of copying the file. The gate must re-hash the referenced file
+// and refuse when it is not the artefact the package was prepared from.
+function refArchive(kind: "match" | "docx_moved" | "reapproved" | "baseline_revoked"): string {
+  const dir = archive("pass");
+  const baselineDir = mkdtempSync(path.join(tmpdir(), "gate-test-baseline-"));
+  const docxPath = path.join(baselineDir, "Fixture-Person_Architect.docx");
+  writeFileSync(docxPath, "PK-fixture-docx: approved baseline body\n");
+  const docxSha = createHash("sha256").update(readFileSync(docxPath)).digest("hex");
+  const contentHash = createHash("sha256").update("fixture-baseline-content").digest("hex");
+  writeFileSync(path.join(baselineDir, "metadata.json"), JSON.stringify({
+    resume_id: "fixture-resume",
+    content_hash: contentHash,
+    approved_hash: kind === "baseline_revoked" ? null : contentHash,
+    approved_at: "2026-09-01T00:00:00.000Z",
+    approval_status: kind === "baseline_revoked" ? "fresh" : "approved",
+    artefacts: { docx: docxPath },
+  }));
+  if (kind === "docx_moved") writeFileSync(docxPath, "PK-fixture-docx: re-rendered since the package was prepared\n");
+  writeFileSync(path.join(dir, "metadata.json"), JSON.stringify({
+    opportunityId: "seek-abc123",
+    resumeId: "fixture-resume",
+    mode: "approved_baseline",
+    resume: {
+      mode: "baseline",
+      resume_id: "fixture-resume",
+      ref: docxPath,
+      pdf_ref: null,
+      sha256: docxSha,
+      baseline_content_hash: kind === "reapproved" ? createHash("sha256").update("an-older-approval").digest("hex") : contentHash,
+    },
+  }));
+  return dir;
 }
 
 const tests: [string, () => Promise<void>][] = [
@@ -210,7 +251,8 @@ const tests: [string, () => Promise<void>][] = [
     const row = coreRow({ classification: { _classifier: "agent", discipline_fit: "platform_gap" } as any });
     const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
     assert.equal(d.action, "gate_failed");
-    assert.match(d.reason, /autopilot_fit/);
+    assert.match(d.reason, /validation gate failed: autopilot_fit, discipline_fit is 'platform_gap' and the row is not user-saved/,
+      "the reason is punctuated with a comma, and the UI reads it to say this is a policy refusal");
   }],
 
   ["autopilot: interstate onsite core row → gate_failed (belongs in parked)", async () => {
@@ -297,6 +339,44 @@ const tests: [string, () => Promise<void>][] = [
     for (const g of ["autopilot_enabled", "autopilot_status_approved", "autopilot_agent_classified", "autopilot_fit", "autopilot_letter_critic", "autopilot_channel", "autopilot_daily_cap"]) {
       assert.ok(d.checks.find((c) => c.gate === g && c.ok), `missing ok check ${g}`);
     }
+  }],
+  ["baseline ref: matching hashes → submit, with the ref check recorded", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("match") }));
+    assert.equal(d.action, "submit");
+    const check = d.checks.find((c) => c.gate === "baseline_resume_ref");
+    assert.ok(check?.ok, "the baseline_resume_ref check should be present and ok");
+    assert.match(check!.detail, /verified/);
+  }],
+
+  ["baseline ref: the referenced docx changed since prepare → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("docx_moved") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
+    assert.match(d.reason, /has changed since the package was prepared/);
+  }],
+
+  ["baseline ref: baseline re-approved since prepare → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("reapproved") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
+    assert.match(d.reason, /re-approved since the package was prepared/);
+  }],
+
+  ["baseline ref: approval revoked on the baseline → gate_failed", async () => {
+    const d = await evaluateSubmission(apOpts({ archiveDir: refArchive("baseline_revoked") }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /baseline_resume_ref/);
+  }],
+
+  ["no em dash and no en dash anywhere in the module", async () => {
+    // AGENTS.md section 3.2. Every reason this module writes is stamped onto
+    // the row and read by the person on the board, so a dash in a string
+    // literal here is a dash in the UI. The whole file is checked rather than
+    // the literals alone: a comment is the next thing someone copies into one.
+    const source = readFileSync(new URL("../tools/submission-gate.ts", import.meta.url), "utf8");
+    const hit = /[\u2013\u2014]/.exec(source);
+    const line = hit ? source.slice(0, hit.index).split("\n").length : 0;
+    assert.equal(hit, null, `tools/submission-gate.ts:${line} carries a banned dash character`);
   }],
 ];
 

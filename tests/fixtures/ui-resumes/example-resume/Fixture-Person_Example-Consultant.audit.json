@@ -1,0 +1,21 @@
+{
+  "verdict": "pass",
+  "generated_at": "2026-09-01T08:30:00.000Z",
+  "pages": { "count": 2, "target": 2, "fills": [96, 62], "min_last_page_fill_pct": 75 },
+  "failing_units": [],
+  "issues": [],
+  "gates": {
+    "evaluate": { "verdict": "pass" },
+    "provenance": { "verdict": "pass", "fail_count": 0 },
+    "ats": { "verdict": "warn", "issues": [{ "rule": "headings", "severity": "warn", "detail": "one heading is unusual" }] },
+    "term_grounding": { "verdict": "pass", "ungrounded_count": 0 }
+  },
+  "keyword_coverage": {
+    "surfaced_total": 31,
+    "renderable_total": 40,
+    "must_have_surfaced": 14,
+    "must_have_renderable": 18,
+    "must_have_total": 18,
+    "verdict": "pass"
+  }
+}

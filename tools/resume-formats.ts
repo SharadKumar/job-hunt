@@ -1,5 +1,4 @@
-import { promises as fs } from "node:fs";
-import YAML from "yaml";
+import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
 import { loadTeamConfig } from "./profile-team.ts";
 import type { Resume } from "./resumes.ts";
@@ -32,15 +31,6 @@ type ResumeFormatsFile = {
 };
 
 const DEFAULT_ORG_RESUME_FORMATS_PATH = repoPath("state/org/resume-formats.yaml");
-
-async function readYamlIfExists<T>(filePath: string): Promise<T | null> {
-  try {
-    return YAML.parse(await fs.readFile(filePath, "utf8")) as T;
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return null;
-    throw error;
-  }
-}
 
 export async function loadResumeFormats(filePath = DEFAULT_ORG_RESUME_FORMATS_PATH): Promise<ResumeFormat[]> {
   const file = await readYamlIfExists<ResumeFormatsFile>(filePath);

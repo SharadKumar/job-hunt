@@ -27,6 +27,10 @@
 
 import { promises as fs } from "node:fs";
 import { repoPath } from "./repo-root.ts";
+import { loadLocale } from "./profile.ts";
+
+// The profile's currency, assumed for a day rate that names none.
+const LOCALE = await loadLocale();
 
 export type Classification = {
   // Canonical red-flag IDs that map to scoring-weights.yaml.red_flag_penalties
@@ -37,7 +41,7 @@ export type Classification = {
 
   work_arrangement: "remote" | "hybrid" | "onsite" | "unknown";
 
-  // Day rate explicit in the posting (AUD assumed unless stated)
+  // Day rate explicit in the posting (the profile locale currency assumed unless stated)
   day_rate: {
     min: number | null;
     max: number | null;
@@ -116,13 +120,13 @@ export type Classification = {
   _classifier: "agent" | "regex";
 };
 
-const SYSTEM_PREFIX = `You classify job postings into a strict JSON schema for an automated harness, scoring relevance against the user's actual profile. Use the tool provided.
+export const SYSTEM_PREFIX = `You classify job postings into a strict JSON schema for an automated harness, scoring relevance against the user's actual profile. Use the tool provided.
 
 # USER PROFILE CONTEXT (the bar for profile_relevance)
 
 `;
 
-const SYSTEM_SUFFIX = `
+export const SYSTEM_SUFFIX = `
 
 # Reasoning rules
 
@@ -145,7 +149,7 @@ const SYSTEM_SUFFIX = `
 - "Must be in-office" / "5 days a week onsite" / "office-based role" → onsite_5_days.
 - "Fully remote" / "work from anywhere" / "100% remote" → bonus fully_remote + arrangement=remote.
 - "Hybrid 2-3 days" → arrangement=hybrid, not a red flag.
-- Day rate: extract numeric min/max if stated. AUD assumed for AU postings. Note inc_super if stated. If the posting says "negotiable" / "competitive" / "TBD" treat stated_explicitly=false.
+- Day rate: extract numeric min/max if stated. ${LOCALE.currency} assumed when the posting names no currency. Note inc_super if stated. If the posting says "negotiable" / "competitive" / "TBD" treat stated_explicitly=false.
 - Seniority: infer from title + scope hints, not title alone. "Architect"/"Lead"/"Principal"/"Staff" → senior/lead/principal. A developer/engineer role that explicitly leads a capability, mentors squads, owns architecture or drives adoption is lead or senior, not automatically mid. "Director" → director. Default to senior for senior IT contracts when unclear.
 - Contract length: extract months if stated ("6 month contract" → 6, "3 months with extension" → 3, "12-month engagement" → 12). null if unstated or permanent.
 - is_contract: true for contract/contractor/day-rate roles; false for permanent/FTE.
@@ -228,7 +232,7 @@ async function loadProfileContext(): Promise<string> {
 }
 
 /** Conservative regex fallback used when ANTHROPIC_API_KEY is missing. */
-function regexClassify(title: string, jd: string): Classification {
+function regexClassify(title: string, jd: string, currency: string = LOCALE.currency): Classification {
   const text = `${title}\n${jd}`;
   const lc = text.toLowerCase();
   const red_flags: Classification["red_flags"] = [];
@@ -266,7 +270,7 @@ function regexClassify(title: string, jd: string): Classification {
 
   return {
     red_flags, bonuses, work_arrangement: arrangement,
-    day_rate: { min, max, currency: "AUD", inc_super: /inc\.?\s*super|including super/.test(lc) ? true : /\+\s*super|ex(?:cluding)?\s*super/.test(lc) ? false : null, stated_explicitly: !!rateMatch },
+    day_rate: { min, max, currency, inc_super: /inc\.?\s*super|including super/.test(lc) ? true : /\+\s*super|ex(?:cluding)?\s*super/.test(lc) ? false : null, stated_explicitly: !!rateMatch },
     seniority,
     contract_length_months: length,
     is_contract: /\bcontract|contractor|day rate|fixed.term/.test(lc) && !/permanent only/.test(lc),

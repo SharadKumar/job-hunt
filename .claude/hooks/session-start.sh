@@ -1,5 +1,5 @@
 #!/bin/bash
-# session-start.sh — 6-line brief printed on every Claude Code session start.
+# session-start.sh: the short brief (up to 4 lines) printed on every Claude Code session start.
 # Stays tight to keep token cost low (the hook fires on every resume).
 
 set -euo pipefail
@@ -18,28 +18,27 @@ fi
 REPO_DIR="$(bash "$RESOLVER_DIR/.claude/hooks/repo-root.sh" "$HOOK_DIR")"
 cd "$REPO_DIR"
 
-PIPELINE="state/pipeline/opportunities.json"
+PIPELINE_DB="state/pipeline/pipeline.db"
+PIPELINE_JSON="state/pipeline/opportunities.json"
 JOURNAL_DIR="state/journal"
 
 if [ ! -f "state/profile/profile.md" ]; then
   echo "harness: no profile yet. Run /setup (guided first run: profile, CV, positionings, channel logins, Sheet, schedule, autopilot)."
   exit 0
 fi
-if [ ! -f "$PIPELINE" ]; then
+if [ ! -f "$PIPELINE_DB" ] && [ ! -f "$PIPELINE_JSON" ]; then
   echo "harness: profile present, pipeline empty. Run /setup to finish first-run checks, or /hunt seek to populate."
   exit 0
 fi
 
-TOTAL=$(node -e "const r=require('./$PIPELINE');console.log(r.length)" 2>/dev/null || echo "?")
-AWAIT=$(node -e "const r=require('./$PIPELINE');console.log(r.filter(x=>x.status==='awaiting_approval').length)" 2>/dev/null || echo "?")
-MANUAL=$(node -e "const r=require('./$PIPELINE');console.log(r.filter(x=>x.status==='manual_action_needed').length)" 2>/dev/null || echo "?")
-SUBMITTED=$(node -e "const r=require('./$PIPELINE');console.log(r.filter(x=>x.status==='submitted').length)" 2>/dev/null || echo "?")
-QUEUE=$(node -e "const r=require('./$PIPELINE');console.log(r.filter(x=>x.status==='shortlisted').length)" 2>/dev/null || echo "?")
-PARKED=$(node -e "const r=require('./$PIPELINE');console.log(r.filter(x=>x.status==='parked').length)" 2>/dev/null || echo "?")
-TOP_SCORE=$(node -e "const r=require('./$PIPELINE');const s=r.filter(x=>x.status==='awaiting_approval').sort((a,b)=>(b.score||0)-(a.score||0))[0];if(s)console.log(\`\${s.score} \${s.title.slice(0,40)} @ \${s.company}\`)" 2>/dev/null || echo "")
+# One tsx call instead of six node -e parses of a multi-megabyte JSON file.
+# Line 1: the counts. Line 2 (optional): the top tray row.
+BRIEF=$(npx tsx tools/pipeline.ts summary --brief --top 2>/dev/null || echo "? pipeline")
+COUNTS=$(printf '%s\n' "$BRIEF" | sed -n 1p)
+TOP_SCORE=$(printf '%s\n' "$BRIEF" | sed -n 2p)
 LAST_JOURNAL=$(ls -t "$JOURNAL_DIR"/*.md 2>/dev/null | head -1 | xargs -I {} basename {} .md 2>/dev/null || echo "(none)")
 
-echo "harness: $TOTAL pipeline | $QUEUE queue | $PARKED parked | $AWAIT awaiting | $MANUAL manual | $SUBMITTED submitted"
+echo "harness: $COUNTS"
 [ -n "$TOP_SCORE" ] && echo "       top tray: $TOP_SCORE"
 echo "       last digest: $LAST_JOURNAL"
 TODAY_SUMMARY="$JOURNAL_DIR/summary/$(TZ=Australia/Sydney date +%Y-%m-%d).md"

@@ -3,7 +3,7 @@ name: profile-report
 description: Generate a local HTML report for an individual profile or consulting team, including generated profile-specific narrative plus linked resume artefacts, source inputs, provenance, and market alignment.
 ---
 
-# /profile-report — local profile/team resume report
+# /profile-report: local profile/team resume report
 
 This skill produces a local, browser-viewable report from the harness's profile, resume, template, and artefact state.
 
@@ -16,7 +16,7 @@ The report shell is deterministic and template-based (`templates/profile-report/
 
 ## Sequence
 
-Resolve the repo root first: run `bash .claude/hooks/repo-root.sh` and treat its output as the base for every path below; never assume cwd.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 1. Resolve the requested mode:
    - Default to individual profile mode when the user says "profile report".

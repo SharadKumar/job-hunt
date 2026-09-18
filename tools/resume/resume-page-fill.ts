@@ -34,6 +34,7 @@
  *   ... add --json for machine-readable output, --strict to exit 1 when not converged.
  */
 
+import { exists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -50,10 +51,6 @@ function parseArgs(): Record<string, string> {
     if (argv[i].startsWith("--")) out[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
   }
   return out;
-}
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
 }
 
 async function renderPresentation(contentJson: string, templateName: string, outDir: string, session: BrowserSession): Promise<{ html: string; pdf: string }> {

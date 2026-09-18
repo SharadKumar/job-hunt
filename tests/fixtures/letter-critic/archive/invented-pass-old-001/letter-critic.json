@@ -1,0 +1,23 @@
+{
+  "verdict": "pass",
+  "findings": [
+    {
+      "severity": "warn",
+      "source": "llm",
+      "quote": "delivered at pace",
+      "issue": "Stale verdict, outside the digest window.",
+      "fix": "No change needed."
+    }
+  ],
+  "letter_sha256": "0000000000000000000000000000000000000000000000000000000000000006",
+  "letter_path": "/invented/archive/6/cover-letter.md",
+  "jd_path": "/invented/archive/6/jd.md",
+  "model": "sonnet",
+  "checked_at": "2026-08-01T01:00:00.000Z",
+  "llm": {
+    "session_id": "invented-session-6",
+    "cost_usd": 0.2,
+    "duration_ms": 41000,
+    "verdict": "pass"
+  }
+}

@@ -1,0 +1,6 @@
+# Machine-readable subset of resume-editorial-rules.md.
+bans:
+  - id: no-em-dash
+    pattern: "—"
+    severity: fail
+    reason: Em dashes are banned in every rendered artefact.

@@ -28,6 +28,12 @@
  *             first option matching any regex (in list order) is chosen. When
  *             an entry has no `select`, the built-in defaults below apply.
  *
+ * `skills_years:` (optional, top level) maps a lowercase skill key to the years
+ * the person has with it (`azure: 8`), or to `{ years: N, aliases: [...] }`. A
+ * question of the shape "How many years ... with <X>?" resolves through it: a
+ * numeric field gets the number, an option field gets the option whose band
+ * covers it. An unknown subject stays unmatched and is never invented.
+ *
  * Built-in option defaults (used when no entry, or the entry has no `select`):
  *   right to work            → /australian citizen/i
  *   "how many years ..."     → /more than 5 years|10\+|more than 10/i
@@ -74,6 +80,12 @@ export type ScreeningEntry = {
   select?: string[];
 };
 
+/** One `skills_years:` row: a canonical lowercase key, optional aliases, and the years. */
+export type SkillYears = { key: string; aliases: string[]; years: number };
+
+/** Everything screening-answers.yaml contributes to a decision. */
+export type ScreeningAnswers = { entries: ScreeningEntry[]; skillsYears: SkillYears[] };
+
 export type PageQuestion = {
   kind: "select" | "radio" | "checkbox" | "text";
   /** Question label (legend / label text). */
@@ -83,6 +95,8 @@ export type PageQuestion = {
   name: string;
   options: { label: string; id: string }[];
   required: boolean;
+  /** Set by adapters whose text inputs only accept a bare number (LinkedIn). */
+  numeric?: boolean;
 };
 
 export type QuestionDecision =
@@ -97,7 +111,58 @@ const DEFAULT_STEP_TIMEOUT = 20_000;
 // Screening answers
 // ---------------------------------------------------------------------------
 
-export async function loadScreeningAnswers(file = repoPath("state/profile/screening-answers.yaml")): Promise<ScreeningEntry[]> {
+/**
+ * Canonical form of a rendered question label. Two portals render the same
+ * question with different whitespace, a trailing "Required" marker, an
+ * asterisk or a question mark; all of those must match the same entry, and a
+ * question the user has already been asked about must not be appended twice.
+ *
+ * lowercase → collapse whitespace → drop trailing "Required" / "(required)" /
+ * "*" (repeatedly) → drop trailing punctuation.
+ */
+export function normaliseQuestion(text: string | null | undefined): string {
+  let s = String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  for (let i = 0; i < 4; i++) {
+    const next = s.replace(/[\s*]*(?:\(\s*required\s*\)|\brequired\b|\*)\s*$/, "").trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s.replace(/[\s.,;:!?*"'’]+$/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Canonical form of a skill subject ("Microsoft Azure" → "microsoft azure"). */
+export function normaliseSubject(text: string | null | undefined): string {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseSkillsYears(raw: any): SkillYears[] {
+  const map = raw?.skills_years;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return [];
+  const out: SkillYears[] = [];
+  for (const [k, v] of Object.entries(map)) {
+    const key = normaliseSubject(k);
+    if (!key) continue;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out.push({ key, aliases: [], years: v });
+      continue;
+    }
+    if (v && typeof v === "object") {
+      const years = Number((v as any).years);
+      if (!Number.isFinite(years)) continue;
+      const aliases = Array.isArray((v as any).aliases)
+        ? (v as any).aliases.map((a: any) => normaliseSubject(a)).filter(Boolean)
+        : [];
+      out.push({ key, aliases, years });
+    }
+  }
+  return out;
+}
+
+export async function loadScreeningAnswers(file = repoPath("state/profile/screening-answers.yaml")): Promise<ScreeningAnswers> {
   const raw = YAML.parse(await fs.readFile(file, "utf8"));
   const answers = Array.isArray(raw?.answers) ? raw.answers : [];
   const entries: ScreeningEntry[] = answers
@@ -110,14 +175,15 @@ export async function loadScreeningAnswers(file = repoPath("state/profile/screen
     }));
   // An unknown question the user has since answered becomes an exact-match
   // entry, so the paused application resumes on the next run without anyone
-  // re-keying it into `answers`.
+  // re-keying it into `answers`. The anchor is built from the *normalised*
+  // text so a stray "Required", asterisk or extra space does not defeat it.
   const unknowns = Array.isArray(raw?.unknown_questions) ? raw.unknown_questions : [];
   for (const u of unknowns) {
     if (!u || typeof u.question !== "string" || u.answer == null || String(u.answer).trim() === "") continue;
-    const exact = "^" + String(u.question).replace(/\s+/g, " ").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$";
+    const exact = "^" + normaliseQuestion(u.question).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$";
     entries.push({ id: `unknown:${u.opportunity_id ?? "any"}`, patterns: [exact], answer: String(u.answer), select: Array.isArray(u.select) ? u.select.map(String) : undefined });
   }
-  return entries;
+  return { entries, skillsYears: parseSkillsYears(raw) };
 }
 
 function safeRegex(src: string): RegExp | null {
@@ -129,8 +195,71 @@ function safeRegex(src: string): RegExp | null {
 }
 
 export function matchScreeningEntry(label: string, entries: ScreeningEntry[]): ScreeningEntry | undefined {
-  const text = label.replace(/\s+/g, " ").trim();
+  const text = normaliseQuestion(label);
   return entries.find((e) => e.patterns.some((p) => safeRegex(p)?.test(text)));
+}
+
+/** "How many years ... with <subject>?" → the subject, normalised. */
+export function yearsQuestionSubject(label: string): string | undefined {
+  const m = normaliseQuestion(label).match(/how many years\b.*\b(?:with|of|in)\s+(.+?)\s*$/);
+  if (!m) return undefined;
+  const subject = normaliseSubject(m[1]).replace(/^(?:the|a|an)\s+/, "");
+  return subject || undefined;
+}
+
+/** Resolve a subject against the `skills_years:` map: exact key/alias, then whole-word containment. */
+export function lookupSkillYears(subject: string, skills: SkillYears[]): number | undefined {
+  const s = normaliseSubject(subject);
+  if (!s || !skills.length) return undefined;
+  const names = (k: SkillYears) => [k.key, ...k.aliases];
+  const exact = skills.find((k) => names(k).includes(s));
+  if (exact) return exact.years;
+  // "microsoft azure" → key "azure". Longest key first so "azure devops" beats "azure".
+  const candidates = skills
+    .flatMap((k) => names(k).map((n) => ({ n, years: k.years })))
+    .sort((a, b) => b.n.length - a.n.length)
+    .find(({ n }) => new RegExp(`(^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(s));
+  return candidates?.years;
+}
+
+type YearBand = { lo: number; hi: number; loExclusive?: boolean };
+
+/** Parse an option label into the band of years it covers: "5+", "more than 5", "3-5", "1 year". */
+export function parseYearOption(label: string): YearBand | null {
+  const s = String(label ?? "").toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  if (/\b(no experience|none|nil|not applicable|n\/a)\b/.test(s)) return { lo: 0, hi: 0 };
+  let m = s.match(/(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)/);
+  if (m) return { lo: Number(m[1]), hi: Number(m[2]) };
+  m = s.match(/(?:at least|minimum(?: of)?|min\.?)\s*(\d+(?:\.\d+)?)/);
+  if (m) return { lo: Number(m[1]), hi: Infinity };
+  m = s.match(/(?:more than|greater than|over)\s*(\d+(?:\.\d+)?)/);
+  if (m) return { lo: Number(m[1]), hi: Infinity, loExclusive: true };
+  m = s.match(/(?:less than|fewer than|under|up to)\s*(\d+(?:\.\d+)?)/);
+  if (m) return { lo: 0, hi: Number(m[1]) };
+  m = s.match(/(\d+(?:\.\d+)?)\s*(?:\+|plus\b|or more\b|or above\b|and above\b|and over\b)/);
+  if (m) return { lo: Number(m[1]), hi: Infinity };
+  m = s.match(/(\d+(?:\.\d+)?)/);
+  if (m) return { lo: Number(m[1]), hi: Number(m[1]) };
+  return null;
+}
+
+function bandCovers(b: YearBand, years: number): boolean {
+  return (b.loExclusive ? years > b.lo : years >= b.lo) && years <= b.hi;
+}
+
+/**
+ * Pick the option that covers `years`, preferring the tightest band
+ * ("5+" over "1+" for 8 years). Returns undefined when nothing covers it.
+ */
+export function pickYearOption(options: { label: string; id: string }[], years: number): { label: string; id: string } | undefined {
+  let best: { option: { label: string; id: string }; lo: number } | undefined;
+  for (const o of options) {
+    const band = parseYearOption(o.label);
+    if (!band || !bandCovers(band, years)) continue;
+    if (!best || band.lo > best.lo) best = { option: o, lo: band.lo };
+  }
+  return best?.option;
 }
 
 const BUILT_IN_OPTION_RULES: { label: RegExp; option: RegExp }[] = [
@@ -142,7 +271,7 @@ const BUILT_IN_OPTION_RULES: { label: RegExp; option: RegExp }[] = [
 ];
 
 /** Options SEEK uses as placeholders in native selects. */
-function isPlaceholderOption(label: string): boolean {
+export function isPlaceholderOption(label: string): boolean {
   return /^(select|choose|please select|-+|—)/i.test(label.trim()) || !label.trim();
 }
 
@@ -150,11 +279,19 @@ function isPlaceholderOption(label: string): boolean {
  * Pure decision: what to do for one question given the YAML entries.
  * Exported so the matching logic can be unit tested without a browser.
  */
-export function decideQuestion(question: PageQuestion, entries: ScreeningEntry[]): QuestionDecision {
+export function decideQuestion(question: PageQuestion, answers: ScreeningEntry[] | ScreeningAnswers): QuestionDecision {
+  const entries = Array.isArray(answers) ? answers : answers.entries;
+  const skillsYears = Array.isArray(answers) ? [] : answers.skillsYears;
   const entry = matchScreeningEntry(question.label, entries);
+  const subject = yearsQuestionSubject(question.label);
+  const skillYears = subject ? lookupSkillYears(subject, skillsYears) : undefined;
+
   if (question.kind === "text") {
     const answer = entry?.answer?.trim();
     if (answer && !/^TODO\b/i.test(answer)) return { kind: "text", answer };
+    // "How many years of work experience do you have with <X>?" on a numeric
+    // or free-text field: answer from skills_years, never from a guess.
+    if (skillYears !== undefined) return { kind: "text", answer: String(skillYears) };
     return { kind: "unmatched" };
   }
   const options = question.options.filter((o) => !isPlaceholderOption(o.label));
@@ -174,6 +311,13 @@ export function decideQuestion(question: PageQuestion, entries: ScreeningEntry[]
     if (hit) return { kind: "option", option: hit };
     // An explicit select list that matches nothing is not confident.
     return { kind: "unmatched" };
+  }
+
+  // A known skill's years pick the band that covers them, ahead of the generic
+  // "more than 5 years" default below.
+  if (skillYears !== undefined) {
+    const hit = pickYearOption(options, skillYears);
+    if (hit) return { kind: "option", option: hit };
   }
 
   for (const rule of BUILT_IN_OPTION_RULES) {
@@ -389,7 +533,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
   if (!opts?.resumeFilename) return { ok: false, reason: "resumeFilename is required", needsManual: true };
   const timeout = opts.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT;
   const shotDir = opts.screenshotDir;
-  const entries = await loadScreeningAnswers();
+  const answers = await loadScreeningAnswers();
   const coverLetter = coverLetterToPlainText(pkg.coverLetterMd);
 
   let ctx: BrowserContext | undefined;
@@ -404,13 +548,19 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
     ctx = await openChromeContext("seek", { headless: true });
     page = await ctx.newPage();
     await page.goto(`https://www.seek.com.au/job/${jobId}/apply`, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 15_000 })
+      .catch((e) => console.error(`[seek-submit] ${opportunity.id}: networkidle wait timed out (${(e as Error).message.split("\n")[0].slice(0, 80)}); continuing`));
     await page.waitForTimeout(1000);
 
-    let host = "";
+    // An unparseable url is a broken page, not an external ATS: never route it
+    // to manual with an empty host, which reads as "external ATS: ".
+    let host: string | null = null;
     try {
       host = new URL(page.url()).hostname;
-    } catch {}
+    } catch {
+      host = null;
+    }
+    if (host === null) return fail("could not read page url after apply");
     if (!SEEK_HOST.test(host)) {
       console.error(`[seek-submit] ${opportunity.id}: apply link left SEEK → ${host}`);
       return { ok: false, needsManual: true, reason: `external ATS: ${host}` };
@@ -459,7 +609,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           const questions = await discoverQuestions(page);
           console.error(`[seek-submit] ${opportunity.id}: ${questions.length} employer question(s)`);
           for (const q of questions) {
-            const decision = decideQuestion(q, entries);
+            const decision = decideQuestion(q, answers);
             if (decision.kind === "unmatched") {
               const context = q.options.filter((o) => !isPlaceholderOption(o.label)).map((o) => o.label).join(" | ");
               await screenshot(page, shotDir, `${opportunity.id}-error.png`);

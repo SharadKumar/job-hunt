@@ -57,7 +57,7 @@ const REQUIRED: Record<string, string[]> = {
     "**Hard cap of 20 findings**",
     "**Compact JSON only.**",
     // The verdict contract the skill and resume:approve both depend on.
-    "`block` — only for `contradiction`, `unsupported`, or `rule`.",
+    "`block`: only for `contradiction`, `unsupported`, or `rule`.",
     "\"verdict\": \"pass | revise | block\"",
     // The proposed edit is written into the CV verbatim, so its rules are load-bearing.
     "**Source-backed.**",
@@ -132,5 +132,131 @@ for (const name of generated) {
 }
 await fs.rm(tmp, { recursive: true, force: true });
 console.log(`  ✓ all ${generated.length} Codex agent wrappers match the canonical Markdown`);
+
+// --- Repo-wide prompt and doc consistency ----------------------------------
+//
+// The prompts and the docs are one contract. These four assertions stop the
+// drift that a reader cannot see: a clause that contradicts AGENTS.md, an
+// `npm run` name that no longer exists, a prompt pointing an agent at the
+// JSON export instead of the store, and a dash the voice rules ban.
+
+async function walk(dir: string, ext: string): Promise<string[]> {
+  if (/-workspace$/.test(dir)) return []; // skill-creator eval workspaces hold fixture roots, not prompts
+  const out: string[] = [];
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...(await walk(full, ext)));
+    else if (e.name.endsWith(ext)) out.push(full);
+  }
+  return out;
+}
+
+const promptFiles = [
+  ...(await walk("agents", ".md")),
+  ...(await walk(".claude/skills", ".md")),
+];
+const docFiles = [
+  ...promptFiles,
+  ...(await walk("docs", ".md")),
+  "README.md",
+  "AGENTS.md",
+];
+
+// (a) Clauses that contradicted the send-authority contract, or named a tool
+// that does not exist. Each was a real defect; none may come back.
+const BANNED_PHRASES = [
+  "never executes Sections 6-8",
+  "stay attended",
+  "submit:recruiter_email",
+  "does not authorize a later unattended submit",
+];
+for (const file of docFiles) {
+  const text = await fs.readFile(file, "utf8");
+  for (const phrase of BANNED_PHRASES) {
+    assert.ok(
+      !text.includes(phrase),
+      `${file} contains the banned phrase "${phrase}". It contradicts AGENTS.md section 2 or names something that does not exist; rewrite the clause.`,
+    );
+  }
+}
+console.log(`  ✓ ${docFiles.length} prompt/doc files carry none of the ${BANNED_PHRASES.length} banned phrases`);
+
+// (b) Every `npm run <name>` a prompt or doc tells someone to run must exist.
+const pkg = JSON.parse(await fs.readFile("package.json", "utf8")) as { scripts: Record<string, string> };
+const scriptNames = new Set(Object.keys(pkg.scripts));
+const PLACEHOLDER_SCRIPTS = new Set(["hunt:<channel>"]);
+const scriptRefs = new Map<string, string[]>();
+for (const file of docFiles) {
+  const text = await fs.readFile(file, "utf8");
+  for (const m of text.matchAll(/npm run (?:-s )?([A-Za-z0-9:_.<>*-]+)/g)) {
+    const name = m[1].replace(/[.,;)`]+$/, "");
+    if (!scriptRefs.has(name)) scriptRefs.set(name, []);
+    scriptRefs.get(name)!.push(file);
+  }
+}
+for (const [name, files] of scriptRefs) {
+  if (PLACEHOLDER_SCRIPTS.has(name)) continue;
+  if (name.endsWith(":*")) {
+    // A family reference like `submit:*` is satisfied by any script in it.
+    const prefix = name.slice(0, -1);
+    assert.ok(
+      [...scriptNames].some((s) => s.startsWith(prefix)),
+      `npm script family "${name}" in ${[...new Set(files)].join(", ")} matches no script in package.json.`,
+    );
+    continue;
+  }
+  if (name.includes("<")) {
+    // A placeholder like `hunt:<channel>` is fine as long as some real script
+    // fits the shape; `hunt:<thing>` with no `hunt:*` script is not.
+    const shape = new RegExp(`^${name.replace(/<[^>]+>/g, "\u0001").replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\u0001/g, "[A-Za-z0-9_.-]+")}$`);
+    assert.ok(
+      [...scriptNames].some((s) => shape.test(s)),
+      `npm script placeholder "${name}" in ${[...new Set(files)].join(", ")} matches no script in package.json.`,
+    );
+    continue;
+  }
+  assert.ok(
+    scriptNames.has(name),
+    `npm script "${name}" is referenced in ${[...new Set(files)].join(", ")} but package.json has no such script. Fix the reference or add the script.`,
+  );
+}
+console.log(`  ✓ all ${scriptRefs.size} distinct npm scripts referenced in prompts and docs exist`);
+
+// (c) The pipeline lives in SQLite. `opportunities.json` is an on-demand
+// export; a prompt that sends an agent to read it is reading a stale file.
+for (const file of promptFiles) {
+  const text = await fs.readFile(file, "utf8");
+  for (const [i, line] of text.split("\n").entries()) {
+    if (!line.includes("opportunities.json")) continue;
+    assert.ok(
+      /\bexport\b|\bdigest\b/i.test(line),
+      `${file}:${i + 1} points an agent at state/pipeline/opportunities.json. Rows live in the SQLite store; read them with \`npm run pipeline -- get|list\`. The file name may only appear alongside the words "export" or "digest".`,
+    );
+  }
+}
+console.log(`  ✓ no prompt file reads the opportunities.json export`);
+
+// (d) AGENTS.md section 3 rule 2: no em dash, no en dash, anywhere.
+const dashFiles = [...promptFiles, ...(await walk("references/harness", ".md")), "AGENTS.md"];
+for (const file of dashFiles) {
+  const text = await fs.readFile(file, "utf8");
+  const lines = text.split("\n");
+  const bad = lines
+    .map((line, i) => ({ line, i }))
+    .filter(({ line }) => /[—–]/.test(line))
+    .map(({ line, i }) => `  ${file}:${i + 1}: ${line.trim().slice(0, 120)}`);
+  assert.equal(
+    bad.length,
+    0,
+    `${file} contains ${bad.length} em/en dash line(s); AGENTS.md section 3 rule 2 bans both. Rewrite the clause, do not swap the punctuation.\n${bad.join("\n")}`,
+  );
+}
+console.log(`  ✓ ${dashFiles.length} prompt files are free of em and en dashes`);
 
 console.log("prompt-guardrails: all assertions passed");

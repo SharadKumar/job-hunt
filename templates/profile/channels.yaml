@@ -7,7 +7,9 @@
 # role family and any long-tail terms the positionings do not carry.
 #
 # Every channel starts disabled. Enable one at a time after the adapter has
-# been exercised with `npm run hunt -- <channel> --dry-run`.
+# been exercised on its own: `npm run hunt:seek`, `npm run hunt:linkedin-jobs`,
+# `npm run hunt:linkedin-posts`, `npm run hunt:hn`. Each prints its rows and
+# writes nothing until you add `-- --upsert`.
 
 channels:
   seek:
@@ -59,33 +61,33 @@ channels:
     rate_limit_per_min: 5
 
   hays:
-    enabled: false                 # stubbed; enable only after adapter is implemented
+    enabled: false                 # no adapter yet; enable only once tools/channels/<id>.ts exists
     search:
       categories: [IT - Architects, IT - Project & Program Management, IT - Other]
       location: <your city>
       contract_type: contract
 
   talenza:
-    enabled: false                 # stubbed; enable only after adapter is implemented
+    enabled: false                 # no adapter yet; enable only once tools/channels/<id>.ts exists
     search:
       query: "Architect OR Engineering Lead OR Director"
       location: <your city>
 
   paxus:
-    enabled: false                 # stubbed; enable only after adapter is implemented
+    enabled: false                 # no adapter yet; enable only once tools/channels/<id>.ts exists
     search:
       query: "Architect"
       location: <your city>
 
   robert_half:
-    enabled: false                 # stubbed; enable only after adapter is implemented
+    enabled: false                 # no adapter yet; enable only once tools/channels/<id>.ts exists
     search:
       function: Technology
       role_type: Contract
       location: <your city>
 
   peoplebank:
-    enabled: false                 # stubbed; enable only after adapter is implemented
+    enabled: false                 # no adapter yet; enable only once tools/channels/<id>.ts exists
     search:
       query: "Architect OR Lead OR Director"
       location: <your city>
@@ -98,7 +100,7 @@ channels:
       include_tags: []             # anywhere; contract_only removes permanent/full-time noise
 
   wellfound:
-    enabled: false                 # opt in if you want startup roles
+    enabled: false                 # no adapter yet; startup roles, opt in once written
     search:
       role: "Engineering Lead"
       location: Remote

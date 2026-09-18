@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>🚀 Job Hunt</title>
+    <link rel="stylesheet" href="app.css" />
+    <!-- One stylesheet per screen, loaded in nav order. app.css owns the
+         tokens, the type and every shared primitive; nothing below repeats
+         a selector app.css already defines. -->
+    <link rel="stylesheet" href="today.css" />
+    <link rel="stylesheet" href="pipeline.css" />
+    <link rel="stylesheet" href="row.css" />
+    <link rel="stylesheet" href="resumes.css" />
+    <link rel="stylesheet" href="guardrails.css" />
+    <link rel="stylesheet" href="runs.css" />
+    <link rel="stylesheet" href="settings.css" />
+    <!-- The favicon is the wordmark's rocket, drawn inline: a data URL, so the
+         tab icon costs no request and nothing is fetched off this machine. The
+         svg namespace is percent-encoded because no absolute http URL, encoded
+         or not, may appear in this file. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http%3A//www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Ctext%20y='26'%20font-size='26'%3E🚀%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <!--
+      Local Job Hunt UI. No build step, no framework, no CDN, no web font: every
+      asset here is served from the same local origin as the API, so the page
+      works offline and nothing about the person's pipeline leaves the machine.
+    -->
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="#/today" aria-label="Job Hunt"><span class="rocket" aria-hidden="true">🚀</span> Job Hunt</a>
+        <!-- Under 720 px the five links fold behind this button; the autopilot
+             state and the cog stay on the bar, because the first is the answer
+             to the morning's question and the second is how a token is pasted. -->
+        <button type="button" class="menu-toggle btn" id="menu-toggle" aria-expanded="false" aria-controls="nav">Menu</button>
+        <nav class="nav closed" id="nav" aria-label="Views">
+          <a href="#/today" data-nav="today">Today</a>
+          <a href="#/pipeline" data-nav="pipeline">Pipeline</a>
+          <a href="#/resumes" data-nav="resumes">Resumes</a>
+          <a href="#/schedules" data-nav="schedules">Schedules</a>
+          <a href="#/guardrails" data-nav="guardrails">Guardrails</a>
+          <p class="shell-quote" id="shell-quote" aria-label="Quote of the day"></p>
+          <!-- The autopilot switch is drawn by app.js once GET /api/policy has
+               answered, so the header never claims a lane it has not read. -->
+          <span class="switch-slot" id="autopilot-slot"></span>
+          <a class="cog" href="#/settings" data-nav="settings" aria-label="Settings" title="Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="shell-status" id="shell-status" aria-live="polite">
+      <span class="shell-date">Today</span>
+      <span class="shell-state">Reading local status</span>
+    </div>
+
+    <main id="view" class="wrap view" tabindex="-1">
+      <!-- The shape of what is coming, until the first render replaces it. No
+           spinner and no "Loading." sentence: both say less than the shape
+           (docs/ui-redesign-2026-09-18.md, section 7). -->
+      <div class="placeholder" aria-hidden="true">
+        <div class="placeholder-row"><span></span><span></span></div>
+        <div class="placeholder-row"><span></span><span></span></div>
+        <div class="placeholder-row"><span></span><span></span></div>
+      </div>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
