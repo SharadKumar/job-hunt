@@ -48,7 +48,7 @@ function activeTab(which) {
   return ["themes", "reference"].includes(which) ? which : "rules";
 }
 
-function tabStrip(active) {
+function tabStrip(active, counts = {}) {
   const tabs = h("nav", { class: "tabs guard-tabs", "aria-label": "Guardrail views" });
   for (const tab of [
     { key: "rules", label: "Rules", href: "#/guardrails" },
@@ -56,6 +56,7 @@ function tabStrip(active) {
     { key: "reference", label: "Reference", href: "#/guardrails/reference" },
   ]) {
     const link = h("a", { href: tab.href, text: tab.label });
+    if (Number.isFinite(counts[tab.key])) link.append(h("span", { class: "tally", text: String(counts[tab.key]) }));
     if (tab.key === active) link.setAttribute("aria-current", "page");
     tabs.append(link);
   }
@@ -173,7 +174,7 @@ function rulesWorkspace(rules, selectedKey) {
   const index = asked && Number(asked[1]) < list.length ? Number(asked[1]) : 0;
   const items = list.map((text, at) => browserItem({
     active: "rules", key: `rule-${at}`, selected: at === index,
-    eyebrow: `Rule ${at + 1}`, title: text, preview: "In force",
+    eyebrow: "In force", title: `Standing rule ${at + 1}`, preview: text,
   }));
   return h("div", { class: "guard-workbench" }, browserShell("Standing rules", list.length, items), standingDetail(list[index], index, rules));
 }
@@ -267,7 +268,8 @@ function referenceWorkspace(rules, selectedKey) {
 export async function viewRules(view, which, query) {
   const active = activeTab(which);
   const count = h("p", { class: "page-count" });
-  view.append(pageHeader({ title: "Guardrails", lede: count, aside: tabStrip(active) }));
+  const tabs = tabStrip(active);
+  view.append(pageHeader({ title: "Guardrails", lede: count, aside: tabs }));
   const host = h("div", { class: "guard-stage" });
   host.append(placeholderRows(3));
   view.append(host);
@@ -281,6 +283,14 @@ export async function viewRules(view, which, query) {
   } catch (error) {
     digestError = error;
   }
+
+  const tabCounts = {
+    rules: (rules.standing_rules || []).length,
+    themes: digestError ? undefined : (digest.themes || []).length,
+    reference: referenceEntries(rules).length,
+  };
+  clear(tabs);
+  for (const tab of [...tabStrip(active, tabCounts).children]) tabs.append(tab);
 
   const selected = (query instanceof URLSearchParams ? query : new URLSearchParams()).get("selected") || "";
   if (active === "themes") {

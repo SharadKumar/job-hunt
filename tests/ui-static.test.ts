@@ -391,7 +391,7 @@ test("the API is called on an absolute path", () => {
 });
 
 test("every address that moved still works", () => {
-  // Keywords became the Resumes screen's second tab, Digest became Rules and
+  // Keywords became the Resumes screen's second tab, Digest became Guardrails Themes and
   // Today became Runs. All three are in the person's history and in the Home
   // cards another package owns, so none of them may 404 into Home silently.
   assert.match(app, /export const REDIRECTS = \{/, "app.js must name the moved addresses in one table");
@@ -401,7 +401,7 @@ test("every address that moved still works", () => {
     ["queue", "#/pipeline"],
     ["rules", "#/guardrails"],
     ["keywords", "#/resumes/evidence"],
-    ["digest", "#/guardrails"],
+    ["digest", "#/guardrails/themes"],
     ["runs", "#/schedules"],
   ]) {
     assert.match(app, new RegExp(`${from}: "${to.replace(/\//g, "\\/")}"`), `${from} must redirect to ${to}`);
@@ -1773,8 +1773,10 @@ test("the Resumes screen has two tabs and the keyword view is the second", () =>
 
 test("the Guardrails screen promotes a theme, edits a rule and shows the patterns read only", () => {
   assert.match(rulesJs, /export async function viewRules\s*\(/, "rules.js must export the view");
-  assert.match(rulesJs, /pageHeader\(\{ title: "Guardrails", lede: count, aside: tabStrip\(active\) \}\)/,
+  assert.match(rulesJs, /pageHeader\(\{ title: "Guardrails", lede: count, aside: tabs \}\)/,
     "Guardrails must put its views in the title row");
+  assert.match(rulesJs, /Number\.isFinite\(counts\[tab\.key\]\)/,
+    "each Guardrails tab must carry its live count when that source loaded");
   for (const title of ["Rules", "Themes", "Reference", "Standing rules", "Critic themes", "Reference checks", "Never named", "Editorial ban"]) {
     assert.ok(rulesJs.includes(title), `the Guardrails screen is missing: ${title}`);
   }
@@ -1782,6 +1784,8 @@ test("the Guardrails screen promotes a theme, edits a rule and shows the pattern
   assert.match(rulesJs, /class: selected \? "guard-browser-item selected" : "guard-browser-item"/,
     "the selected guardrail must be visible in the browser pane");
   assert.match(rulesJs, /q\.set\("selected", key\)/, "the selected guardrail must live in the address");
+  assert.match(rulesJs, /title: `Standing rule \$\{at \+ 1\}`, preview: text/,
+    "the rules browser must keep the index scannable and the full wording as preview context");
   assert.match(sheet["guardrails.css"], /\.view\[data-route="guardrails"\] \{[\s\S]*?height: 100vh;[\s\S]*?overflow: hidden;/,
     "Guardrails must keep its desktop workspace inside the viewport");
   assert.match(sheet["guardrails.css"], /\.guard-browser \{[\s\S]*?overflow: auto;/,

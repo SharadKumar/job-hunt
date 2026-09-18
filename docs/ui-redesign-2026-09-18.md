@@ -205,8 +205,9 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 ### Guardrails (`#/guardrails`, `#/guardrails/themes`, `#/guardrails/reference`)
 
 - Rules, Themes and Reference are peer tabs in the page title row.
+- Each tab carries its live item count. The retired `#/digest` address opens Themes, where its content now lives.
 - Every tab uses the same master-detail workspace: a compact selection browser on the left and one selected item on the right.
-- A selected standing rule owns Edit and Remove. A selected critic theme owns Promote to standing rule.
+- Rules are labelled by stable sequence in the browser, with the full wording kept as preview context. A selected standing rule owns Edit and guarded Remove. A selected critic theme owns guarded Promote to standing rule.
 - Never-named patterns and editorial bans are read-only reference items, described in words with the machine condition in a code span and the source file named below it.
 
 ### Schedules (`#/schedules`, `#/schedules/<date>`)
