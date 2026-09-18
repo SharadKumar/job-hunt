@@ -3,31 +3,55 @@
    come from app.css; nothing here introduces a colour, a radius or a shadow
    of its own.
 
-   Baselines use three adjacent levels: positioning browser, selected resume,
-   and the evidence for that exact render. A page fill remains a short
+   Baselines use three levels including the app shell: persistent navigation,
+   positioning browser, and one selected resume with five views. A page fill remains a short
    horizontal bar with the percentage in ink: never red, because a page at 88
    percent against a 90 percent floor is worth a look, not a failure.
 
    Local additions (nothing here belongs in app.css):
      .fills / .fill      the row of page-fill bars, this screen only
-     .resume-page        the authenticated rendered-page preview
+     .resume-pdf         the authenticated PDF in the third panel
      .cover              a coverage bar with its label and fraction on one line
      .verdict-line       a gate, critic or cloud reading, 15 px ink
      .answers           the four fixed keyword answers under a list row */
 
 /* --- Three-level baseline workbench ------------------------------------- */
 
+.view[data-route="resumes"] {
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="resumes"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
+
+.resume-stage {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.view[data-route="resumes"]:has(.resume-workbench) {
+  display: flex;
+  flex-direction: column;
+}
+
 .resume-workbench {
   display: grid;
-  grid-template-columns: minmax(220px, 25%) minmax(340px, 1fr) minmax(320px, 37%);
-  min-height: 680px;
+  grid-template-columns: minmax(260px, 30%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--paper);
   overflow: hidden;
 }
 
-.resume-browser { min-width: 0; background: var(--wash); border-right: 1px solid var(--rule); }
+.resume-browser { min-width: 0; overflow: auto; background: var(--wash); border-right: 1px solid var(--rule); }
 .resume-browser-head { padding: 24px; }
 .resume-browser-head .eyebrow { margin-bottom: 4px; }
 .resume-browser-head h2 { margin: 0; }
@@ -62,12 +86,14 @@
 }
 .resume-browser-quality { color: var(--ink); }
 
-.resume-overview { min-width: 0; padding: 32px; }
-.resume-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.resume-overview-head h2 { margin: 0; font-size: 27px; }
+.resume-selected { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.resume-selected-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 24px; padding: 24px 32px 16px; }
+.resume-selected-head h2 { margin: 0; font-size: 27px; }
 .resume-head-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
-.resume-meta { margin: 0 0 16px; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+.resume-meta { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+.resume-selected-tabs { flex: 0 0 auto; padding: 0 32px; border-bottom: 1px solid var(--rule); }
+.resume-overview { min-width: 0; overflow: auto; padding: 0 32px 32px; }
 
 .resume-section-head {
   display: flex;
@@ -80,23 +106,20 @@
 }
 .resume-section-note { margin: 0; color: var(--muted); font-size: 13px; }
 
-.resume-inspector { min-width: 0; background: var(--wash); border-left: 1px solid var(--rule); }
-.resume-inspector-tabs { padding: 24px 24px 0; border-bottom: 1px solid var(--rule); }
-.resume-quality { min-width: 0; padding: 24px; }
+.resume-quality { flex: 1 1 auto; min-width: 0; overflow: auto; padding: 24px 32px 32px; background: var(--wash); }
 .resume-quality-head h2 { margin: 0; font-size: 21px; }
 .resume-quality-head p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .resume-quality-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
 .resume-quality-section > .eyebrow { margin-bottom: 8px; }
 
-.resume-preview { padding: 24px; }
-.resume-page-tabs { gap: 16px; margin-bottom: 16px; }
-.resume-page {
+.resume-preview { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+.resume-pdf-shell {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
   background: var(--paper);
 }
-.resume-preview-image { display: block; width: 100%; height: auto; }
+.resume-pdf { display: block; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--paper); }
 
 .cloud-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .cloud-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13px; }
@@ -192,12 +215,11 @@
 
 /* --- Files and approval -------------------------------------------------- */
 
-.resume-files { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 0; }
 .resume-file-link { font-size: 13px; }
 .resume-file-link.disabled { color: var(--muted); text-decoration: none; }
 
 /* A file that would not open says so under the buttons, in the server's words. */
-.file-note { margin: 8px 0 0; font-size: 13px; color: var(--fail); max-width: var(--measure); }
+.file-note { margin: 0; padding: 0 24px 12px; font-size: 13px; color: var(--fail); max-width: var(--measure); }
 .file-note:empty { display: none; }
 
 .approve { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -242,18 +264,20 @@
   .cover { grid-template-columns: minmax(0, 1fr) auto; }
   .cover .bar { grid-column: 1 / -1; grid-row: 2; }
 
-  .resume-workbench { grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
-  .resume-overview { grid-row: 1; padding: 24px 16px; }
-  .resume-inspector { grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
-  .resume-inspector-tabs { padding-right: 16px; padding-left: 16px; }
-  .resume-quality, .resume-preview { padding-right: 16px; padding-left: 16px; }
-  .resume-browser { grid-row: 3; border-right: 0; border-top: 1px solid var(--rule); }
-  .resume-overview-head { flex-direction: column; gap: 12px; }
+  .view[data-route="resumes"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="resumes"] > .page-header { margin: 32px 0 24px; }
+  .resume-stage { min-height: 0; }
+  .resume-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .resume-selected { grid-row: 1; overflow: visible; }
+  .resume-selected-head { padding-right: 16px; padding-left: 16px; }
+  .resume-selected-tabs { padding-right: 16px; padding-left: 16px; overflow-x: auto; }
+  .resume-overview { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .resume-quality { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .resume-pdf { height: 640px; }
+  .resume-browser { grid-row: 2; overflow: visible; border-right: 0; border-top: 1px solid var(--rule); }
   .resume-head-actions { justify-content: flex-start; }
 }
 
 @media (min-width: 720px) and (max-width: 1099px) {
   .resume-workbench { grid-template-columns: minmax(240px, 32%) minmax(0, 1fr); }
-  .resume-browser { grid-row: 1 / span 2; }
-  .resume-inspector { grid-column: 2; border-top: 1px solid var(--rule); border-left: 0; }
 }

@@ -24,13 +24,14 @@ Capture normalization: source 1490 by 1054 pixels, implementation 1490 by 1054 p
 - Fonts and typography: passed. Serif display headings and system sans operational text preserve the source hierarchy, weight and compact wrapping.
 - Spacing and layout rhythm: passed. The shell, header, workbench edges, selected rail, pane padding and hairline divisions retain the source rhythm across desktop, tablet and mobile.
 - Colours and visual tokens: passed. Navy shell, warm paper, restrained blue selection and semantic verdict colours use the existing product tokens consistently.
-- Image and asset fidelity: passed. The third pane displays the real authenticated rendered-page image, with no raster substitute or placeholder. PDF, DOCX and Markdown remain available as quiet file links.
+- Image and asset fidelity: passed. The selected resume's PDF tab points at the real PDF through Chromium's native viewer, using an authenticated object URL when a UI token is present. The in-app browser capture does not expose native PDF plug-in pixels, so the source was also verified as a 200 `application/pdf` response.
 - Copy and content: passed. Labels describe the live harness states and recorded evidence without inventing a pass, approval or submission.
 - Responsive behaviour: passed. At 390 px the selected workflow comes before the longer queue, the timeline wraps, and actions use the available width without horizontal overflow.
 - Selection behaviour: passed. Choosing another row updates `selected` in the hash, keeps filters and the active segment, and refreshes the detail without losing list context.
-- Resumes pattern: passed. Baselines extend the selected design into three levels: the positioning browser, selected resume overview, and a tabbed inspector. The inspector defaults to the rendered Resume and switches to Quality evidence for that exact render.
-- Resumes interaction: passed. Selecting a positioning updates the address and refreshes both downstream panes. Resume and Quality are addressable tabs, page tabs select the rendered page inline, and PDF, DOCX and Markdown remain quiet links. Guarded approval stays in the overview. Evidence questions remain profile-wide in their existing tab.
-- Resumes responsive behaviour: passed. At 390 by 844 the selected resume comes first, quality evidence second, and the longer positioning list third. There is no horizontal overflow.
+- Resumes pattern: passed. The three levels are the persistent app sidebar, positioning list and one selected-resume pane. That pane has Overview, PDF, DOCX, Markdown and Quality tabs, with no separate inspector column or file footer.
+- Resumes interaction: passed. Selecting a positioning updates the address and refreshes the selected pane. Overview, PDF and Quality keep their state in the address; DOCX and Markdown remain authenticated artefact links in the same tab row. Guarded approval stays with the selected resume. Evidence questions remain profile-wide in their existing top-level tab.
+- Resumes responsive behaviour: passed. At 390 by 844 the selected resume is full width and comes before the longer positioning list. Its five-tab row remains usable and there is no horizontal overflow.
+- Runs pattern: passed. Runs now uses the same three-level flow: app sidebar, daily run list and one selected-run pane with Overview, Summary, Log and Letters tabs. The page stays viewport-locked on desktop and the selected tab scrolls internally.
 
 Comparison history:
 
@@ -42,7 +43,9 @@ Comparison history:
 - Resumes three-level pass: passed. The source reference and loaded Resumes workbench were inspected together at 1490 by 1054. A second pass at 390 by 844 confirmed the mobile reading order. Positioning selection, the Evidence questions tab and live quality context were checked without approving or opening an artefact.
 - Tabbed inspector first pass: blocked by a P1 mobile layout issue. The panes changed row order but retained the three desktop column tracks, so the selected resume and preview used only part of the phone width.
 - Tabbed inspector correction: passed. The mobile workbench now collapses to one full-width column before applying the selected resume, inspector, positioning list order. At 390 by 844 both the overview and inspector measure 390 pixels, the rendered page measures 356 pixels, and there is no horizontal overflow.
-- Tabbed inspector final pass: passed. The source and implementation were compared together at 1490 by 1054. The default Resume tab showed the real first page at 396 pixels wide, page 2 selection persisted in the address, Quality restored the recorded gate and critic view, and the console remained clear.
+- Selected-resume workspace correction: passed. The extra overview and inspector columns were merged into one selected-resume pane. Overview, PDF, DOCX, Markdown and Quality now share its tab row, the global shell plus two content columns use the available width, and the desktop page itself does not scroll.
+- Runs workspace pass: passed. Fifteen live runs loaded into the history list, the selected 18 September run kept Sent, Stopped and Numbers in Overview, and Summary, Log and Letters switched within the same pane. The selected body measured 872 pixels high against 8074 pixels of content and scrolled internally without moving the page.
+- Final responsive pass: passed. Resumes and Runs both measured 390 pixels wide at a 390 by 844 viewport, placed the selected pane before the long list, and introduced no horizontal overflow.
 
 Intentional refinements from the reference:
 

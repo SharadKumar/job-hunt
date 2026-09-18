@@ -110,7 +110,7 @@ function opensFile(node, url, note) {
   return node;
 }
 
-/** Quiet file access below the inline preview. */
+/** Quiet file access in the third panel's tab row. */
 function fileLink(label, url, note) {
   if (!url) return h("span", { class: "resume-file-link disabled", text: label, "aria-disabled": "true" });
   return opensFile(h("a", {
@@ -132,7 +132,7 @@ function fileLink(label, url, note) {
  * looking at, not a failed render, and the tall red bars this replaced read as
  * the second thing (the brief, section 6, Resumes cards).
  */
-function pageFill(page, href, selected) {
+function pageFill(page) {
   const pct = typeof page.fill === "number" ? Math.max(0, Math.min(100, Math.round(page.fill))) : null;
   const floor = typeof page.threshold === "number" ? Math.round(page.threshold) : null;
   const figure = h("figure", { class: page.low ? "fill low" : "fill" });
@@ -143,7 +143,7 @@ function pageFill(page, href, selected) {
     "aria-label": pct === null ? `Page ${page.page}, fill not measured` : `Page ${page.page}, ${pct} percent filled`,
   }, h("span", { style: `width: ${pct === null ? 0 : pct}%` })));
   const caption = h("figcaption", {});
-  caption.append(h("a", { class: selected ? "fill-page selected" : "fill-page", href, text: `Page ${page.page}` }));
+  caption.append(h("span", { class: "fill-page", text: `Page ${page.page}` }));
   if (page.low && floor !== null) caption.append(h("span", { class: "fill-low", text: `under ${floor}%` }));
   figure.append(caption);
   return figure;
@@ -301,13 +301,12 @@ function selectionHref(query, id) {
   return `#/resumes?${q.toString()}`;
 }
 
-function inspectorHref(query, id, panel, page) {
+function inspectorHref(query, id, panel) {
   const q = new URLSearchParams(query);
   q.set("selected", id);
-  if (panel === "quality") q.set("panel", "quality");
+  if (panel && panel !== "overview") q.set("panel", panel);
   else q.delete("panel");
-  if (page) q.set("page", String(page));
-  else q.delete("page");
+  q.delete("page");
   return `#/resumes?${q.toString()}`;
 }
 
@@ -331,34 +330,15 @@ function resumeBrowserItem(item, selected, query) {
   return link;
 }
 
-function resumeOverview(item, query) {
-  const panel = h("section", { class: "resume-overview", "aria-label": "Selected resume" });
-  const label = item.label || item.id;
-  const head = h("header", { class: "resume-overview-head" });
-  const title = h("div", {}, h("p", { class: "eyebrow", text: "Selected baseline" }), h("h2", { text: label }));
-  const actions = h("div", { class: "resume-head-actions" }, stampFor(item));
-  const approved = (item.stamp || {}).kind === "approved";
-  const criticPassed = ((item.critic || {}).verdict || "") === "pass";
-  if (criticPassed && !approved) actions.append(approveControl(item));
-  head.append(title, actions);
-  panel.append(head);
-
-  const meta = [
-    item.positioning || "",
-    item.last_render_at ? `rendered ${when(item.last_render_at)}` : "never rendered",
-  ].filter(Boolean).join(", ");
-  panel.append(h("p", { class: "resume-meta", title: whenFull(item.last_render_at), text: meta }));
-
+function resumeOverview(item) {
+  const panel = h("section", { class: "resume-overview", "aria-label": "Resume overview" });
   const pages = item.pages || [];
   panel.append(h("div", { class: "resume-section-head" },
     h("p", { class: "eyebrow", text: "Page fill" }),
     h("p", { class: "resume-section-note", text: `${plural(pages.length, "rendered page")}` })));
   if (pages.length) {
     const fills = h("div", { class: "fills" });
-    const shown = Number(query.get("page")) || pages[0].page;
-    for (const page of pages.slice(0, 4)) fills.append(pageFill(
-      page, inspectorHref(query, item.id, "preview", page.page), page.page === shown,
-    ));
+    for (const page of pages.slice(0, 4)) fills.append(pageFill(page));
     panel.append(fills);
   } else {
     panel.append(h("p", { class: "verdict-why", text: "No rendered pages on disk." }));
@@ -401,52 +381,59 @@ function resumeQuality(item) {
   return panel;
 }
 
-async function resumePreview(item, query) {
-  const pages = item.pages || [];
-  const wanted = Number(query.get("page"));
-  const page = pages.find((entry) => entry.page === wanted) || pages[0];
+async function resumePreview(item) {
   const panel = h("section", { class: "resume-preview", "aria-label": "Resume preview" });
-  if (!page) {
-    panel.append(h("p", { class: "empty", text: "No rendered pages are available for this baseline." }));
+  const files = item.files || {};
+  if (!files.pdf) {
+    panel.append(h("p", { class: "empty", text: "No rendered PDF is available for this baseline." }));
     return panel;
   }
-  const tabs = h("nav", { class: "tabs resume-page-tabs", "aria-label": "Rendered pages" });
-  for (const entry of pages) {
-    const link = h("a", { href: inspectorHref(query, item.id, "preview", entry.page), text: `Page ${entry.page}` });
-    if (entry.page === page.page) link.setAttribute("aria-current", "page");
-    tabs.append(link);
-  }
-  const note = h("p", { class: "file-note", text: "Loading rendered page." });
-  const image = h("img", { class: "resume-preview-image", alt: `${item.label || item.id}, page ${page.page}` });
+  const note = h("p", { class: "file-note", text: "Loading rendered PDF." });
+  const frame = h("iframe", { class: "resume-pdf", title: `${item.label || item.id} resume PDF` });
   try {
-    image.src = await artefactUrl(page.src);
+    // Let Chromium's native PDF viewer own the ordinary local path. When the
+    // UI token is set, fetch first with the bearer header and give the viewer
+    // the protected bytes as an object URL instead.
+    const pdfUrl = readToken() ? await artefactUrl(files.pdf) : files.pdf;
+    frame.src = `${pdfUrl}#view=FitH&toolbar=1&navpanes=0`;
     note.textContent = "";
   } catch (error) {
     if (isUnauthorised(error)) askForToken();
     note.textContent = error.message;
   }
-  const files = item.files || {};
-  panel.append(tabs, h("div", { class: "resume-page" }, image),
-    h("nav", { class: "resume-files", "aria-label": "Resume files" },
-      fileLink("PDF", files.pdf, note), fileLink("DOCX", files.docx, note), fileLink("Markdown", files.md, note)), note);
+  panel.append(h("div", { class: "resume-pdf-shell" }, frame), note);
   return panel;
 }
 
-async function resumeInspector(item, query) {
-  const active = query.get("panel") === "quality" ? "quality" : "preview";
-  const panel = h("aside", { class: "resume-inspector", "aria-label": "Resume inspector" });
-  const tabs = h("nav", { class: "tabs resume-inspector-tabs", "aria-label": "Resume inspector tabs" });
-  for (const tab of [{ key: "preview", label: "Resume" }, { key: "quality", label: "Quality" }]) {
-    const link = h("a", { href: inspectorHref(query, item.id, tab.key), text: tab.label });
-    if (tab.key === active) link.setAttribute("aria-current", "page");
-    tabs.append(link);
-  }
-  panel.append(tabs, active === "quality" ? resumeQuality(item) : await resumePreview(item, query));
+async function resumeSelected(item, query) {
+  const active = ["pdf", "quality"].includes(query.get("panel")) ? query.get("panel") : "overview";
+  const panel = h("section", { class: "resume-selected", "aria-label": "Selected resume" });
+  const label = item.label || item.id;
+  const actions = h("div", { class: "resume-head-actions" }, stampFor(item));
+  const approved = (item.stamp || {}).kind === "approved";
+  const criticPassed = ((item.critic || {}).verdict || "") === "pass";
+  if (criticPassed && !approved) actions.append(approveControl(item));
+  const head = h("header", { class: "resume-selected-head" },
+    h("div", {}, h("p", { class: "eyebrow", text: "Selected resume" }), h("h2", { text: label })), actions);
+  const meta = [item.positioning || "", item.last_render_at ? `rendered ${when(item.last_render_at)}` : "never rendered"]
+    .filter(Boolean).join(", ");
+  head.append(h("p", { class: "resume-meta", title: whenFull(item.last_render_at), text: meta }));
+  const tabs = h("nav", { class: "tabs resume-selected-tabs", "aria-label": "Selected resume tabs" });
+  const overview = h("a", { href: inspectorHref(query, item.id, "overview"), text: "Overview" });
+  if (active === "overview") overview.setAttribute("aria-current", "page");
+  const pdf = h("a", { href: inspectorHref(query, item.id, "pdf"), text: "PDF" });
+  if (active === "pdf") pdf.setAttribute("aria-current", "page");
+  const files = item.files || {};
+  const quality = h("a", { href: inspectorHref(query, item.id, "quality"), text: "Quality" });
+  if (active === "quality") quality.setAttribute("aria-current", "page");
+  tabs.append(overview, pdf, fileLink("DOCX", files.docx), fileLink("Markdown", files.md), quality);
+  const content = active === "quality" ? resumeQuality(item) : active === "pdf" ? await resumePreview(item) : resumeOverview(item);
+  panel.append(head, tabs, content);
   return panel;
 }
 
 async function baselines(view, count, query) {
-  const host = h("div", {});
+  const host = h("div", { class: "resume-stage" });
   host.append(placeholderRows(3));
   view.append(host);
   const data = await fetchInto(host, "resumes", "Could not load the resumes.");
@@ -465,7 +452,7 @@ async function baselines(view, count, query) {
     h("nav", { class: "resume-browser-list" }));
   const list = browser.querySelector(".resume-browser-list");
   for (const item of items) list.append(resumeBrowserItem(item, item.id === selected.id, params));
-  host.append(h("div", { class: "resume-workbench" }, browser, resumeOverview(selected, params), await resumeInspector(selected, params)));
+  host.append(h("div", { class: "resume-workbench" }, browser, await resumeSelected(selected, params)));
 }
 
 /**

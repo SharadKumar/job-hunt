@@ -1,8 +1,10 @@
 /* shell.js - live status for the persistent desktop navigation shell. */
 
 import { $, api, clear, dayStamp, getPolicy, getSummary, h } from "./app.js";
+import { quoteFor } from "./quotes.js";
 
 let health = null;
+const sidebarQuote = quoteFor(Math.random);
 
 export async function loadShellHealth() {
   try { health = await api("health"); } catch { health = null; }
@@ -22,6 +24,14 @@ export function renderShellStatus() {
     ? "Kill switch on"
     : policy ? `Autopilot ${policy.autopilot_enabled ? "on" : "off"}` : "Policy unavailable";
   const next = health && health.next_run ? dayStamp(health.next_run, true) : "No run scheduled";
+  const quote = $("#shell-quote");
+  if (quote && !quote.childElementCount) {
+    const author = String(sidebarQuote.by || "").replace(/^attributed to\s+/i, "");
+    quote.append(
+      h("span", { class: "shell-quote-text", text: `“${sidebarQuote.text}”` }),
+      h("span", { class: "shell-quote-by", text: author }),
+    );
+  }
   clear(box);
   box.append(
     h("span", { class: "shell-date", text: today }),

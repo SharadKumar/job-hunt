@@ -1083,9 +1083,33 @@ body { background: var(--wash); }
 
 .nav a[data-nav="guardrails"] { margin-top: 16px; }
 
+.shell-quote {
+  display: grid;
+  gap: 8px;
+  margin: auto 0 0;
+  padding: 16px 12px 0;
+  border-top: 1px solid var(--sidebar-active);
+  color: var(--sidebar-muted);
+}
+
+.shell-quote-text {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.shell-quote-by {
+  display: block;
+  color: var(--sidebar-ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-style: normal;
+}
+
 .switch-slot {
   width: 100%;
-  margin-top: auto;
+  margin-top: 0;
   padding-top: 16px;
   border-top: 1px solid var(--sidebar-active);
 }
@@ -1202,6 +1226,7 @@ body { background: var(--wash); }
     border-radius: 0;
   }
   .nav a[data-nav="guardrails"] { margin-top: 0; }
+  .shell-quote { display: none; }
   .nav.closed a[data-nav]:not(.cog) { display: none; }
   .nav .cog { order: 0; color: var(--muted); }
   .nav .cog:hover, .nav .cog:focus-visible, .nav .cog[aria-current="page"] { color: var(--ink); background: transparent; }

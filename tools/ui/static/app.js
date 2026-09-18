@@ -459,7 +459,7 @@ export async function render() {
     // `id` is the Resumes tab: "" is Baselines, "evidence" is the questions.
     else if (route === "resumes") await viewResumes(view, id, query);
     else if (route === "guardrails") await viewRules(view);
-    else if (route === "runs") await viewRuns(view, id);
+    else if (route === "runs") await viewRuns(view, id, query);
     else if (route === "settings") viewSettings(view);
     else await viewHome(view);
   } catch (error) {

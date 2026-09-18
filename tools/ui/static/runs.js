@@ -60,13 +60,16 @@ export function runLine(run) {
 }
 
 // ---------------------------------------------------------------------------
-// The list
+// Run browser
 // ---------------------------------------------------------------------------
 
 /** One day. The whole row is the link, so the date, the tally and the verdict
  * are one keyboard target rather than three. */
-function runRow(run) {
-  const row = h("a", { class: "list-row run-row", href: `#/runs/${encodeURIComponent(run.date)}` });
+function runRow(run, selected) {
+  const row = h("a", {
+    class: selected ? "list-row run-row selected" : "list-row run-row",
+    href: `#/runs/${encodeURIComponent(run.date)}`,
+  });
   const main = h("div", { class: "list-main" });
   main.append(h("span", { class: "list-title", text: runDay(run.date) }));
   main.append(h("span", { class: "list-pills" }, verdictPill(run)));
@@ -77,30 +80,6 @@ function runRow(run) {
   }));
   row.append(main);
   return row;
-}
-
-async function viewRunList(view) {
-  const count = h("p", { class: "page-count" });
-  view.append(pageHeader({ title: "Runs", lede: count }));
-  const host = h("div", {});
-  host.append(placeholderRows(3));
-  view.append(host);
-
-  const data = await fetchInto(host, "runs?limit=30", "Could not load the runs.");
-  if (!data) return;
-
-  const runs = data.runs || [];
-  const total = data.total ?? runs.length;
-  count.textContent = runs.length
-    ? `${total > runs.length ? `Last ${runs.length} of ${total} runs` : plural(runs.length, "run")}, newest first.`
-    : "";
-  if (!runs.length) {
-    host.append(h("p", { class: "empty", text: "No runs yet. Start one with npm run daily." }));
-    return;
-  }
-  const list = h("div", { class: "list" });
-  for (const run of runs) list.append(runRow(run));
-  host.append(list);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,17 +166,13 @@ function numbersSection(numbers) {
   return box;
 }
 
-/** A fold, with the thing and its size named on the summary line. */
-function fold(label, body, open) {
-  const box = h("details", { class: "disclosure run-fold", open: open === true });
-  box.append(h("summary", { text: label }));
-  box.append(body);
-  return box;
-}
-
 /** The letters an unattended run sent, each under the line that names the send. */
-function lettersFold(letters) {
+function lettersPanel(letters) {
   const body = h("div", { class: "run-letters" });
+  if (!letters.length) {
+    body.append(h("p", { class: "empty", text: "This run recorded no unattended letters." }));
+    return body;
+  }
   for (const entry of letters) {
     const block = h("article", { class: "run-letter" });
     block.append(h("p", { class: "run-letter-head", text: entry.title }));
@@ -205,7 +180,7 @@ function lettersFold(letters) {
     else block.append(h("p", { class: "grey small", text: "The journal records the send but not the letter text." }));
     body.append(block);
   }
-  return fold(`Letters sent unattended, ${letters.length}`, body);
+  return body;
 }
 
 /** What the page says under the title: the verdict, in a sentence. */
@@ -223,67 +198,104 @@ function runLede(run) {
   return `${verdict}${took ? ` in ${took}` : ""}${run.started_at ? `, started ${when(run.started_at)}` : ""}.`;
 }
 
-async function viewRunDetail(view, date) {
-  const head = pageHeader({
-    title: `Run on ${runDay(date)}`,
-    back: h("a", { href: "#/runs", text: "Runs" }),
-  });
-  view.append(head);
-  const host = h("div", {});
-  host.append(placeholderRows(3));
-  view.append(host);
-
-  const data = await fetchInto(host, `runs/${encodeURIComponent(date)}`, `Could not load the run for ${runDay(date)}.`);
-  if (!data) return;
-
+function runOverview(data, date) {
   const run = data.run || { date, running: false, exit_code: null, has_log: false, has_summary: false };
-  head.append(h("div", { class: "page-aside" }, verdictPill(run)));
-  head.append(h("p", { class: "lede", text: runLede(run) }));
-
+  const panel = h("section", { class: "run-overview", "aria-label": "Run overview" });
   if (!run.has_summary && !run.has_log) {
-    host.append(h("p", { class: "empty", text: "Nothing was written for this day. A run writes its summary when it finishes." }));
-    return;
+    panel.append(h("p", { class: "empty", text: "Nothing was written for this day. A run writes its summary when it finishes." }));
+    return panel;
   }
   if (run.running) {
-    host.append(h("p", {
+    panel.append(h("p", {
       class: "empty",
       text: "This run is still working, so what follows is only what it has written so far.",
     }));
   }
   if (data.from_audit) {
-    host.append(h("p", {
+    panel.append(h("p", {
       class: "empty",
       text: "No summary was written for this day, so what follows is read from the audit log.",
     }));
   }
-
-  host.append(sentSection(data.sent || [], data.from_audit === true));
-  host.append(stoppedSection(data.stopped || []));
+  panel.append(sentSection(data.sent || [], data.from_audit === true));
+  panel.append(stoppedSection(data.stopped || []));
   const numbers = numbersSection(data.numbers || []);
-  if (numbers) host.append(numbers);
+  if (numbers) panel.append(numbers);
+  return panel;
+}
 
-  const folds = h("section", { class: "run-section" });
-  const letters = data.letters_sent || [];
-  if (letters.length) folds.append(lettersFold(letters));
-  if (data.markdown) {
-    folds.append(fold("Raw summary", h("div", { class: "prose" }, richMarkdown(data.markdown))));
+function runSelected(data, date, query) {
+  const active = ["summary", "log", "letters"].includes(query.get("panel")) ? query.get("panel") : "overview";
+  const run = data.run || { date, running: false, exit_code: null, has_log: false, has_summary: false };
+  const panel = h("section", { class: "run-selected", "aria-label": "Selected run" });
+  const head = h("header", { class: "run-selected-head" },
+    h("div", {}, h("p", { class: "eyebrow", text: "Selected run" }), h("h2", { text: runDay(run.date || date) })),
+    verdictPill(run), h("p", { class: "run-meta", text: runLede(run) }));
+  const tabs = h("nav", { class: "tabs run-selected-tabs", "aria-label": "Selected run tabs" });
+  for (const tab of [{ key: "overview", label: "Overview" }, { key: "summary", label: "Summary" }, { key: "log", label: "Log" }, { key: "letters", label: "Letters" }]) {
+    const q = new URLSearchParams(query);
+    if (tab.key === "overview") q.delete("panel");
+    else q.set("panel", tab.key);
+    const link = h("a", { href: `#/runs/${encodeURIComponent(date)}${q.toString() ? `?${q}` : ""}`, text: tab.label });
+    if (tab.key === active) link.setAttribute("aria-current", "page");
+    tabs.append(link);
   }
-  if (data.log) {
-    const body = h("div", {});
+  const body = h("section", { class: "run-inspector-body" });
+  if (active === "overview") {
+    body.append(runOverview(data, date));
+  } else if (active === "letters") {
+    body.append(lettersPanel(data.letters_sent || []));
+  } else if (active === "log") {
+    if (!data.log) body.append(h("p", { class: "empty", text: "This run has no log." }));
+    else {
     if (data.log_truncated) {
       body.append(h("p", { class: "grey small", text: "The middle of this log is not read: only the two ends are." }));
     }
     body.append(h("pre", { class: "run-log", text: data.log }));
     if (data.log_path) body.append(h("p", { class: "grey small", text: data.log_path }));
-    folds.append(fold("Raw log", body));
+    }
+  } else if (data.markdown) {
+    body.append(h("div", { class: "prose" }, richMarkdown(data.markdown)));
+  } else {
+    body.append(h("p", { class: "empty", text: "This run has no written summary." }));
   }
-  if (data.summary_path || run.summary_path) {
-    folds.append(h("p", { class: "grey small", text: data.summary_path || run.summary_path }));
+  if (data.summary_path || (data.run || {}).summary_path) {
+    body.append(h("p", { class: "grey small", text: data.summary_path || data.run.summary_path }));
   }
-  if (folds.childNodes.length) host.append(folds);
+  panel.append(head, tabs, body);
+  return panel;
 }
 
-export async function viewRuns(view, id) {
-  if (id) await viewRunDetail(view, id);
-  else await viewRunList(view);
+export async function viewRuns(view, id, query) {
+  const count = h("p", { class: "page-count" });
+  view.append(pageHeader({ title: "Runs", lede: count }));
+  const host = h("div", { class: "runs-stage" });
+  host.append(placeholderRows(3));
+  view.append(host);
+  const data = await fetchInto(host, "runs?limit=30", "Could not load the runs.");
+  if (!data) return;
+  const runs = data.runs || [];
+  const total = data.total ?? runs.length;
+  count.textContent = runs.length
+    ? `${total > runs.length ? `Last ${runs.length} of ${total} runs` : plural(runs.length, "run")}, newest first.`
+    : "";
+  if (!runs.length) {
+    host.append(h("p", { class: "empty", text: "No runs yet. Start one with npm run daily." }));
+    return;
+  }
+  const selected = runs.find((run) => run.date === id) || runs[0];
+  if (id !== selected.date) history.replaceState(null, "", `#/runs/${encodeURIComponent(selected.date)}`);
+  const loading = h("div", {});
+  loading.append(placeholderRows(3));
+  host.append(loading);
+  const detail = await fetchInto(loading, `runs/${encodeURIComponent(selected.date)}`, `Could not load the run for ${runDay(selected.date)}.`);
+  if (!detail) return;
+  loading.remove();
+  const browser = h("section", { class: "run-browser", "aria-label": "Run history" },
+    h("header", { class: "run-browser-head" }, h("p", { class: "eyebrow", text: "History" }), h("h2", { text: "Daily runs" })),
+    h("nav", { class: "run-browser-list" }));
+  const list = browser.querySelector(".run-browser-list");
+  for (const run of runs) list.append(runRow(run, run.date === selected.date));
+  const params = query instanceof URLSearchParams ? query : new URLSearchParams();
+  host.append(h("div", { class: "runs-workbench" }, browser, runSelected(detail, selected.date, params)));
 }
