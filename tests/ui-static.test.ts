@@ -528,7 +528,7 @@ test("Today switches one compact workspace between needs and sent activity", () 
   assert.match(home, /export async function viewHome\(view\)/, "home.js must draw the Today view");
   assert.match(home, /body\.append\(brief\(summary, getPolicy\(\), healthValue, sentRows\.length\)\);/,
     "the brief is the first thing under the greeting");
-  for (const section of ["needsYouQueue", "sentSection"]) {
+  for (const section of ["needsYouQueue", "sentQueue"]) {
     assert.ok(home.includes(`${section}(`), `Today never draws ${section}`);
     assert.ok(lists.includes(`export function ${section}(`), `today-lists.js must own ${section}`);
   }
@@ -544,8 +544,14 @@ test("Today switches one compact workspace between needs and sent activity", () 
     "the needs workspace must only be drawn on its tab");
   assert.match(home, /active === "sent" && sent\.status === "fulfilled"/,
     "sent activity must only be drawn on its tab");
-  assert.match(lists, /class: embedded \? "today-sent-panel" : "today-section"/,
-    "sent activity must merge into the tabbed Today workspace");
+  assert.match(home, /workbench\.append\(sentQueue\(sentRows, selected && selected\.id, query\), await todayWorkDetail\(selected\)\)/,
+    "Sent overnight must use the same left-list and selected-detail workspace");
+  assert.match(lists, /q\.set\("panel", "sent"\);[\s\S]*?q\.set\("sent", row\.id\);/,
+    "selecting a sent row must keep its tab and selected item in the address");
+  assert.match(todayWorkbench, /String\(row\.status\) === "submitted" \? "Submitted application"/,
+    "a sent detail must identify itself as a submitted application");
+  assert.match(todayWorkbench, /String\(row\.status\) === "submitted" \? "Submission record" : "Why it stopped"/,
+    "a sent confirmation must not be labelled as a reason the application stopped");
   assert.ok(src["today-workbench.js"].includes("timeline(row, action)"),
     "the selected application must keep its six stage workflow visible");
   assert.ok(src["today-workbench.js"].includes("Saving an answer does not submit it."),
@@ -554,6 +560,8 @@ test("Today switches one compact workspace between needs and sent activity", () 
     assert.ok(!home.includes(gone) && !lists.includes(gone), `Today still carries the old ${gone}`);
   }
   const todayCss = sheet["today.css"];
+  assert.match(todayCss, /\.queue-time \{ color: var\(--muted\); \}/,
+    "a sent time is context, not a blue action label");
   assert.match(todayCss, /\.today-workbench \{[\s\S]*?grid-template-columns: minmax\(320px, 384px\) minmax\(0, 1fr\);/,
     "the desktop workbench must keep a compact queue beside a flexible detail pane");
   assert.match(todayCss, /\.view\[data-route="today"\] \{[\s\S]*?height: 100vh;[\s\S]*?padding-top: calc\(var\(--shell-h\) \+ 16px\);[\s\S]*?overflow: hidden;/,
@@ -564,8 +572,6 @@ test("Today switches one compact workspace between needs and sent activity", () 
     "the Needs you list must scroll inside its pane");
   assert.match(todayCss, /\.today-detail \{[^}]*overflow: auto;/,
     "the selected application must scroll inside its pane");
-  assert.match(todayCss, /\.today-sent-list \{[^}]*overflow: auto;/,
-    "the Sent overnight list must scroll inside the active panel");
   assert.match(todayCss, /\.workbench-timeline \.timeline > li:nth-child\(3n\)::after \{ display: none; \}/,
     "a wrapped phone timeline must end its spine on each row instead of overflowing the viewport");
   assert.match(todayCss, /@media \(max-width: 959px\) \{[\s\S]*?\.today-workbench \{ grid-template-columns: minmax\(0, 1fr\); \}/,

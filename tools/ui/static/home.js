@@ -24,7 +24,7 @@ import {
   pageHeader, parseHash, placeholderRows, render,
 } from "./app.js";
 import {
-  needsYouGroup, needsYouQueue, overnightFrom, sentSection, sentSince,
+  needsYouGroup, needsYouQueue, overnightFrom, sentQueue, sentSince,
 } from "./today-lists.js";
 import { todayWorkDetail } from "./today-workbench.js";
 
@@ -375,6 +375,13 @@ export async function viewHome(view) {
   } else if (active === "needs") {
     body.append(h("section", { class: "today-section" }, loadError("the work queue", needs.reason, () => render())));
   }
-  if (active === "sent" && sent.status === "fulfilled") body.append(sentSection(sentRows, { embedded: true }));
-  else if (active === "sent") body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
+  if (active === "sent" && sent.status === "fulfilled") {
+    const asked = query.get("sent");
+    const selected = sentRows.find((row) => row.id === asked) || sentRows[0] || null;
+    const workbench = h("div", { class: "today-workbench" });
+    workbench.append(sentQueue(sentRows, selected && selected.id, query), await todayWorkDetail(selected));
+    body.append(workbench);
+  } else if (active === "sent") {
+    body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
+  }
 }

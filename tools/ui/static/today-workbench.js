@@ -87,10 +87,11 @@ export async function todayWorkDetail(summary, changed = () => render()) {
   }
   const row = data.row || summary;
   const action = data.action || summary.action || { kind: "none" };
+  const eyebrow = String(row.status) === "submitted" ? "Submitted application" : ACTION_LABELS[action.kind] || "Application review";
   const top = h("header", { class: "workbench-header" });
   top.append(
     h("div", { class: "workbench-heading" },
-      h("p", { class: "eyebrow", text: ACTION_LABELS[action.kind] || "Application review" }),
+      h("p", { class: "eyebrow", text: eyebrow }),
       h("h2", { text: row.title || "Untitled role" }),
       h("p", { class: "workbench-facts", text: facts(row, data) })),
     typeof row.score === "number" ? h("div", { class: "workbench-fit" },
@@ -106,7 +107,8 @@ export async function todayWorkDetail(summary, changed = () => render()) {
     if (question) shell.append(question);
   } else if (data.reason) {
     shell.append(h("section", { class: "workbench-reason" },
-      h("p", { class: "eyebrow", text: "Why it stopped" }), h("p", { text: data.reason })));
+      h("p", { class: "eyebrow", text: String(row.status) === "submitted" ? "Submission record" : "Why it stopped" }),
+      h("p", { text: data.reason })));
   }
 
   const pkg = data.package || {};
