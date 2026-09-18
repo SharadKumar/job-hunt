@@ -63,7 +63,7 @@ export const REDIRECTS = {
   queue: "#/pipeline",
   rules: "#/guardrails",
   keywords: "#/resumes/evidence",
-  digest: "#/guardrails",
+  digest: "#/guardrails/themes",
   runs: "#/schedules",
 };
 
