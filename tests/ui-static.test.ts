@@ -524,7 +524,7 @@ test("the counts sentence under the header is gone", () => {
   assert.ok(!/\.standing\s*\{/.test(css), "app.css must not still style the counts line");
 });
 
-test("Today is a focused decision workbench with sent activity below", () => {
+test("Today switches one compact workspace between needs and sent activity", () => {
   assert.match(home, /export async function viewHome\(view\)/, "home.js must draw the Today view");
   assert.match(home, /body\.append\(brief\(summary, getPolicy\(\), healthValue, sentRows\.length\)\);/,
     "the brief is the first thing under the greeting");
@@ -536,6 +536,16 @@ test("Today is a focused decision workbench with sent activity below", () => {
     assert.ok(!home.includes(`${removed}(`) && !home.includes(`class: "${removed}"`), `Today still draws ${removed}`);
   }
   assert.ok(home.includes("todayWorkDetail("), "Today must keep the selected application beside its queue");
+  assert.match(home, /\{ key: "needs", label: "Needs you" \}, \{ key: "sent", label: "Sent overnight" \}/,
+    "Needs you and Sent overnight must be peer tabs in the title row");
+  assert.match(home, /query\.get\("panel"\) === "sent" \? "sent" : "needs"/,
+    "the active Today panel must live in the address");
+  assert.match(home, /active === "needs" && needs\.status === "fulfilled"/,
+    "the needs workspace must only be drawn on its tab");
+  assert.match(home, /active === "sent" && sent\.status === "fulfilled"/,
+    "sent activity must only be drawn on its tab");
+  assert.match(lists, /class: embedded \? "today-sent-panel" : "today-section"/,
+    "sent activity must merge into the tabbed Today workspace");
   assert.ok(src["today-workbench.js"].includes("timeline(row, action)"),
     "the selected application must keep its six stage workflow visible");
   assert.ok(src["today-workbench.js"].includes("Saving an answer does not submit it."),
@@ -546,6 +556,18 @@ test("Today is a focused decision workbench with sent activity below", () => {
   const todayCss = sheet["today.css"];
   assert.match(todayCss, /\.today-workbench \{[\s\S]*?grid-template-columns: minmax\(320px, 384px\) minmax\(0, 1fr\);/,
     "the desktop workbench must keep a compact queue beside a flexible detail pane");
+  assert.match(todayCss, /\.view\[data-route="today"\] \{[\s\S]*?height: 100vh;[\s\S]*?padding-top: calc\(var\(--shell-h\) \+ 16px\);[\s\S]*?overflow: hidden;/,
+    "desktop Today must align with the other workspaces and keep the page inside the viewport");
+  assert.match(todayCss, /\.view\[data-route="today"\] > \.page-header \{[^}]*margin: 0 0 16px;/,
+    "Today's title must use the same top rhythm as Resumes and Schedules");
+  assert.match(todayCss, /\.today-queue \{[\s\S]*?overflow: auto;/,
+    "the Needs you list must scroll inside its pane");
+  assert.match(todayCss, /\.today-detail \{[^}]*overflow: auto;/,
+    "the selected application must scroll inside its pane");
+  assert.match(todayCss, /\.today-sent-list \{[^}]*overflow: auto;/,
+    "the Sent overnight list must scroll inside the active panel");
+  assert.match(todayCss, /\.workbench-timeline \.timeline > li:nth-child\(3n\)::after \{ display: none; \}/,
+    "a wrapped phone timeline must end its spine on each row instead of overflowing the viewport");
   assert.match(todayCss, /@media \(max-width: 959px\) \{[\s\S]*?\.today-workbench \{ grid-template-columns: minmax\(0, 1fr\); \}/,
     "the workbench must stack below the desktop breakpoint");
   assert.match(todayCss, /\.today-section \{ margin-top: 32px; \}/, "sections are 32 px apart, on the scale");
@@ -573,7 +595,8 @@ test("every number in the brief links to the list it counts", () => {
 });
 
 test("the brief says the lane in force and when the machine next wakes", () => {
-  assert.match(home, /pageHeader\(\{ title: greetingFor\(now, ""\) \}\)/, "Today must draw the greeting as its title");
+  assert.match(home, /pageHeader\(\{ title: greetingFor\(now, ""\), aside: tabs\.nav \}\)/,
+    "Today must draw the greeting with its two screen tabs in the title row");
   assert.ok(!home.includes("lede: standing()"), "the lane sentence must not be a lede as well");
   assert.ok(home.includes('`Autopilot is ${policy.autopilot_enabled ? "on" : "off"}, `'),
     "the brief must name the autopilot state");

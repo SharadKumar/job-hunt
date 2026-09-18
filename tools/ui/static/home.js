@@ -5,7 +5,8 @@
  * this order: what did the machine do under my name overnight, what does it
  * need from me, and can I see exactly what was sent. The screen answers them in
  * that order and in one column: a written paragraph whose numbers are live
- * links, the Needs you groups and what went out overnight.
+ * links, then one of two peer tabs: the Needs you workspace or what went out
+ * overnight. Only the active tab is drawn, so Today remains a single screen.
  *
  * The contract is docs/ui-redesign-2026-09-18.md, sections 3, 4, 6 and 7. What
  * it changed here: the eight dashboard cards and the two column flow are gone
@@ -280,6 +281,23 @@ function brief(summary, policy, health, sentCount) {
   return box;
 }
 
+/** The two parts of the morning review are peers in the title row. The query
+ * is preserved so returning from Sent overnight restores the selected row. */
+function todayTabs(active, query) {
+  const nav = h("nav", { class: "tabs", "aria-label": "Today" });
+  const links = {};
+  for (const tab of [{ key: "needs", label: "Needs you" }, { key: "sent", label: "Sent overnight" }]) {
+    const q = new URLSearchParams(query);
+    if (tab.key === "sent") q.set("panel", "sent");
+    else q.delete("panel");
+    const link = h("a", { href: `#/today${q.toString() ? `?${q}` : ""}`, text: tab.label });
+    if (tab.key === active) link.setAttribute("aria-current", "page");
+    links[tab.key] = link;
+    nav.append(link);
+  }
+  return { nav, links };
+}
+
 
 // ---------------------------------------------------------------------------
 // The view
@@ -300,13 +318,16 @@ export async function viewHome(view) {
   // The greeting is drawn before the name is known and filled in when it
   // arrives; the pick does not depend on the name, so the line does not jump.
   const now = new Date();
-  const head = pageHeader({ title: greetingFor(now, "") });
+  const query = parseHash().query;
+  const active = query.get("panel") === "sent" ? "sent" : "needs";
+  const tabs = todayTabs(active, query);
+  const head = pageHeader({ title: greetingFor(now, ""), aside: tabs.nav });
   const title = head.querySelector("h1");
   // A screen reader should not read a rhetorical question mark out as one.
   const say = (text) => { title.textContent = text; title.setAttribute("aria-label", text.replace(/\?/g, "")); };
   say(greetingFor(now, ""));
   view.append(head);
-  const body = h("div", {});
+  const body = h("div", { class: "today-body" });
   body.append(placeholderRows(3));
   view.append(body);
 
@@ -332,25 +353,28 @@ export async function viewHome(view) {
     if (key) grouped[key] += 1;
   }
   const groupedTotal = Object.values(grouped).reduce((total, count) => total + count, 0);
-  const summary = baseSummary ? { ...baseSummary, needs_you: groupedTotal, needs_you_groups: grouped } : baseSummary;
+  const summary = baseSummary && needs.status === "fulfilled"
+    ? { ...baseSummary, needs_you: groupedTotal, needs_you_groups: grouped }
+    : baseSummary;
   const sentRows = sent.status === "fulfilled"
     ? sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))
     : [];
+  tabs.links.needs.textContent = `Needs you ${summary ? summary.needs_you ?? groupedTotal : groupedTotal}`;
+  tabs.links.sent.textContent = `Sent overnight ${sentRows.length}`;
   body.append(brief(summary, getPolicy(), healthValue, sentRows.length));
   // The queue and the selected application stay in view together. Selecting a
   // row changes URL state only; the detail keeps save, review and send as
   // separate steps.
-  if (needs.status === "fulfilled") {
+  if (active === "needs" && needs.status === "fulfilled") {
     const rows = workRows;
     const asked = parseHash().query.get("selected");
     const selected = rows.find((row) => row.id === asked) || rows[0] || null;
     const workbench = h("div", { class: "today-workbench" });
     workbench.append(needsYouQueue(rows, healthValue, selected && selected.id), await todayWorkDetail(selected));
     body.append(workbench);
-  } else {
+  } else if (active === "needs") {
     body.append(h("section", { class: "today-section" }, loadError("the work queue", needs.reason, () => render())));
   }
-
-  if (sent.status === "fulfilled") body.append(sentSection(sentRows));
-  else body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
+  if (active === "sent" && sent.status === "fulfilled") body.append(sentSection(sentRows, { embedded: true }));
+  else if (active === "sent") body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
 }

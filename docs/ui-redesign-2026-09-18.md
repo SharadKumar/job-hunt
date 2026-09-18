@@ -167,10 +167,11 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 ### Today (`#/today`)
 
 - The brief (section 3). Each number is a link into the Pipeline segment or group it counts. Numbers come from one server call, `GET /api/summary`, which must return every count the brief and the Pipeline tabs use.
-- Needs you: grouped by action kind in this order: answer a question, decide (duplicate, gate refusal, adapter uncertain), open a portal, waiting on a redraft (no button, quiet). Rows show title, employer, location, score, the full reason, one action.
-- Sent overnight: rows submitted since the last run started, linked.
+- Needs you and Sent overnight are peer tabs in the title row, with their live counts. The active tab is stored as `panel` in the hash query.
+- Needs you: grouped by action kind in this order: answer a question, decide (duplicate, gate refusal, adapter uncertain), open a portal, waiting on a redraft (no button, quiet). Rows show title, employer, location, score, the full reason, one action. Its list and selected detail scroll inside the fixed desktop workspace.
+- Sent overnight: rows submitted since the last run started, linked, in the same workspace rather than a second section below Needs you.
 - Replies, Evidence questions and the last run line each one row.
-- The quote of the day stays under the greeting (the person asked for it). Greeting is time-of-day plus name from the profile.
+- The quote of the day stays at the bottom of the persistent sidebar. Greeting is time-of-day plus name from the profile.
 - Empty state for Needs you: "Nothing needs you. The next run is Mon 07:00."
 
 ### Pipeline (`#/pipeline/<segment>?channel=&min=&sort=`)
