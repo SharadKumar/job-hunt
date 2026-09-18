@@ -141,7 +141,7 @@ Decision   Hold  Reject  Withdraw  (reason)
 History
 ```
 
-Runs: list of runs as rows; `#/runs/<date>` is a real page with sections Sent (linked rows), Stopped (grouped by kind), Numbers, and the raw log behind a disclosure.
+Schedules: list of runs as rows; `#/schedules/<date>` is a real page with sections Sent (linked rows), Stopped (grouped by kind), Numbers, and the raw log behind a disclosure.
 
 ### Principles
 
@@ -160,7 +160,7 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 
 ### Header and navigation
 
-- Nav: Today, Pipeline, Resumes, Guardrails, Runs, and the cog. Old hashes (`home`, `applications`, `rules`, `queue`, `keywords`, `digest`, `today`) redirect.
+- Nav: Today, Pipeline, Resumes, Schedules, Guardrails, and the cog. Old hashes (`home`, `applications`, `rules`, `queue`, `keywords`, `digest`, `runs`) redirect.
 - Autopilot control stays in the header as a switch with its state in words: "Autopilot on, 5 of 30 today" linking to Settings. When the kill switch is on the switch is disabled and reads "Kill switch on".
 - Active nav item is underlined in `--you`.
 
@@ -206,14 +206,14 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 - Recurring critic themes second, with Promote to standing rule.
 - Never-named patterns and editorial bans in a collapsed reference section, described in words with the pattern in a code span, and a line saying which file to edit.
 
-### Runs (`#/runs`, `#/runs/<date>`)
+### Schedules (`#/schedules`, `#/schedules/<date>`)
 
 - List: date, sent, stopped, duration, exit as a verdict pill.
 - Detail page: Sent (linked rows), Stopped (grouped by kind, each linked), Numbers, and the raw summary and log behind a disclosure. Work still running shows as its own state.
 
 ### Settings (`#/settings`)
 
-- Token, kill switch (confirm once), schedule and channel sign-in state, notify URL. The harness health block moves to Today's last line and Runs.
+- Token, kill switch (confirm once), schedule and channel sign-in state, notify URL. The harness health block moves to Today's last line and Schedules.
 
 ## 5. Implementation packages
 
@@ -221,7 +221,7 @@ Foundation (first): tokens, type, layout primitives and list/row/pill/button cla
 
 Then in parallel:
 
-- Today and Runs.
+- Today and Schedules.
 - Pipeline and the row API fixes (Approve moves the row, Retry keyed off the lane, letter-blocked and duplicate branches gated by status, `displayReason` newest-wins, dead dispatch removed, screening route fall-through fixed).
 - Row page.
 - Resumes, Evidence, Guardrails, Settings, and tokened file links.
@@ -292,7 +292,7 @@ These are as binding as section 4. Each screen agent fixes every item in its scr
 - Never-named entries show the regex in a code pill as the primary text with the fix line in `--you` colour that looks like a link but is not. Becomes description first, the pattern in a code span after it, the fix in `--muted`; nothing is coloured `--you` unless it is a link or an action.
 - Editorial bans: same treatment, collapsed by default.
 
-### Runs
+### Schedules
 
 - List rows: "took 59 m 17 s" and "1 h 46 m" and "no summary written" mix. Use `duration()`. "no summary written" becomes a muted "no summary".
 - "exit 0" in green and "exit 1" in red as bare text. Becomes a verdict pill: "Finished" (pass), "Failed, exit 1" (fail), "Running" (you).
@@ -317,7 +317,7 @@ Grid: `grid-template-columns: 3ch minmax(0,1fr) auto; column-gap: 16px`. The sco
 2. Score cell: 15px, tabular, ink, right aligned, `align-self: start`, top padded 1px so it sits on the title baseline.
 3. Action cell: `align-self: center`, one button, or nothing. On narrow screens the grid becomes one column and the button is full width under the reason.
 
-Hover: `background: var(--wash)` only when the whole row is a link (Runs list, Resumes list). Rows with buttons do not change on hover. Selected or current row (e.g. the row you just acted on): 2px left border in `--you` for 3 seconds, then off.
+Hover: `background: var(--wash)` only when the whole row is a link (Schedules list, Resumes list). Rows with buttons do not change on hover. Selected or current row (e.g. the row you just acted on): 2px left border in `--you` for 3 seconds, then off.
 
 ### Pill (`.pill`)
 

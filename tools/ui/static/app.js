@@ -42,9 +42,8 @@ export {
 };
 
 // --- Constants ---
-
 /** Hash routes, in nav order, plus the row detail the nav does not show. */
-export const ROUTES = ["today", "pipeline", "row", "resumes", "guardrails", "runs", "settings"];
+export const ROUTES = ["today", "pipeline", "row", "resumes", "schedules", "guardrails", "settings"];
 
 /**
  * Addresses that moved, and where they moved to. Home became Today,
@@ -65,6 +64,7 @@ export const REDIRECTS = {
   rules: "#/guardrails",
   keywords: "#/resumes/evidence",
   digest: "#/guardrails",
+  runs: "#/schedules",
 };
 
 /**
@@ -395,9 +395,9 @@ export function parseHash() {
   let { name, id, query, fragment } = splitHash(location.hash || "#/today");
   const moved = REDIRECTS[name];
   if (moved) {
-    // Only the board tabs carry a segment worth keeping; the other old
+    // Board tabs and dated run links carry a segment worth keeping. Other old
     // addresses had none, so they land on the new screen's own default.
-    const keepsSegment = name === "queue" || name === "applications" || name === "home";
+    const keepsSegment = name === "queue" || name === "applications" || name === "home" || name === "runs";
     const qs = query.toString();
     const target = `${moved}${id && keepsSegment ? `/${encodeURIComponent(id)}` : ""}${qs ? `?${qs}` : ""}`;
     history.replaceState(null, "", target);
@@ -459,7 +459,7 @@ export async function render() {
     // `id` is the Resumes tab: "" is Baselines, "evidence" is the questions.
     else if (route === "resumes") await viewResumes(view, id, query);
     else if (route === "guardrails") await viewRules(view);
-    else if (route === "runs") await viewRuns(view, id, query);
+    else if (route === "schedules") await viewRuns(view, id, query);
     else if (route === "settings") viewSettings(view);
     else await viewHome(view);
   } catch (error) {

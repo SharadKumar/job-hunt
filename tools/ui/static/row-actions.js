@@ -188,7 +188,7 @@ export function sendNowControl(row, refresh, { enabled = true } = {}) {
     const outcome = await pollJob(started.job_id, (tail) => say(tail || "Running the critic and the gate."));
     done();
     if (outcome.error) return say(`Lost track of the run. ${outcome.error.message}`, "bad");
-    if (outcome.timeout) return say("The run is still going. Open Runs to watch the rest of it.", "bad");
+    if (outcome.timeout) return say("The run is still going. Open Schedules to watch the rest of it.", "bad");
     const said = jobResult(outcome.job);
     say(said, outcome.job.exit_code === 0 ? "" : "bad");
     toast(said, outcome.job.exit_code === 0 ? "" : "bad");

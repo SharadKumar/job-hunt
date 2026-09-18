@@ -349,14 +349,14 @@ test("the keyword view can drain a list of hundreds", () => {
 test("every address the UI answers on is routed, and Today is the default", () => {
   // Nine addresses: the seven routes, the Resumes tab that carries a segment,
   // and the row detail that carries an id.
-  for (const route of ["today", "pipeline", "row", "resumes", "guardrails", "runs", "settings"]) {
+  for (const route of ["today", "pipeline", "row", "resumes", "schedules", "guardrails", "settings"]) {
     assert.ok(app.includes(`"${route}"`), `app.js does not name the route: ${route}`);
   }
-  assert.match(app, /ROUTES = \["today", "pipeline", "row", "resumes", "guardrails", "runs", "settings"\]/,
+  assert.match(app, /ROUTES = \["today", "pipeline", "row", "resumes", "schedules", "guardrails", "settings"\]/,
     "the route list is the contract and must read in nav order");
   assert.ok(resumesJs.includes('hash: "#/resumes/evidence"'), "the evidence questions must have their own address");
   assert.ok(pipelineRows.includes("#/row/"), "a pipeline row must link to #/row/<id>");
-  for (const hash of ["#/today", "#/pipeline", "#/resumes", "#/guardrails", "#/runs", "#/settings"]) {
+  for (const hash of ["#/today", "#/pipeline", "#/resumes", "#/guardrails", "#/schedules", "#/settings"]) {
     assert.ok(html.includes(hash), `index.html has no nav link for ${hash}`);
   }
   assert.match(app, /location\.hash \|\| "#\/today"/, "an empty hash must resolve to Today");
@@ -402,6 +402,7 @@ test("every address that moved still works", () => {
     ["rules", "#/guardrails"],
     ["keywords", "#/resumes/evidence"],
     ["digest", "#/guardrails"],
+    ["runs", "#/schedules"],
   ]) {
     assert.match(app, new RegExp(`${from}: "${to.replace(/\//g, "\\/")}"`), `${from} must redirect to ${to}`);
   }
@@ -415,7 +416,7 @@ test("every address that moved still works", () => {
 });
 
 test("the nav is in the agreed order, with the switch then the cog last", () => {
-  const order = ["#/today", "#/pipeline", "#/resumes", "#/guardrails", "#/runs"];
+  const order = ["#/today", "#/pipeline", "#/resumes", "#/schedules", "#/guardrails"];
   let at = -1;
   for (const hash of order) {
     const found = html.indexOf(`href="${hash}"`);
@@ -433,7 +434,7 @@ test("the screen is called Pipeline, and every older name still works", () => {
   assert.ok(!/>Applications</.test(html), "nor Applications");
   assert.ok(app.includes('queue: "#/pipeline"'), "app.js must still accept the old #/queue address");
   assert.ok(app.includes('applications: "#/pipeline"'), "and the #/applications one");
-  assert.match(app, /const keepsSegment = name === "queue" \|\| name === "applications" \|\| name === "home";/,
+  assert.match(app, /const keepsSegment = name === "queue" \|\| name === "applications" \|\| name === "home" \|\| name === "runs";/,
     "a segment must survive the redirect from an older board address");
 });
 
@@ -1621,11 +1622,11 @@ test("the stylesheet keeps to the flat card house style", () => {
   assert.match(rules, /prefers-reduced-motion/, "app.css must respect prefers-reduced-motion");
 });
 
-test("the Resumes screen sits between Pipeline and Guardrails", () => {
+test("Schedules follows Resumes and Guardrails stays last", () => {
   assert.match(html, /<a href="#\/resumes" data-nav="resumes">Resumes<\/a>/, "the nav link must read Resumes");
   assert.match(html, /<a href="#\/guardrails" data-nav="guardrails">Guardrails<\/a>/, "the nav link must read Guardrails");
-  assert.match(html, /<a href="#\/runs" data-nav="runs">Runs<\/a>/, "the nav link must read Runs");
-  const order = ["#/pipeline", "#/resumes", "#/guardrails", "#/runs"];
+  assert.match(html, /<a href="#\/schedules" data-nav="schedules">Schedules<\/a>/, "the nav link must read Schedules");
+  const order = ["#/pipeline", "#/resumes", "#/schedules", "#/guardrails"];
   let at = -1;
   for (const hash of order) {
     const found = html.indexOf(`href="${hash}"`);
@@ -1652,7 +1653,7 @@ test("the Resumes screen renders nothing, and approves only through the tool", (
   assert.equal(resumesJs.split("APPROVE_GATE").length - 1, 3,
     "and used in exactly two places: the empty state and the approve confirmation");
   assert.ok(
-    resumesJs.includes("No positionings yet. Run /onboarding, then /resume-review."),
+    resumesJs.includes("No resume versions yet. Run /onboarding, then /resume-review."),
     "the empty state must point at /onboarding and /resume-review",
   );
   assert.ok(!resumesJs.includes("Rendering runs through /resume-review with the person present."),
@@ -1665,7 +1666,7 @@ test("the Resumes screen renders nothing, and approves only through the tool", (
   assert.match(resumesJs, /fileLink\("Markdown", files\.md\)/, "and so does Markdown");
   assert.match(resumesJs, /class: "resume-file-link"/, "file formats are links, not primary buttons");
   assert.match(resumesJs, /`Critic \$\{said\}\$\{round\}`/, "the card must carry a critic line");
-  assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
+  assert.match(resumesJs, /plural\(items\.length, "version"\)/, "the count line must say how many versions there are");
   assert.ok(!home.includes("resumesSection("), "Today does not repeat resume status in a secondary card");
 });
 
@@ -1718,12 +1719,12 @@ test("the gate chips are gone, replaced by a tally and a fold", () => {
   assert.ok(!/function gateChip/.test(resumesJs), "the unlabelled chip row must be gone");
   // One time format everywhere (section 6, Global components).
   assert.match(resumesJs, /text: `Approved \$\{when\(item\.approved_at\)\}`/, "the stamp date must come from when()");
-  assert.match(resumesJs, /`rendered \$\{when\(item\.last_render_at\)\}`/, "and so must the render date");
+  assert.ok(!resumesJs.includes('class: "resume-meta"'), "the redundant render-date subtitle must be gone");
   assert.ok(!/slice\(0, 10\)/.test(resumesJs), "no screen may cut an ISO stamp by hand");
 });
 
 test("the Resumes screen has two tabs and the keyword view is the second", () => {
-  assert.match(resumesJs, /label: "Baselines"/, "the first tab must be Baselines");
+  assert.match(resumesJs, /label: "Resumes"/, "the first tab must use the plain Resumes label");
   assert.match(resumesJs, /label: "Evidence questions"/, "the second tab must be Evidence questions");
   assert.match(resumesJs, /pageHeader\(\{ title: "Resumes", lede: count, aside: tabStrip\(active\) \}\)/,
     "the tabs must sit in the one page header, not in a header of their own");
@@ -1786,7 +1787,7 @@ test("the Guardrails screen promotes a theme, edits a rule and shows the pattern
   assert.ok(!/api\("rules\/never-named/.test(rulesJs), "nothing may post a never-named pattern");
 });
 
-test("the Runs screen lists runs newest first, each one a link to its page", () => {
+test("the Schedules screen lists runs newest first, each one a link to its page", () => {
   assert.match(runsJs, /export async function viewRuns\s*\(view, id, query\)/, "runs.js must keep the list and selected run together");
   assert.ok(runsJs.includes("runs?limit=30"), "the list must ask for the last thirty runs");
   assert.match(runsJs, /newest first/, "the count line must say the order");
@@ -1794,7 +1795,7 @@ test("the Runs screen lists runs newest first, each one a link to its page", () 
     runsJs.includes("No runs yet. Start one with npm run daily."),
     "the empty state must say what would put something here",
   );
-  assert.match(runsJs, /href: `#\/runs\/\$\{encodeURIComponent\(run\.date\)\}`/,
+  assert.match(runsJs, /href: `#\/schedules\/\$\{encodeURIComponent\(run\.date\)\}`/,
     "a whole row is the link to that run's page, so the date, the tally and the verdict are one target");
   assert.match(css, /a\.list-row:hover, \.list-row\.is-link:hover \{ background: var\(--wash\)/,
     "and a row that is a link may tint on hover");
@@ -1825,7 +1826,7 @@ test("a run's exit is one verdict pill that carries the word as well as the colo
   assert.ok(runsJs.includes('import { soFar } from "./home.js";'), "and Runs must read it from there");
 });
 
-test("Runs uses a selected-run workspace with tabbed evidence", () => {
+test("Schedules uses a selected-run workspace with tabbed evidence", () => {
   assert.ok(runsJs.includes('fetchInto(loading, `runs/${encodeURIComponent(selected.date)}`'),
     "the workspace must fetch its selected run");
   assert.match(sheet["runs.css"], /\.runs-workbench \{[\s\S]*?grid-template-columns: minmax\(260px, 30%\) minmax\(0, 1fr\);/,
@@ -1863,6 +1864,10 @@ test("Resumes uses the app sidebar, resume list and one tabbed selected resume",
     "the app sidebar, resume list and selected resume form the three-level flow");
   assert.match(resumesJs, /class: "resume-browser"/, "the second level is the positioning browser");
   assert.match(resumesJs, /class: "resume-selected"/, "the third level is one selected resume pane");
+  assert.match(resumesJs, /class: "resume-browser-head" \}, h\("h2", \{ text: "Versions" \}\)/,
+    "the resume list uses the plain Versions label");
+  assert.ok(!resumesJs.includes('text: "Selected resume"'), "the selected pane must not spend vertical space on a redundant eyebrow");
+  assert.ok(!resumesJs.includes('class: "resume-meta"'), "the selected pane must not spend vertical space on a subtitle");
   assert.match(resumesJs, /tabs\.append\(overview, pdf, fileLink\("DOCX", files\.docx\), fileLink\("Markdown", files\.md\), quality\)/,
     "Overview, PDF, DOCX, Markdown and Quality share the selected resume's tab row");
   assert.match(resumesJs, /const pdfUrl = readToken\(\) \? await artefactUrl\(files\.pdf\) : files\.pdf/,
