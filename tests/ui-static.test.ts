@@ -1477,6 +1477,10 @@ test("the pipeline carries the secondary actions the server offers", () => {
   assert.match(pipelineRows, /actionButton\(row, \{ key: spec\.post/, "and one with a post must render as a decision");
   assert.match(css, /\.row-extra \{ grid-column: 1 \/ -1; \}/, "a form a row opens must run the row's width");
   assert.match(css, /\.action-extra \{ display: grid;/, "and on the row detail it must sit under the button row");
+  assert.match(todayWorkbench, /const actionable = \{ \.\.\.row, action \};/,
+    "the selected workbench must join the detail API action back onto the row before rendering controls");
+  assert.match(todayWorkbench, /contextualControl\(actionable, changed/,
+    "so Parked, Closed and Needs you keep the action supplied beside the detail row");
 });
 
 test("Sent groups the applications that have gone quiet, in the same row style", () => {
@@ -1485,6 +1489,8 @@ test("Sent groups the applications that have gone quiet, in the same row style",
   assert.match(applications, /const FOLLOW_UP_SHOWN = 8;/, "the follow-up group shows eight before it offers the rest");
   assert.match(applications, /groupHeading\("followups", `No reply after 7 days`, followups\.length, showAll\)/,
     "the heading names the thing and its count, with Show all on the same line");
+  assert.match(applications, /state\.segment\.key === "sent"\s*\? \[\.\.\.\(data\.followups \|\| \[\]\), \.\.\.rows\]/,
+    "a selected follow-up keeps its enriched row when the submitted row has the same id");
   assert.match(todayWorkbench, /label: "Mark responded", path: "outcome"/,
     "and the selected application's action records the reply the person already had");
   assert.ok(!/class: "nudge-card"|nudge-row/.test(applications + pipelineRows),
@@ -1492,7 +1498,7 @@ test("Sent groups the applications that have gone quiet, in the same row style",
 });
 
 test("a closed row can be reopened, with a reason, to discovered", () => {
-  assert.match(todayWorkbench, /const reopen = reopenControl\(row, changed/,
+  assert.match(todayWorkbench, /const reopen = reopenControl\(actionable, changed/,
     "the selected Closed application offers the one move a closed row has");
   assert.match(pipelineRows, /export function reopenControl\(row, done/, "which is its own control, because it asks for a reason");
   assert.match(pipelineRows, /body: \{ action: "reopen", reason: reason\.value\.trim\(\) \}/,

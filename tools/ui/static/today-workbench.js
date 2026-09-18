@@ -33,23 +33,29 @@ function stateNote(row, action) {
   if (kind === "portal" || kind === "mark_sent") return "This application stays attended. The external portal is the next step.";
   if (kind === "retry") return "The package is prepared, but the letter is blocked and needs review.";
   if (kind === "decide" || kind === "gate_refused") return "The package is prepared and waiting for your decision.";
+  if (kind === "unpark") return "This application is parked. Unpark returns it to discovery for reconsideration.";
+  if (kind === "reopen") return "This application is closed. Reopen returns it to discovery for reconsideration.";
   if (String(row.status) === "submitted") return "This application has been submitted.";
   return "Open the full application to review the package and its history.";
 }
 
 function actionLinks(row, action, changed, summary) {
   const links = h("div", { class: "workbench-actions" });
-  const primary = contextualControl(row, changed, { small: false });
+  // Row detail returns the resolved action beside the row, while list rows
+  // carry it on the row itself. The shared controls read row.action, so join
+  // the two shapes here before rendering the selected application's actions.
+  const actionable = { ...row, action };
+  const primary = contextualControl(actionable, changed, { small: false });
   if (primary) links.append(primary);
-  const more = alsoControls(row, changed, { small: false });
+  const more = alsoControls(actionable, changed, { small: false });
   for (const button of more.buttons) links.append(button);
   if (action.kind === "reopen") {
-    const reopen = reopenControl(row, changed, { small: false });
+    const reopen = reopenControl(actionable, changed, { small: false });
     links.append(reopen.button);
     for (const extra of [reopen.extra]) links.append(extra);
   }
   if (summary && typeof summary.days_since === "number") {
-    links.append(routeButton(row, {
+    links.append(routeButton(actionable, {
       label: "Mark responded", path: "outcome",
       body: { status: "responded", note: "recorded from the pipeline" }, primary: true, small: false,
     }, changed));
