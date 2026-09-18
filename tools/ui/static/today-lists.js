@@ -213,15 +213,24 @@ export function sentSince(rows, since) {
   });
 }
 
-export function sentSection(rows) {
-  const box = h("section", { class: "today-section" });
+export function sentSection(rows, options) {
+  const embedded = options && options.embedded === true;
+  const box = h("section", {
+    class: embedded ? "today-sent-panel" : "today-section",
+    "aria-label": embedded ? "Sent overnight" : null,
+  });
   const more = rows.length ? h("a", { class: "linkish", href: "#/pipeline/sent", text: "Show all" }) : null;
-  box.append(sectionHead("Sent overnight", rows.length, more));
+  if (embedded) {
+    box.append(h("div", { class: "today-sent-toolbar" },
+      h("p", { text: "Applications sent since the last run started." }), more));
+  } else {
+    box.append(sectionHead("Sent overnight", rows.length, more));
+  }
   if (!rows.length) {
     box.append(h("p", { class: "empty", text: "Nothing went out overnight. The run sends on the autopilot lane only." }));
     return box;
   }
-  const list = h("div", { class: "list" });
+  const list = h("div", { class: embedded ? "list today-sent-list" : "list" });
   for (const row of rows) {
     const at = sentAt(row);
     list.append(listRow(row, at ? when(at) : ""));

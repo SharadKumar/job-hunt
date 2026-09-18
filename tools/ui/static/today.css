@@ -55,10 +55,25 @@ a.today-pair:hover { background: var(--wash); text-decoration: none; }
 
 /* --- Split decision workbench ------------------------------------------ */
 
+.view[data-route="today"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="today"] > .page-header { flex: 0 0 auto; margin: 0 0 16px; }
+.today-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+
 .today-workbench {
   display: grid;
   grid-template-columns: minmax(320px, 384px) minmax(0, 1fr);
-  margin-top: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: 4px;
@@ -71,12 +86,16 @@ a.today-pair:hover { background: var(--wash); text-decoration: none; }
   max-width: none;
   font-family: var(--sans);
   font-size: 13px;
+  flex: 0 0 auto;
+  margin-bottom: 16px;
 }
 [data-route="today"] .brief p { margin: 0; }
 
 .today-queue {
   min-width: 0;
+  min-height: 0;
   padding: 24px 0;
+  overflow: auto;
   background: var(--wash);
   border-right: 1px solid var(--rule);
 }
@@ -139,7 +158,7 @@ a.today-pair:hover { background: var(--wash); text-decoration: none; }
 .queue-action { grid-column: 2; color: var(--you); }
 .queue-more { display: block; padding: 16px 24px 0; font-size: 13px; }
 
-.today-detail { min-width: 0; padding: 32px; }
+.today-detail { min-width: 0; min-height: 0; padding: 32px; overflow: auto; }
 .workbench-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .workbench-heading { min-width: 0; }
 .workbench-heading .eyebrow { color: var(--you); }
@@ -183,12 +202,48 @@ a.today-pair:hover { background: var(--wash); text-decoration: none; }
 .workbench-empty { max-width: var(--measure); margin: 48px auto; text-align: center; }
 .workbench-empty h2 { margin: 0; }
 
+.today-sent-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.today-sent-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--wash);
+  border-bottom: 1px solid var(--rule);
+}
+.today-sent-toolbar p { margin: 0; color: var(--muted); font-size: 13px; }
+.today-sent-list { min-height: 0; overflow: auto; border-top: 0; }
+
 @media (max-width: 959px) {
+  .view[data-route="today"] {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    padding: calc(var(--shell-h) + 16px) 32px 48px;
+    overflow: visible;
+  }
+  .view[data-route="today"] > .page-header { margin: 0 0 16px; }
+  .today-body { display: block; }
   .today-workbench { grid-template-columns: minmax(0, 1fr); }
+  .today-workbench, .today-queue, .today-detail, .today-sent-panel, .today-sent-list { overflow: visible; }
   .today-queue { border-right: 0; border-bottom: 1px solid var(--rule); }
 }
 
 @media (max-width: 719px) {
+  .view[data-route="today"] { min-height: 0; padding: 0 var(--gutter) 32px; }
+  .view[data-route="today"] > .page-header { margin: 32px 0 24px; }
   .today-workbench { border-right: 0; border-left: 0; }
   .today-detail { grid-row: 1; }
   .today-queue { grid-row: 2; }
@@ -198,8 +253,11 @@ a.today-pair:hover { background: var(--wash); text-decoration: none; }
   [data-route="today"] .brief p { margin-bottom: 8px; }
   .workbench-timeline .timeline { flex-wrap: wrap; }
   .workbench-timeline .timeline > li { flex: 1 1 33%; }
+  .workbench-timeline .timeline > li:nth-child(3n)::after { display: none; }
   .workbench-header { flex-direction: column; gap: 12px; }
   .workbench-fit { align-items: flex-start; }
   .workbench-actions { flex-direction: column; }
   .workbench-actions .btn { width: 100%; }
+  .today-sent-panel { margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .today-sent-toolbar { padding-right: 16px; padding-left: 16px; }
 }
