@@ -5,26 +5,25 @@
  * this order: what did the machine do under my name overnight, what does it
  * need from me, and can I see exactly what was sent. The screen answers them in
  * that order and in one column: a written paragraph whose numbers are live
- * links, the Needs you groups, what went out overnight, and four reference
- * lines at the bottom.
+ * links, the Needs you groups and what went out overnight.
  *
  * The contract is docs/ui-redesign-2026-09-18.md, sections 3, 4, 6 and 7. What
  * it changed here: the eight dashboard cards and the two column flow are gone
  * (a short card left a hole beside a tall one), the big-number tile is gone,
- * the quotation is gone, and every count on the page now comes from the one
- * server call that the Pipeline tabs read, so no two lines can disagree.
+ * the quotation moved into the persistent sidebar, and every count on the page
+ * now comes from the one server call that the Pipeline tabs read, so no two
+ * lines can disagree.
  *
  * Nothing on this screen sends. The only control that leaves the browser is
  * Open portal, which opens the advertiser's own page (AGENTS.md section 2).
  */
 
-import { quoteFor } from "./quotes.js";
 import {
   api, channelLabel, dayStamp, duration, getPolicy, getSummary, h, isPolicyAvailable, loadError,
   pageHeader, parseHash, placeholderRows, render,
 } from "./app.js";
 import {
-  needsYouGroup, needsYouQueue, overnightFrom, referenceSection, resumesSection, sentSection, sentSince, themesSection,
+  needsYouGroup, needsYouQueue, overnightFrom, sentSection, sentSince,
 } from "./today-lists.js";
 import { todayWorkDetail } from "./today-workbench.js";
 
@@ -306,14 +305,6 @@ export async function viewHome(view) {
   // A screen reader should not read a rhetorical question mark out as one.
   const say = (text) => { title.textContent = text; title.setAttribute("aria-label", text.replace(/\?/g, "")); };
   say(greetingFor(now, ""));
-  // The line under the greeting: one quotation, picked fresh on every load.
-  // It is the one thing on the page that is not a number, and the person asked
-  // for it to stay.
-  const saying = quoteFor(Math.random);
-  head.append(h("p", { class: "lede quote" },
-    h("span", { class: "quote-text", text: `"${saying.text}"` }),
-    " ",
-    h("span", { class: "quote-by", text: saying.by })));
   view.append(head);
   const body = h("div", {});
   body.append(placeholderRows(3));
@@ -324,12 +315,9 @@ export async function viewHome(view) {
     api(`rows?status=${WORKED}`),
     api(`rows?status=submitted&limit=${SENT_LOOKBACK}`),
     api("resumes"),
-    api("keywords/pending?limit=1"),
-    api("critic/digest?since=14d"),
     api("runs?limit=1"),
-    api("journal/today"),
   ]);
-  const [health, needs, sent, resumes, keywords, digest, runs, journal] = results;
+  const [health, needs, sent, resumes, runs] = results;
   const name = firstName(resumes);
   if (name) say(greetingFor(now, name));
 
@@ -348,8 +336,6 @@ export async function viewHome(view) {
   const sentRows = sent.status === "fulfilled"
     ? sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))
     : [];
-  const headline = journal.status === "fulfilled" ? journalHeadlineOf(journal.value.markdown) : "";
-
   body.append(brief(summary, getPolicy(), healthValue, sentRows.length));
   // The queue and the selected application stay in view together. Selecting a
   // row changes URL state only; the detail keeps save, review and send as
@@ -365,12 +351,6 @@ export async function viewHome(view) {
     body.append(h("section", { class: "today-section" }, loadError("the work queue", needs.reason, () => render())));
   }
 
-  const support = h("div", { class: "today-support" });
-  if (sent.status === "fulfilled") support.append(sentSection(sentRows));
-  else support.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
-  support.append(referenceSection(summary, keywords, healthValue, runRows, headline));
-  support.append(resumesSection(resumes));
-  const themes = themesSection(digest);
-  if (themes) support.append(themes);
-  body.append(support);
+  if (sent.status === "fulfilled") body.append(sentSection(sentRows));
+  else body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
 }

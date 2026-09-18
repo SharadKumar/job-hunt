@@ -98,6 +98,7 @@ const todayWorkbench = src["today-workbench.js"];
 const rowJs = src["row.js"];
 const keywords = src["keywords.js"];
 const home = src["home.js"];
+const shellJs = src["shell.js"];
 const lists = src["today-lists.js"];
 const settings = src["settings.js"];
 const resumesJs = src["resumes.js"];
@@ -522,13 +523,16 @@ test("the counts sentence under the header is gone", () => {
   assert.ok(!/\.standing\s*\{/.test(css), "app.css must not still style the counts line");
 });
 
-test("Today is a split decision workbench with supporting context below", () => {
+test("Today is a focused decision workbench with sent activity below", () => {
   assert.match(home, /export async function viewHome\(view\)/, "home.js must draw the Today view");
   assert.match(home, /body\.append\(brief\(summary, getPolicy\(\), healthValue, sentRows\.length\)\);/,
     "the brief is the first thing under the greeting");
-  for (const section of ["needsYouQueue", "sentSection", "referenceSection", "resumesSection", "themesSection"]) {
+  for (const section of ["needsYouQueue", "sentSection"]) {
     assert.ok(home.includes(`${section}(`), `Today never draws ${section}`);
     assert.ok(lists.includes(`export function ${section}(`), `today-lists.js must own ${section}`);
+  }
+  for (const removed of ["referenceSection", "resumesSection", "themesSection", "today-support"]) {
+    assert.ok(!home.includes(`${removed}(`) && !home.includes(`class: "${removed}"`), `Today still draws ${removed}`);
   }
   assert.ok(home.includes("todayWorkDetail("), "Today must keep the selected application beside its queue");
   assert.ok(src["today-workbench.js"].includes("timeline(row, action)"),
@@ -634,27 +638,18 @@ test("Sent overnight is what went out since the last run started", () => {
     "the day must be computed with Intl in the browser's own timezone");
 });
 
-test("the reference lines at the bottom are one row each", () => {
-  for (const key of ["Replies", "Evidence questions", "Last run", "Channels"]) {
-    assert.ok(lists.includes(`"${key}"`), `Today never says: ${key}`);
-  }
-  for (const href of ["#/pipeline/replies", "#/resumes/evidence", "#/settings", "#/guardrails", "#/resumes"]) {
-    assert.ok(lists.includes(href), `a reference line does not link to ${href}`);
-  }
-  assert.ok(lists.includes('pair(`#/runs/${date}`, "Last run"'), "the last run line opens that run's page");
-  assert.ok(lists.includes('"finished cleanly"') && lists.includes("`failed, exit ${exit}`"),
-    "and says how it ended in words");
-  const todayCss = sheet["today.css"];
-  assert.match(todayCss, /\.today-pair \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) auto;/,
-    "a reference line is a name and a value in two columns, so the values line up");
-  assert.match(todayCss, /a\.today-pair:hover \{ background: var\(--wash\); text-decoration: none; \}/,
-    "a whole row that is a link may tint on hover");
-});
-
-test("Home keeps its quote of the day", () => {
+test("the shell keeps its quote of the day at the bottom of the sidebar", () => {
   assert.ok(fs.existsSync(path.join(STATIC_DIR, "quotes.js")), "quotes.js must exist");
-  assert.match(home, /import \{ quoteFor \} from "\.\/quotes\.js"/, "home.js picks one");
-  assert.match(sheet["today.css"], /\.quote \{/, "and today.css sets it");
+  assert.match(shellJs, /import \{ quoteFor \} from "\.\/quotes\.js"/, "the persistent shell picks one");
+  assert.match(html, /class="shell-quote" id="shell-quote"/, "the sidebar carries the quote slot");
+  assert.match(css, /\.shell-quote \{[\s\S]*?margin: auto 0 0;/, "the quote sits at the bottom of the navigation");
+  assert.match(css, /\.shell-quote-text \{[\s\S]*?font-family: var\(--serif\);[\s\S]*?font-size: 17px;/,
+    "the quotation uses the larger voice face");
+  assert.match(css, /\.shell-quote-by \{[\s\S]*?display: block;[\s\S]*?font-family: var\(--sans\);/,
+    "the author sits on its own final line in the data face");
+  assert.match(shellJs, /replace\(\/\^attributed to\\s\+\/i, ""\)/,
+    "the sidebar never prefixes an author with attributed to");
+  assert.ok(!home.includes("quoteFor("), "Today does not repeat the quote in the main body");
 });
 
 test("Home greets the person by the hour, and says the same thing all hour", () => {
@@ -722,7 +717,6 @@ test("every API endpoint in the contract is called", () => {
     "rows/",
     "keywords/pending",
     "keywords/record",
-    "journal/today",
     "critic/digest",
     "policy",
     "policy/autopilot",
@@ -1387,12 +1381,14 @@ test("Today asks the server once for each thing it shows", () => {
   assert.ok(home.includes('const WORKED = "manual_action_needed,shortlisted,drafted,awaiting_approval,approved,submission_pending"'),
     "the Needs you lists must be the statuses the summary counts its groups over");
   for (const call of ['api("health")', "api(`rows?status=${WORKED}`)", "api(`rows?status=submitted&limit=${SENT_LOOKBACK}`)",
-    'api("resumes")', 'api("keywords/pending?limit=1")', 'api("critic/digest?since=14d")',
-    'api("runs?limit=1")', 'api("journal/today")']) {
+    'api("resumes")', 'api("runs?limit=1")']) {
     assert.ok(home.includes(call), `Today never calls ${call}`);
   }
-  assert.match(home, /const \[health, needs, sent, resumes, keywords, digest, runs, journal\] = results;/,
+  assert.match(home, /const \[health, needs, sent, resumes, runs\] = results;/,
     "the results must be unpacked in the order they were asked for");
+  for (const removed of ['api("keywords/pending?limit=1")', 'api("critic/digest?since=14d")', 'api("journal/today")']) {
+    assert.ok(!home.includes(removed), `Today still fetches removed card data through ${removed}`);
+  }
   assert.ok(home.includes("const baseSummary = getSummary();"), "the screen must retain the shared pipeline summary");
   assert.ok(home.includes("needs_you: groupedTotal, needs_you_groups: grouped"),
     "and the visible queue counts must be reconciled to the exact rows beside them");
@@ -1662,15 +1658,15 @@ test("the Resumes screen renders nothing, and approves only through the tool", (
   assert.ok(!resumesJs.includes("Rendering runs through /resume-review with the person present."),
     "the grey footer paragraph under every card must be gone");
   assert.ok(!/text:\s*"Render\b/.test(resumesJs), "resumes.js must not offer a Render button");
-  // The resume is visible in the third layer. File formats are quiet links
-  // below it rather than three actions competing with the preview tabs.
-  assert.match(resumesJs, /fileLink\("PDF", files\.pdf, note\)/, "PDF remains available below the inline preview");
-  assert.match(resumesJs, /fileLink\("DOCX", files\.docx, note\)/, "DOCX remains available");
-  assert.match(resumesJs, /fileLink\("Markdown", files\.md, note\)/, "and so does Markdown");
+  // The resume is visible in the third layer. Its formats share the tab row
+  // with Quality rather than becoming a separate footer or another pane.
+  assert.match(resumesJs, /text: "PDF"/, "PDF is the default third-panel tab");
+  assert.match(resumesJs, /fileLink\("DOCX", files\.docx\)/, "DOCX remains available");
+  assert.match(resumesJs, /fileLink\("Markdown", files\.md\)/, "and so does Markdown");
   assert.match(resumesJs, /class: "resume-file-link"/, "file formats are links, not primary buttons");
   assert.match(resumesJs, /`Critic \$\{said\}\$\{round\}`/, "the card must carry a critic line");
   assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
-  assert.ok(home.includes("stamp"), "the Home resumes card must carry the approval stamp");
+  assert.ok(!home.includes("resumesSection("), "Today does not repeat resume status in a secondary card");
 });
 
 test("a resume artefact is fetched with the token and opened as a blob", () => {
@@ -1791,18 +1787,18 @@ test("the Guardrails screen promotes a theme, edits a rule and shows the pattern
 });
 
 test("the Runs screen lists runs newest first, each one a link to its page", () => {
-  assert.match(runsJs, /export async function viewRuns\s*\(view, id\)/, "runs.js must route the list and one run");
+  assert.match(runsJs, /export async function viewRuns\s*\(view, id, query\)/, "runs.js must keep the list and selected run together");
   assert.ok(runsJs.includes("runs?limit=30"), "the list must ask for the last thirty runs");
   assert.match(runsJs, /newest first/, "the count line must say the order");
   assert.ok(
     runsJs.includes("No runs yet. Start one with npm run daily."),
     "the empty state must say what would put something here",
   );
-  assert.ok(runsJs.includes('h("a", { class: "list-row run-row", href: `#/runs/${encodeURIComponent(run.date)}` })'),
+  assert.match(runsJs, /href: `#\/runs\/\$\{encodeURIComponent\(run\.date\)\}`/,
     "a whole row is the link to that run's page, so the date, the tally and the verdict are one target");
   assert.match(css, /a\.list-row:hover, \.list-row\.is-link:hover \{ background: var\(--wash\)/,
     "and a row that is a link may tint on hover");
-  assert.match(sheet["runs.css"], /\.run-row \{ color: inherit; text-decoration: none; \}/,
+  assert.match(sheet["runs.css"], /\.run-row \{[^}]*color: inherit; text-decoration: none; \}/,
     "a row that is a link must not underline every line inside it");
   assert.ok(!runsJs.includes("aria-expanded"), "a run is a page now, not an accordion");
   assert.ok(runsJs.includes("duration("), "a run must say how long it took, from the one shared helper");
@@ -1829,10 +1825,13 @@ test("a run's exit is one verdict pill that carries the word as well as the colo
   assert.ok(runsJs.includes('import { soFar } from "./home.js";'), "and Runs must read it from there");
 });
 
-test("a run is a real page: sent, stopped, numbers, and the raw text folded away", () => {
-  assert.ok(runsJs.includes('fetchInto(host, `runs/${encodeURIComponent(date)}`'),
-    "the page must fetch its own run");
-  assert.ok(runsJs.includes('back: h("a", { href: "#/runs", text: "Runs" })'), "with a breadcrumb back to the list");
+test("Runs uses a selected-run workspace with tabbed evidence", () => {
+  assert.ok(runsJs.includes('fetchInto(loading, `runs/${encodeURIComponent(selected.date)}`'),
+    "the workspace must fetch its selected run");
+  assert.match(sheet["runs.css"], /\.runs-workbench \{[\s\S]*?grid-template-columns: minmax\(260px, 30%\) minmax\(0, 1fr\);/,
+    "the app sidebar, run list and selected run form the three-level flow");
+  assert.match(runsJs, /\{ key: "overview", label: "Overview" \}, \{ key: "summary", label: "Summary" \}, \{ key: "log", label: "Log" \}, \{ key: "letters", label: "Letters" \}/,
+    "the selected run switches between overview and source evidence");
   for (const section of ["sectionHead(\"Sent\"", "sectionHead(\"Stopped\"", "sectionHead(\"Numbers\""]) {
     assert.ok(runsJs.includes(section), `the run page is missing the section: ${section}`);
   }
@@ -1841,45 +1840,55 @@ test("a run is a real page: sent, stopped, numbers, and the raw text folded away
   assert.ok(runsJs.includes('h("span", { class: "list-title", text: title })'),
     "and stay plain text when the run named no id, rather than linking at the wrong row");
   assert.ok(runsJs.includes('h("h3", { class: "group-heading" },'), "the stopped rows are grouped, each group headed");
-  assert.ok(runsJs.includes('fold("Raw summary"') && runsJs.includes('fold("Raw log"'),
-    "the run's own words stay, folded away under the structure");
-  assert.ok(runsJs.includes('class: "disclosure run-fold"'), "each fold is the shared disclosure");
-  assert.ok(runsJs.includes("Letters sent unattended"), "and the letters it sent are named as such (AGENTS.md 3.9)");
+  assert.match(runsJs, /class: "run-inspector-body"/, "the selected tab owns the evidence body");
+  assert.match(runsJs, /lettersPanel\(data\.letters_sent \|\| \[\]\)/, "unattended letters keep their own tab");
   assert.ok(runsJs.includes("This run is still working"), "a run in progress says what it has written so far");
   assert.ok(runsJs.includes("read from the audit log"), "and a day with no summary says where its rows came from");
   const runsCss = sheet["runs.css"];
   assert.match(runsCss, /\.run-log \{[\s\S]*?white-space: pre-wrap;/,
     "the raw log wraps: there is no inner scroll region in this UI");
-  assert.ok(!/overflow: auto/.test(runsCss), "and nothing on this screen scrolls inside itself");
+  assert.match(runsCss, /\.run-inspector-body \{[^}]*overflow: auto;/,
+    "the selected run scrolls inside its pane while the workspace stays fixed");
   assert.match(runsCss, /\.run-numbers \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) auto;/,
     "the Numbers table is a two column list, so the figures line up");
   assert.match(runsCss, /\.run-number-value \{[^}]*color: var\(--ink\)/, "a figure is ink, never a verdict colour");
 });
 
-test("Resumes uses a three-level selection workbench", () => {
+test("Resumes uses the app sidebar, resume list and one tabbed selected resume", () => {
   const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const resumesCss = sheet["resumes.css"].replace(/\/\*[\s\S]*?\*\//g, "");
   assert.match(rules, /\.stamp\.approved \{ color: var\(--pass\)/, "an approved stamp takes the pass colour");
   assert.match(rules, /\.stamp\.missing \{ color: var\(--fail\)/, "a missing render the fail colour");
-  assert.match(resumesCss, /\.resume-workbench \{[\s\S]*?grid-template-columns: minmax\(220px, 25%\) minmax\(340px, 1fr\) minmax\(320px, 37%\);/,
-    "desktop Resumes has positioning, selected baseline and quality evidence columns");
-  assert.match(resumesJs, /class: "resume-browser"/, "the first level is the positioning browser");
-  assert.match(resumesJs, /class: "resume-overview"/, "the second level is the selected baseline");
-  assert.match(resumesJs, /class: "resume-inspector"/, "the third level is the resume inspector");
-  assert.match(resumesJs, /\{ key: "preview", label: "Resume" \}, \{ key: "quality", label: "Quality" \}/,
-    "the inspector switches between the rendered resume and quality evidence");
-  assert.match(resumesJs, /image\.src = await artefactUrl\(page\.src\)/,
-    "the selected rendered page is fetched with the authenticated artefact path and shown inline");
-  assert.match(resumesJs, /q\.set\("page", String\(page\)\)/,
-    "the selected rendered page is preserved in the address");
+  assert.match(resumesCss, /\.resume-workbench \{[\s\S]*?grid-template-columns: minmax\(260px, 30%\) minmax\(0, 1fr\);/,
+    "the app sidebar, resume list and selected resume form the three-level flow");
+  assert.match(resumesJs, /class: "resume-browser"/, "the second level is the positioning browser");
+  assert.match(resumesJs, /class: "resume-selected"/, "the third level is one selected resume pane");
+  assert.match(resumesJs, /tabs\.append\(overview, pdf, fileLink\("DOCX", files\.docx\), fileLink\("Markdown", files\.md\), quality\)/,
+    "Overview, PDF, DOCX, Markdown and Quality share the selected resume's tab row");
+  assert.match(resumesJs, /const pdfUrl = readToken\(\) \? await artefactUrl\(files\.pdf\) : files\.pdf/,
+    "the native viewer gets the local PDF directly while a protected PDF uses the authenticated artefact path");
+  assert.match(resumesJs, /frame\.src = `\$\{pdfUrl\}#view=FitH&toolbar=1&navpanes=0`/,
+    "the embedded viewer opens the PDF at the panel width with its own controls");
+  assert.match(resumesJs, /h\("iframe", \{ class: "resume-pdf", title:/,
+    "the PDF tab embeds the PDF in the selected resume pane");
+  assert.ok(!resumesJs.includes("resume-page-tabs"), "static page-image tabs must not create a fourth level");
+  assert.ok(!resumesJs.includes('class: "resume-files"'), "file formats are not repeated in a footer below the third pane");
+  assert.match(resumesCss, /\.view\[data-route="resumes"\] \{[\s\S]*?height: 100vh;[\s\S]*?overflow: hidden;/,
+    "desktop Resumes keeps the workspace inside the viewport instead of scrolling the page");
+  assert.match(resumesCss, /\.resume-selected \{[^}]*overflow: hidden;/,
+    "the selected resume stays within the fixed workspace");
+  assert.match(resumesCss, /\.resume-overview \{[^}]*overflow: auto;/,
+    "the overview scrolls inside the selected resume pane");
+  assert.match(resumesCss, /\.resume-preview \{[^}]*overflow: hidden;[^}]*\}/,
+    "the PDF surface fills the third panel rather than becoming an inset fourth pane");
+  assert.ok(!/\.resume-pdf-shell \{[^}]*border:/.test(resumesCss),
+    "the PDF surface has no extra panel border inside the inspector");
   assert.match(resumesJs, /q\.set\("selected", id\)/, "selection is preserved in the address");
   assert.match(resumesCss, /\.resume-browser-item\.selected::before[\s\S]*?background: var\(--you\);/,
     "the selected positioning carries the same person-colour rail as Pipeline");
-  assert.match(resumesCss, /\.resume-overview \{ grid-row: 1;/,
-    "on a phone the selected baseline comes before the long positioning list");
-  assert.match(resumesCss, /\.resume-inspector \{ grid-row: 2;/,
-    "and the inline resume remains the third level before that list");
-  assert.match(resumesCss, /\.resume-workbench \{ grid-template-columns: minmax\(0, 1fr\);/,
+  assert.match(resumesCss, /\.resume-selected \{ grid-row: 1;/,
+    "on a phone the selected resume comes before the long positioning list");
+  assert.match(resumesCss, /\.resume-workbench \{[^}]*grid-template-columns: minmax\(0, 1fr\);/,
     "the desktop tracks collapse to the full phone width");
   // Section 6: four tall thin bars become one horizontal row of short ones,
   // the percentage in ink, and a page under the floor is warned about.
