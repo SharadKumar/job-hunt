@@ -1,25 +1,33 @@
-# Design QA: split decision workbench
+# Design QA: application workbench
 
 Date: 2026-09-18
 
 Reference: `/Users/sharad/.codex/generated_images/01a0b2b0-9dd7-73b0-b80c-2b20a0422105/exec-3d4d116c-5754-404e-aecf-4b6c23f3be1c.png`
 
-Implementation: `https://job-hunt.localhost:8000/#/today`
+Implementation: `https://job-hunt.localhost:8000/#/pipeline/needs`
+
+Viewport: 1490 by 1054 for the direct reference comparison, plus 390 by 844 for the responsive pass.
 
 ## Comparison
 
-- Structure: passed. Persistent dark navigation, live status bar, compact work queue and selected application detail follow the reference hierarchy.
+- Structure: passed. Persistent dark navigation, live status bar, grouped application browser and selected application detail follow the reference hierarchy.
 - Workflow context: passed. The selected row keeps the six application stages visible, including the current branch and why it stopped.
-- Interaction safety: passed. Banking a screening answer is separate from review and submission. The UI does not suggest an unsupported answer or press a send control.
+- Interaction safety: passed. Banking a screening answer is separate from review and submission. Pipeline actions moved into the selected detail pane and retain their existing two-press guard where applicable.
 - Information hierarchy: passed. The selected title, fit score, application state, question and recorded package checks read in the intended order.
+- List fidelity: passed. Pipeline now uses the reference's compact grouped master list, selected-row rail and adjacent workflow pane rather than the previous full-width rows with embedded buttons.
 - Visual language: passed. Flat surfaces, hairlines, quiet status colours, serif headings and system sans data preserve the reference character without external assets.
 - Responsive behaviour: passed. At 390 px the selected workflow comes before the longer queue, the timeline wraps, and actions use the available width without horizontal overflow.
-- Shared shell: passed. Pipeline and the remaining routes retain their existing content and inherit the same navigation and live operating status.
+- Selection behaviour: passed. Choosing another row updates `selected` in the hash, keeps filters and the active segment, and refreshes the detail without losing list context.
+
+Comparison history:
+
+- First implementation: failed. The selected direction was applied to Today, but Pipeline retained the older full-width application rows. This was the mismatch reported in review.
+- Correction: passed. The source reference and the loaded live Pipeline were inspected side by side at the same viewport. Both now share the two-pane hierarchy, grouped compact rows, selected rail, six-stage workflow, question and gate context.
 
 Intentional refinements from the reference:
 
-- The existing quote remains because it is an established product preference.
-- The status bar and queue counts come from live local state.
+- Pipeline keeps its six real segments and compact filters above the workbench because they are live product controls absent from the reference mock.
+- The status bar, segment counts and application rows come from live local state.
 - Gate results are quoted from recorded files. Missing gates say not run.
 - The answer control saves only. Review remains a separate deliberate action.
 

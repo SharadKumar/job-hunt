@@ -94,6 +94,7 @@ const applications = src["applications.js"];
 /** The Pipeline screen is two files: the screen, and the row anatomy plus the
  * controls the row page borrows from it. */
 const pipelineRows = src["pipeline-rows.js"];
+const todayWorkbench = src["today-workbench.js"];
 const rowJs = src["row.js"];
 const keywords = src["keywords.js"];
 const home = src["home.js"];
@@ -1036,8 +1037,8 @@ test("Needs you is grouped by what the row needs, from the server's own field", 
     "each group is a heading with its own count and the anchor Today links at");
   assert.match(applications, /\{ key: "waiting_redraft", label: "Waiting on a redraft", quiet: true \}/,
     "a row waiting on a redraft is listed quietly");
-  assert.match(applications, /pipelineRow\(row, refresh, \{ action: !group\.quiet \}\)/,
-    "and has no button: it is waiting on the run, not on the person");
+  assert.match(applications, /section\.append\(browserRow\(state, row, selected\)\)/,
+    "and every group uses the compact selection row rather than embedding actions in the list");
 
   // Today links at one group: #/pipeline/needs#open_portal. The screen lands
   // on that heading and gives it the focus, so it is announced rather than
@@ -1342,13 +1343,14 @@ test("a row the gate refused on policy is never offered a retry", () => {
     "a send is built only where the server says a retry or an answer is the move");
 });
 
-test("the lane and the machine's own status are pills, and only where they tell rows apart", () => {
-  // Section 6: one grey pill was doing for the channel, the apply method,
-  // "saved by you" and "in flight", so nothing was told apart. The lane and
-  // the status earn a pill in the queue, where the difference between a row
-  // the run will send and a row waiting on the person is the whole question.
-  assert.match(applications, /pipelineRow\(row, refresh, \{ lanePill: queue, statusPill: queue/,
-    "the queue is the one segment that wears the lane and the status");
+test("the lane and the machine's own status stay in the selected application context", () => {
+  // The compact browser is for scanning titles and reasons. Lane and status
+  // stay with the selected application's workflow, where they explain what
+  // can happen next without crowding every list row.
+  assert.match(todayWorkbench, /laneLabel\(data\.lane\)/,
+    "the selected application names the lane from the detail API");
+  assert.match(todayWorkbench, /statusLabel\(row\.status\)/,
+    "and names the machine status beside it");
   assert.match(pipelineRows, /class: row\.lane === "autopilot" \? "pill pill-autopilot" : "pill pill-you"/,
     "the person's lane takes --you and the run's stays quiet");
   assert.match(pipelineRows, /class: "pill pill-status", text: statusLabel\(row\.status\)/,
@@ -1483,19 +1485,19 @@ test("Sent groups the applications that have gone quiet, in the same row style",
   assert.match(applications, /const FOLLOW_UP_SHOWN = 8;/, "the follow-up group shows eight before it offers the rest");
   assert.match(applications, /groupHeading\("followups", `No reply after 7 days`, followups\.length, showAll\)/,
     "the heading names the thing and its count, with Show all on the same line");
-  assert.match(applications, /label: "Mark responded", path: "outcome", body: \{ status: "responded"/,
-    "and the row's own action records the reply the person already had");
+  assert.match(todayWorkbench, /label: "Mark responded", path: "outcome"/,
+    "and the selected application's action records the reply the person already had");
   assert.ok(!/class: "nudge-card"|nudge-row/.test(applications + pipelineRows),
     "the bordered inner list and its own row style are gone");
 });
 
 test("a closed row can be reopened, with a reason, to discovered", () => {
-  assert.match(applications, /const control = reopenControl\(row, \(\) => refresh\(row\.id\)\)/,
-    "the Closed segment offers the one move a closed row has");
+  assert.match(todayWorkbench, /const reopen = reopenControl\(row, changed/,
+    "the selected Closed application offers the one move a closed row has");
   assert.match(pipelineRows, /export function reopenControl\(row, done/, "which is its own control, because it asks for a reason");
   assert.match(pipelineRows, /body: \{ action: "reopen", reason: reason\.value\.trim\(\) \}/,
     "posting the server's own reopen action, the same one the row page posts");
-  assert.match(applications, /\(row\.action \|\| \{\}\)\.kind === "reopen"/,
+  assert.match(todayWorkbench, /action\.kind === "reopen"/,
     "and the control is offered because the server said so, not because the segment is Closed");
   assert.match(pipelineRows, /guarded\(save, "Reopen"/, "armed like every other move");
   assert.match(pipelineRows, /h\("label", \{ class: "field-label", text: "Reason" \}\)/,
@@ -1541,20 +1543,23 @@ test("a channel, a status, a lane and a duration are said once, and the server a
   assert.match(labelsJs, /"48 s", "4 m 12 s",\n \* "1 h 46 m"/, "and there is one duration format, documented");
 });
 
-test("the pipeline reads as one sheet of rows under a strip, not as cards beside a panel", () => {
-  // Section 6: the filter panel was radios with counts, checkboxes, a
-  // "Minimum score" input and a "Sort" select whose label sat off the
-  // baseline. It is the segment strip, a chip row and two inline fields now.
+test("the pipeline is a compact application browser beside the selected workflow", () => {
+  // The segment strip and compact filters lead into the selected design's
+  // master-detail workbench. Rows are selection targets and actions stay in
+  // the workflow pane rather than making each application a small form.
   assert.ok(!/"Filters"|"Minimum score"|filter-card|class: "job"/.test(applications),
     "the filter column and the job card are gone");
   assert.match(applications, /class: "chips"/, "the filters are the shared chips row");
   assert.match(applications, /class: "inline-field", for: "min-score"/, "with the score floor labelled inline");
   assert.match(applications, /class: "inline-field", for: "sort-rows"/, "and the sort the same way");
   assert.match(applications, /text: "Min score"/, "the label is sentence case, not an all-caps eyebrow");
-  assert.match(pipelineRows, /class: "list-row", dataset: \{ row: row\.id \}/, "a row is the shared list row");
-  assert.match(pipelineRows, /class: "list-reason"/, "with the reason in full, in the cell the primitive gives it");
-  assert.ok(!/\.\.\.|…/.test(pipelineRows.match(/class: "list-reason"[^)]*\)/)?.[0] ?? ""),
+  assert.match(applications, /class: `list-row pipeline-item\$\{row\.id === selected \? " selected" : ""\}`/,
+    "a browser row is one selectable list row");
+  assert.match(applications, /class: "pipeline-item-reason"/, "with the reason in full under the application facts");
+  assert.ok(!/\.\.\.|…/.test(applications.match(/class: "pipeline-item-reason"[^)]*\)/)?.[0] ?? ""),
     "and nothing about it is truncated");
+  assert.match(applications, /class: "pipeline-workbench"/, "the application browser and selected workflow share one workbench");
+  assert.match(applications, /todayWorkDetail\(selected/, "the detail pane reuses the workflow context from Today");
   assert.match(sheet["pipeline.css"], /\.chip-group \{ display: flex;/, "the channel chips wrap as one group");
   assert.match(css, /\.pill \{/, "and app.css must own the pill");
 });
