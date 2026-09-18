@@ -1,5 +1,5 @@
 /**
- * tools/ui/resumes-api.ts — the Resumes screen's read-only JSON contract.
+ * tools/ui/resumes-api.ts - the Resumes screen's read-only JSON contract.
  *
  * The CV binder already has a data layer: `buildResumeIndexModel` in
  * tools/resume/index/model.ts reads every artefact a rendered positioning
@@ -37,7 +37,7 @@ const FILE_TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
 };
 
-export type ResumePage = { src: string; fill: number | null; low: boolean };
+export type ResumePage = { page: number; src: string; fill: number | null; threshold: number; low: boolean };
 export type ResumeGate = { name: string; verdict: string; reason: string | null };
 export type ResumeCheck = { key: string; label: string; verdict: string; reason: string | null };
 export type ResumeCloud = { id: string; label: string; weight: number; stale: boolean; age_days: number | null };
@@ -53,7 +53,15 @@ export type ResumeSummary = {
   pages: ResumePage[];
   gates: ResumeGate[];
   checks: ResumeCheck[];
-  critic: { verdict: string | null; round: number | null; findings_count: number; summary: string | null };
+  critic: {
+    verdict: string | null;
+    round: number | null;
+    findings_count: number;
+    summary: string | null;
+    /** The open findings, one line each, so the screen can show them rather
+     * than only count them. `openCriticFindings` already flattens them. */
+    findings: string[];
+  };
   keywords: {
     must_have: { surfaced: number; total: number };
     renderable: { surfaced: number; total: number };
@@ -76,9 +84,21 @@ function baseNameOf(link: string | null | undefined): string | null {
   return name || null;
 }
 
-/** The url the browser fetches one artefact through. Both segments are escaped. */
+/**
+ * The url the browser fetches one artefact through. Both segments are escaped.
+ *
+ * Absolute, not relative. The server serves the app shell for every
+ * extensionless path, so on a deep address like `#/resumes/evidence` a
+ * relative `api/...` resolved against the wrong base and came back as HTML.
+ * It is the same fix `api()` in app.js carries for the JSON routes.
+ *
+ * The token never rides in this url. The route sits behind the same bearer
+ * gate as every other /api call, so the browser fetches it with the header and
+ * opens the bytes as an object url (`openFile` in static/resumes.js). A token
+ * in a query string would end up in the server log and in the address bar.
+ */
 export function fileUrl(resumeId: string, name: string): string {
-  return `api/resumes/${encodeURIComponent(resumeId)}/file/${encodeURIComponent(name)}`;
+  return `/api/resumes/${encodeURIComponent(resumeId)}/file/${encodeURIComponent(name)}`;
 }
 
 function linkFor(resumeId: string, link: string | null | undefined): string | null {
@@ -150,7 +170,13 @@ export async function getResumes(ctx: ResumesContext = {}): Promise<ResumesRespo
       approved_at: card.status === "approved" ? card.statusDate : null,
       last_render_at: card.mtimes.composition ?? card.audit?.generated_at ?? null,
       pages: card.pages
-        .map((page) => ({ src: linkFor(card.id, page.src), fill: page.fill, low: page.low }))
+        .map((page, index) => ({
+          page: index + 1,
+          src: linkFor(card.id, page.src),
+          fill: page.fill,
+          threshold: page.threshold,
+          low: page.low,
+        }))
         .filter((page): page is ResumePage => page.src !== null),
       gates: (card.audit?.gates ?? []).map((g) => ({ name: g.name, verdict: g.verdict, reason: g.reason })),
       checks: card.checks.map((c) => ({ key: c.key, label: c.label, verdict: c.verdict, reason: c.reason })),
@@ -159,6 +185,7 @@ export async function getResumes(ctx: ResumesContext = {}): Promise<ResumesRespo
         round: card.review.round,
         findings_count: card.openFindings.length,
         summary: card.review.summary,
+        findings: card.openFindings,
       },
       keywords: coverageOf(card),
       clouds: await cloudsOf(resume, card, now),

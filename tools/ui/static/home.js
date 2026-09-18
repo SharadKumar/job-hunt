@@ -1,45 +1,43 @@
 /*
- * home.js - the default screen: one card per thing that might want the person,
- * each a summary that links to the screen which can actually do the work.
+ * home.js - Today (#/today): the morning brief, and the work queue under it.
  *
- * Nothing on Home acts. It reads the harness's own health, the pipeline, the
- * resumes, the evidence questions, the critic digest and the last run, and says
- * in one line each what state they are in. AGENTS.md section 2: the lane in
- * force is the first line of the first card, so nobody has to guess whether the
- * machine is sending this morning. It is said there and nowhere else: a lede
- * under the title repeated the Harness card word for word.
+ * One person, in the morning, after an unattended run, with three questions in
+ * this order: what did the machine do under my name overnight, what does it
+ * need from me, and can I see exactly what was sent. The screen answers them in
+ * that order and in one column: a written paragraph whose numbers are live
+ * links, the Needs you groups, what went out overnight, and four reference
+ * lines at the bottom.
  *
- * Everything on this page is written in the person's words, not the machine's.
- * `plainReason` is where that happens: a parked row's reason is a run stamp, a
- * quoted question and a parenthetical about which YAML file was appended to,
- * and none of that is the sentence the person needs. Package (b) imports it
- * from here so the applications board says the same thing.
+ * The contract is docs/ui-redesign-2026-09-18.md, sections 3, 4, 6 and 7. What
+ * it changed here: the eight dashboard cards and the two column flow are gone
+ * (a short card left a hole beside a tall one), the big-number tile is gone,
+ * the quotation is gone, and every count on the page now comes from the one
+ * server call that the Pipeline tabs read, so no two lines can disagree.
+ *
+ * Nothing on this screen sends. The only control that leaves the browser is
+ * Open portal, which opens the advertiser's own page (AGENTS.md section 2).
  */
 
-import { api, clockTime, dayStamp, getPolicy, getSummary, h, isPolicyAvailable, localDay, pageHeader, render, richMarkdown, shortDate } from "./app.js";
+import { quoteFor } from "./quotes.js";
+import {
+  api, channelLabel, dayStamp, duration, getPolicy, getSummary, h, isPolicyAvailable, loadError,
+  pageHeader, parseHash, placeholderRows, render,
+} from "./app.js";
+import {
+  needsYouGroup, needsYouQueue, overnightFrom, referenceSection, resumesSection, sentSection, sentSince, themesSection,
+} from "./today-lists.js";
+import { todayWorkDetail } from "./today-workbench.js";
 
-/** The hour scripts/install-launchd.sh puts the daily run at. */
-const RUN_SCHEDULE = "The daily run is at 07:00.";
+/** The statuses the summary counts its Needs you groups over, so the lists on
+ * this page and the numbers in the brief are the same query. */
+const WORKED = "manual_action_needed,shortlisted,drafted,awaiting_approval,approved,submission_pending";
 
-/**
- * One dashboard card: a heading, a body, and the screen the whole card opens.
- * The card is the anchor rather than a footer link, which was the only part of
- * a summary you could aim at. An anchor may hold no anchor and no button, so
- * nothing inside a card is interactive: row titles are spans, the evidence
- * prompt is plain text, and the screen it opens is where anything is decided.
- */
-function card(title, href, body, note) {
-  const section = h("a", { class: "card home-card", href });
-  section.append(h("h2", { text: title }));
-  section.append(body);
-  if (note) section.append(h("p", { class: "grey small", text: note }));
-  return section;
-}
-
-const line = (text, className) => h("p", { class: className || "home-line", text });
-
-/** A card whose fetch failed still says what is missing, in its own box. */
-const failure = (what) => h("p", { class: "grey", text: what });
+/* How many sent rows are read to find the ones that went out overnight. The
+ * rows API orders by status and then by score, not by when a row was sent, so
+ * asking for the last thirty returns the thirty best scoring applications ever
+ * lodged and misses a row the run sent at 07:26 with a score of 60. The window
+ * is the whole sent list instead, and the filter is done here. */
+const SENT_LOOKBACK = 500;
 
 // ---------------------------------------------------------------------------
 // Reasons in plain words
@@ -86,14 +84,11 @@ export function themeWords(key) {
 }
 
 /**
- * One parked reason, said the way the person would say it.
- *
- * The run stamps its own id on the front (`[autopilot daily-2026-09-17]`) and
- * the tools append a parenthetical about which file they wrote to. Both are
- * for the log, not for the page. What is left is then matched against the five
- * shapes the daily run actually produces; anything else is returned cleaned up
- * rather than mangled, because an unrecognised reason is still a sentence
- * somebody wrote on purpose.
+ * One parked reason, said the way the person would say it. The run stamps its
+ * own id on the front and the tools append a parenthetical about which file
+ * they wrote to; both are for the log. What is left is matched against the
+ * shapes the daily run produces, and anything else comes back cleaned up
+ * rather than mangled.
  */
 export function plainReason(text) {
   let s = String(text || "").replace(/\s+/g, " ").trim();
@@ -101,6 +96,9 @@ export function plainReason(text) {
   s = s.replace(/^\[autopilot [^\]]*\]\s*/i, "");
   s = s.replace(/^autopilot [\w-]*\d{4}-\d{2}-\d{2}:\s*/i, "");
   s = s.replace(/^daily[- ]\d{4}-\d{2}-\d{2}:\s*/i, "");
+  // A reason the harness wrote may carry a dash the house style bans; the
+  // daily summary replaces it with a comma, so this reads it the same way.
+  s = s.replace(/\s*[\u2014\u2013]\s*/g, ", ");
   s = s.replace(/\s*\([^()]*\)\s*$/, "").trim();
 
   const question = /^unknown screening question:\s*"([^"]+)"/i.exec(s);
@@ -120,11 +118,8 @@ export function plainReason(text) {
 // The greeting
 // ---------------------------------------------------------------------------
 
-/**
- * What the page says instead of "Home". Four pools by the hour the person is
- * actually in, because a harness that ran at 07:00 is read at 07:10 and at
- * 23:40 by the same person, and "Home" tells them nothing either time.
- */
+/** Four pools by the hour the person is actually in: a harness that ran at
+ * 07:00 is read at 07:10 and at 23:40 by the same person. */
 const GREETINGS = {
   morning: ["Good morning, {name}", "Morning, {name}", "Early start, {name}"],
   afternoon: ["Good afternoon, {name}", "Afternoon, {name}", "Back at it, {name}"],
@@ -145,11 +140,9 @@ const poolFor = (hour) => {
   return GREETINGS.night;
 };
 
-/**
- * The greeting for one moment, with no clock and no randomness of its own: the
+/** The greeting for one moment, with no clock and no randomness of its own: the
  * same date and hour always give the same line, so the page does not reshuffle
- * itself every time a card refreshes.
- */
+ * itself every time something refreshes. */
 export function greetingFor(date, name) {
   const at = date instanceof Date ? date : new Date(date);
   const hour = at.getHours();
@@ -171,38 +164,12 @@ const firstName = (result) => {
 };
 
 // ---------------------------------------------------------------------------
-// The cards
+// Shared little things
 // ---------------------------------------------------------------------------
 
-/** The lane in force, in one sentence. */
-function standing() {
-  const summary = getSummary();
-  const policy = getPolicy();
-  const sent = summary ? summary.sent_today ?? 0 : 0;
-  if (!isPolicyAvailable() || !policy) {
-    const on = summary && summary.autopilot_enabled;
-    return `Autopilot ${on ? "on" : "off"}, ${sent} sent today. The policy API is not answering, so the kill switch cannot be read. ${RUN_SCHEDULE}`;
-  }
-  const cap = typeof policy.max_per_day === "number" ? ` of ${policy.max_per_day}` : "";
-  return `Autopilot ${policy.autopilot_enabled ? "on" : "off"}, ${sent}${cap} sent today. `
-    + `Kill switch ${policy.kill_switch ? "on" : "off"}. ${RUN_SCHEDULE}`;
-}
-
-/** "1h 32m", "4m 20s", or nothing when the run never said. */
-export function duration(seconds) {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
-}
-
-/**
- * How long a run in progress has been going, in the units someone watching it
- * thinks in. A run that is still working is read in minutes, never in seconds:
- * "24 min so far" is the answer to the question being asked, and "24m 07s"
- * pretends to a precision that a moving number does not have.
- */
+/** How long a run has been going, in the units someone watching it thinks in:
+ * "24 min so far", never "24 m 07 s", which pretends to a precision a moving
+ * number does not have. Runs reads it from here. */
 export function soFar(seconds) {
   if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
   const minutes = Math.floor(seconds / 60);
@@ -211,231 +178,123 @@ export function soFar(seconds) {
   return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min so far`;
 }
 
-/**
- * The colour a run in progress is said in: the amber token, #B45309 in light
- * mode. A run that is still going is not a failure, and red said it was. The
- * style is inline because no stylesheet in this package owns these two spans.
- */
-export const RUNNING_COLOUR = "color: var(--amber);";
-
 /** A day and time the way the person reads it: "Thu 18 Sep, 07:00". */
-export function dayTime(iso, withTime) {
-  return dayStamp(iso, withTime);
+export const dayTime = (iso, withTime) => dayStamp(iso, withTime);
+
+/** How long a run took, and how a channel is named. One definition for the
+ * whole UI, from app.js; re-exported because Settings and Runs read them here. */
+export { channelLabel, duration };
+
+export const plural = (n, word) => `${n === 1 ? word : `${word}s`}`;
+
+/** A live number in the brief. A zero is plain text: there is nothing behind
+ * it to open (section 7, Brief). */
+function num(value, href) {
+  const text = String(value);
+  return value > 0 && href ? h("a", { class: "brief-number", href, text }) : document.createTextNode(text);
 }
 
-/** Channel ids are module names; say them the way the site is named. */
-const CHANNEL_LABELS = { seek: "SEEK", linkedin_jobs: "LinkedIn jobs", linkedin_posts: "LinkedIn posts", hn: "Hacker News" };
-export const channelLabel = (id) => CHANNEL_LABELS[id] || upperFirst(String(id || "").replace(/_/g, " "));
+/** The count beside a heading: the same number as the list under it. */
+const tallyOf = (n) => (n === null || n === undefined ? null : h("span", { class: "tally", text: ` ${n}` }));
 
-/**
- * Is the machine running, and can it still sign in? The first card, because
- * every other card on this page is downstream of the answer: a harness whose
- * schedule was never installed has an empty queue for a reason no queue screen
- * can explain.
- */
-function healthCard(result) {
-  if (result.status !== "fulfilled") {
-    return card("Harness", "#/settings", failure("Could not read the harness health."));
+/** A section heading in the serif, with its count and, when the section is
+ * capped, the link to the whole list on the same baseline. */
+export function sectionHead(text, tally, more) {
+  const head = h("div", { class: "section-head today-head" });
+  head.append(h("h2", {}, text, tallyOf(tally)));
+  if (more) head.append(more);
+  return head;
+}
+
+/** A group heading inside a section: 15 px, the same shape, one step down. */
+export function groupHead(text, tally, more) {
+  const head = h("h3", { class: "group-heading" });
+  head.append(h("span", {}, text, tallyOf(tally)));
+  if (more) head.append(more);
+  return head;
+}
+
+// ---------------------------------------------------------------------------
+// The brief
+// ---------------------------------------------------------------------------
+
+/** The four clauses, in the order the brief says them. */
+const CLAUSES = [
+  { key: "answer_question", one: "needs an answer", many: "need an answer" },
+  { key: "open_portal", one: "is a portal you open", many: "are portals you open" },
+  { key: "waiting_redraft", one: "letter waits on a redraft", many: "letters wait on a redraft" },
+  { key: "decide", one: "needs a decision", many: "need a decision" },
+];
+
+/** What the run did while nobody was watching. */
+function overnightLine(sentCount, stopped) {
+  if (!sentCount && !stopped) return ["The run sent nothing overnight and stopped on nothing."];
+  const bits = ["Overnight the run "];
+  if (sentCount) {
+    bits.push("sent ", num(sentCount, "#/pipeline/sent"), ` ${plural(sentCount, "application")}`);
+    if (stopped) bits.push(" and ");
   }
-  const health = result.value;
-  const body = h("div", {});
-  body.append(line(standing(), "home-line"));
+  if (stopped) bits.push("stopped on ", num(stopped, "#/pipeline/needs"));
+  bits.push(".");
+  return bits;
+}
 
-  const last = health.last_run;
-  if (!last) body.append(line("No run has been logged yet.", "home-line grey"));
-  else if (last.running) {
-    // The run happening right now is not last night's verdict, and it is not
-    // red: it has not failed, it has not finished, it is working.
-    const started = clockTime(last.started_at);
-    const going = soFar(last.duration_seconds);
-    const said = `Running now${started ? `, started ${started}` : ""}${going ? `, ${going}` : ""}`;
-    body.append(h("p", { class: "home-line" }, h("span", { style: RUNNING_COLOUR, text: said })));
+/** The four groups as one sentence, with every zero clause left out. */
+function needsLine(groups) {
+  const said = [];
+  for (const clause of CLAUSES) {
+    const n = Number(groups[clause.key] || 0);
+    if (!n) continue;
+    if (said.length) said.push(", ");
+    said.push(num(n, `#/pipeline/needs#${clause.key}`), ` ${n === 1 ? clause.one : clause.many}`);
+  }
+  if (!said.length) return ["Nothing needs you."];
+  said.push(".");
+  return said;
+}
+
+/** The lane in force, and when the machine next wakes up. */
+function laneLine(summary, policy, health) {
+  const said = [];
+  const sent = summary ? summary.sent_today ?? 0 : 0;
+  if (!isPolicyAvailable() || !policy) {
+    said.push("The policy API is not answering, so the lane in force cannot be read.");
+  } else if (policy.kill_switch === true) {
+    said.push("The kill switch is on, so nothing sends unattended.");
   } else {
-    const clean = last.exit_code === 0;
-    const took = duration(last.duration_seconds);
-    const verdict = last.exit_code === null
-      ? "did not finish"
-      : clean ? "finished cleanly" : `exited ${last.exit_code}`;
-    body.append(h("p", { class: "home-line" },
-      h("span", { text: `Last run ${dayTime(last.started_at || `${last.date}T00:00:00`, false) || last.date}: ` }),
-      h("span", { class: clean ? "ok" : "alarm", text: verdict }),
-      h("span", { class: "grey", text: took ? `, ${took}` : "" })));
+    said.push(`Autopilot is ${policy.autopilot_enabled ? "on" : "off"}, `, num(sent, "#/pipeline/sent"));
+    said.push(typeof policy.max_per_day === "number" ? ` of ${policy.max_per_day} today.` : " sent today.");
   }
-
-  if (health.next_run) body.append(line(`Next run ${dayTime(health.next_run, true)}.`, "home-line grey"));
-  else body.append(line("No schedule is installed, so nothing runs on its own.", "home-line alarm"));
-
-  // What has gone out against the cap is in the first line already.
-
-  if (!health.channels.length) body.append(line("No channel is switched on.", "home-line alarm"));
-  for (const channel of health.channels) {
-    body.append(h("p", { class: "home-line small" },
-      h("span", { text: `${channelLabel(channel.id)}: ` }),
-      h("span", { class: channel.state === "ok" ? "grey" : "alarm", text: channel.note })));
-  }
-  return card("Harness", "#/settings", body);
+  const next = health && health.next_run ? dayTime(health.next_run, true) : "";
+  said.push(next ? ` Next run ${next}.` : " No schedule is installed, so nothing runs on its own.");
+  return said;
 }
 
-/** Top five rows the run could not finish, with the reason each is stuck. */
-function needsCard(result) {
-  if (result.status !== "fulfilled") return card("Blocked", "#/applications/needs", failure("Could not load the blocked rows."));
-  const rows = result.value.rows || [];
-  const body = h("div", {});
-  body.append(line("The run could not finish these: a blocked letter, an unanswered question or an external portal.", "home-line grey"));
-  if (!rows.length) body.append(line("Nothing is blocked.", "home-line grey"));
-  for (const row of rows.slice(0, 5)) {
-    const item = h("div", { class: "home-row" });
-    item.append(h("span", { class: "home-row-title", text: row.title || "Untitled role" }));
-    if (row.company) item.append(h("span", { class: "grey small", text: row.company }));
-    item.append(h("p", { class: "grey small", text: plainReason(row.reason) || "No reason recorded." }));
-    body.append(item);
-  }
-  const more = rows.length > 5 ? `${rows.length - 5} more on the Applications screen.` : null;
-  return card("Blocked", "#/applications/needs", body, more);
+/** The paragraph Today opens with: three sentences, every number a link. */
+function brief(summary, policy, health, sentCount) {
+  const box = h("div", { class: "brief" });
+  const groups = (summary && summary.needs_you_groups) || {};
+  const stopped = summary ? summary.needs_you ?? 0 : 0;
+  box.append(h("p", {}, overnightLine(sentCount, stopped)));
+  box.append(h("p", {}, needsLine(groups)));
+  box.append(h("p", {}, laneLine(summary, policy, health)));
+  return box;
 }
 
-/** When a row was actually sent. `updated_at` is the last touch of any kind. */
-const sentAt = (row) => row.submittedAt || row.submitted_at || row.updated_at;
 
-/**
- * What went out today, by title, counted off the list the card is showing. The
- * number used to be the summary's own figure over a different day boundary, so
- * the card said four and listed one. Both are now the rows submitted in the
- * browser's calendar day, which is the day the server counts in.
- */
-function sentCard(result) {
-  if (result.status !== "fulfilled") {
-    return card("Sent today", "#/applications/sent", failure("Could not load what was sent."));
+// ---------------------------------------------------------------------------
+// The view
+// ---------------------------------------------------------------------------
+
+/** The first line of the day's summary, for a machine whose runs index has not
+ * been written yet. Headings and bullets are skipped: the headline is prose. */
+export function journalHeadlineOf(markdown) {
+  for (const line of String(markdown || "").split("\n")) {
+    const text = line.trim();
+    if (!text || text.startsWith("#") || text.startsWith("|") || /^[-*+]\s/.test(text)) continue;
+    return text;
   }
-  const today = localDay();
-  const rows = (result.value.rows || []).filter((row) => localDay(sentAt(row)) === today);
-  const count = rows.length;
-  const body = h("div", {});
-  body.append(line(count === 1 ? "1 application sent today." : `${count} applications sent today.`));
-  for (const row of rows.slice(0, 6)) {
-    body.append(h("p", { class: "home-row" },
-      h("span", { class: "home-row-title", text: row.title || "Untitled role" }),
-      row.company ? h("span", { class: "grey small", text: row.company }) : null));
-  }
-  if (!count) body.append(line("Nothing has gone out yet today.", "home-line grey"));
-  return card("Sent today", "#/applications/sent", body);
-}
-
-/**
- * How many packages want a yes, and how many the run is already carrying. A row
- * on an autopilot channel is approved and going out without anybody, so
- * counting it here asked for a decision nobody wanted (AGENTS.md section 2). An
- * older server sends no split, and then every awaiting row is the person's.
- */
-function waitingCard(result) {
-  const summary = getSummary();
-  const counts = result && result.status === "fulfilled" ? (result.value.counts || {}) : {};
-  const fallback = summary ? (summary.counts || {}).awaiting_approval ?? 0 : 0;
-  const count = typeof counts.needs_you === "number" ? counts.needs_you : fallback;
-  const flight = typeof counts.in_flight === "number" ? counts.in_flight : 0;
-  const body = h("div", {});
-  body.append(h("p", { class: "home-big", text: String(count) }));
-  body.append(line("Packages ready to send once you say yes.", "home-line grey"));
-  if (flight > 0) body.append(line(`${flight} in flight on autopilot`, "home-line grey"));
-  return card("To approve", "#/applications/waiting", body);
-}
-
-/**
- * One line per positioning: approved and when, in green, or what still needs
- * reading, in amber. The stamp is the fixed one from the resume index, which
- * now follows the hashes rather than the artefact mtimes.
- */
-function resumesCard(result) {
-  if (result.status !== "fulfilled") return card("Resumes", "#/resumes", failure("Could not load the positionings."));
-  const items = result.value.resumes || [];
-  const body = h("div", {});
-  if (!items.length) body.append(line("No positionings yet. Run /onboarding, then /resume-review.", "home-line grey"));
-  for (const item of items) {
-    const stamp = item.stamp || { kind: "missing", text: "No render" };
-    const critic = item.critic || {};
-    const findings = critic.findings_count ?? 0;
-    const approved = stamp.kind === "approved";
-    const said = approved
-      ? stamp.text.replace(/^Approved/, "approved")
-      : findings
-        ? `needs review, ${findings} ${findings === 1 ? "finding" : "findings"}`
-        : stamp.text.toLowerCase();
-    body.append(h("p", { class: "home-row" },
-      h("span", { class: "home-row-title", text: item.label || item.id }),
-      h("span", { class: `stamp ${approved ? "approved" : "stale"}`, text: said })));
-  }
-  return card("Resumes", "#/resumes", body);
-}
-
-/**
- * The evidence questions: terms the market wants that the CV source has not
- * answered for yet. They live under Resumes, because that is what they are
- * about, so the card and its button both go there.
- */
-function evidenceCard(result) {
-  const where = "#/resumes/evidence";
-  if (result.status !== "fulfilled") return card("Evidence questions", where, failure("Could not load the pending terms."));
-  const total = result.value.term_total ?? 0;
-  const body = h("div", {});
-  body.append(line(total === 1 ? "1 term pending" : `${total} terms pending`));
-  // The card itself opens the questions, so the button that used to say so is
-  // plain text: a button inside an anchor is invalid and clicks the anchor.
-  body.append(line("Start deciding.", "home-line grey"));
-  return card("Evidence questions", where, body);
-}
-
-/** The three themes the critic keeps raising. AGENTS.md section 5: they become
- * editorial rules in an attended session, never from here. */
-function digestCard(result) {
-  if (result.status !== "fulfilled") return card("Recurring critic themes", "#/rules", failure("Could not load the critic digest."));
-  const themes = (result.value.themes || []).slice(0, 3);
-  const body = h("div", {});
-  if (!themes.length) body.append(line("No recurring themes in the last 14 days.", "home-line grey"));
-  for (const theme of themes) {
-    body.append(h("p", { class: "home-row" },
-      h("span", { class: "digest-count", text: String(theme.count ?? 0) }),
-      h("span", { text: themeWords(theme.key) })));
-  }
-  return card("Recurring critic themes", "#/rules", body);
-}
-
-/**
- * The last run the harness logged, as its own tally: the day, what went out,
- * what it left blocked, how it exited and how long it took. A run that has no
- * row yet falls back to the head of today's journal, read as markdown, so the
- * card says something on a machine whose runs index is not written yet.
- */
-function latestRunCard(runs, journal) {
-  const body = h("div", {});
-  const run = runs.status === "fulfilled" ? (runs.value.runs || [])[0] : null;
-  if (run && run.running) {
-    // Same state as the Harness card, said the same way, because the two cards
-    // are read one under the other and must not disagree about this morning.
-    const going = soFar(run.duration_s ?? run.duration_seconds);
-    body.append(h("p", { class: "home-line" },
-      h("span", { text: `${shortDate(run.date) || run.date}: ` }),
-      h("span", { style: RUNNING_COLOUR, text: `running now${going ? `, ${going}` : ""}` })));
-  } else if (run) {
-    const bits = [];
-    if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
-    if (typeof run.blocked === "number") bits.push(`${run.blocked} blocked`);
-    const clean = run.exit_code === 0;
-    // "no log" is only true when there is no log. A log that is there and a
-    // summary that is not yet written is a different thing, and says so.
-    const missing = run.has_log ? "no summary yet" : "no log";
-    const exit = run.exit_code === null || run.exit_code === undefined ? missing : `exit ${run.exit_code}`;
-    const took = duration(run.duration_s ?? run.duration_seconds);
-    body.append(h("p", { class: "home-line" },
-      h("span", { text: `${shortDate(run.date) || run.date}: ` }),
-      h("span", { text: bits.length ? `${bits.join(", ")}, ` : "" }),
-      h("span", { class: clean ? "ok" : "alarm", text: exit }),
-      h("span", { class: "grey", text: took ? `, ${took}` : "" })));
-  } else {
-    const markdown = journal.status === "fulfilled" ? String(journal.value.markdown || "").trim() : "";
-    if (markdown) body.append(h("div", { class: "home-journal" }, richMarkdown(markdown.split("\n").slice(0, 12).join("\n"))));
-    else body.append(line("No run has been logged yet. The morning run writes one when it finishes.", "home-line grey"));
-  }
-  return card("Latest run", "#/runs", body);
+  return "";
 }
 
 export async function viewHome(view) {
@@ -447,52 +306,71 @@ export async function viewHome(view) {
   // A screen reader should not read a rhetorical question mark out as one.
   const say = (text) => { title.textContent = text; title.setAttribute("aria-label", text.replace(/\?/g, "")); };
   say(greetingFor(now, ""));
+  // The line under the greeting: one quotation, picked fresh on every load.
+  // It is the one thing on the page that is not a number, and the person asked
+  // for it to stay.
+  const saying = quoteFor(Math.random);
+  head.append(h("p", { class: "lede quote" },
+    h("span", { class: "quote-text", text: `"${saying.text}"` }),
+    " ",
+    h("span", { class: "quote-by", text: saying.by })));
   view.append(head);
-  // The quotation pool is loaded when the page is drawn rather than imported at
-  // the top, so this module stays a module about the dashboard.
-  const quotes = await import("./quotes.js").catch(() => null);
-  if (quotes) {
-    const saying = quotes.quoteFor(Math.random);
-    head.append(h("p", { class: "lede quote" },
-      h("span", { class: "quote-text", text: `"${saying.text}"` }),
-      " ",
-      h("span", { class: "quote-by", text: saying.by })));
-  }
-  const grid = h("div", { class: "home-grid" });
-  grid.append(h("p", { class: "empty", text: "Loading the dashboard." }));
-  view.append(grid);
+  const body = h("div", {});
+  body.append(placeholderRows(3));
+  view.append(body);
 
   const results = await Promise.allSettled([
-    api("rows?status=manual_action_needed"),
-    api("rows?status=submitted&limit=30"),
-    api("rows?status=awaiting_approval"),
+    api("health"),
+    api(`rows?status=${WORKED}`),
+    api(`rows?status=submitted&limit=${SENT_LOOKBACK}`),
     api("resumes"),
     api("keywords/pending?limit=1"),
     api("critic/digest?since=14d"),
-    api("journal/today"),
-    api("health"),
     api("runs?limit=1"),
+    api("journal/today"),
   ]);
-  const [needs, sent, waiting, resumes, keywords, digest, journal, health, runs] = results;
+  const [health, needs, sent, resumes, keywords, digest, runs, journal] = results;
   const name = firstName(resumes);
   if (name) say(greetingFor(now, name));
-  while (grid.firstChild) grid.firstChild.remove();
-  // The machine's own state comes first: whether it ran, when it runs next and
-  // whether it can still sign in decides what every card below is worth.
-  grid.append(healthCard(health));
-  // Then reading order is priority order: what is stuck, what is waiting on a
-  // decision, then the backlog, then what has already happened.
-  grid.append(
-    needsCard(needs),
-    waitingCard(waiting),
-    evidenceCard(keywords),
-    sentCard(sent),
-    resumesCard(resumes),
-    digestCard(digest),
-    latestRunCard(runs, journal),
-  );
-  if (results.every((r) => r.status === "rejected")) {
-    view.append(h("p", { class: "home-actions" },
-      h("button", { type: "button", class: "btn", text: "Try again", onClick: () => render() })));
+
+  while (body.firstChild) body.firstChild.remove();
+  const baseSummary = getSummary();
+  const healthValue = health.status === "fulfilled" ? health.value : null;
+  const runRows = runs.status === "fulfilled" ? runs.value.runs || [] : [];
+  const workRows = needs.status === "fulfilled" ? needs.value.rows || [] : [];
+  const grouped = { answer_question: 0, decide: 0, open_portal: 0, waiting_redraft: 0 };
+  for (const row of workRows) {
+    const key = needsYouGroup(row.action);
+    if (key) grouped[key] += 1;
   }
+  const groupedTotal = Object.values(grouped).reduce((total, count) => total + count, 0);
+  const summary = baseSummary ? { ...baseSummary, needs_you: groupedTotal, needs_you_groups: grouped } : baseSummary;
+  const sentRows = sent.status === "fulfilled"
+    ? sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))
+    : [];
+  const headline = journal.status === "fulfilled" ? journalHeadlineOf(journal.value.markdown) : "";
+
+  body.append(brief(summary, getPolicy(), healthValue, sentRows.length));
+  // The queue and the selected application stay in view together. Selecting a
+  // row changes URL state only; the detail keeps save, review and send as
+  // separate steps.
+  if (needs.status === "fulfilled") {
+    const rows = workRows;
+    const asked = parseHash().query.get("selected");
+    const selected = rows.find((row) => row.id === asked) || rows[0] || null;
+    const workbench = h("div", { class: "today-workbench" });
+    workbench.append(needsYouQueue(rows, healthValue, selected && selected.id), await todayWorkDetail(selected));
+    body.append(workbench);
+  } else {
+    body.append(h("section", { class: "today-section" }, loadError("the work queue", needs.reason, () => render())));
+  }
+
+  const support = h("div", { class: "today-support" });
+  if (sent.status === "fulfilled") support.append(sentSection(sentRows));
+  else support.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));
+  support.append(referenceSection(summary, keywords, healthValue, runRows, headline));
+  support.append(resumesSection(resumes));
+  const themes = themesSection(digest);
+  if (themes) support.append(themes);
+  body.append(support);
 }

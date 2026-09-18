@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * sheets-sync.ts — bi-directional sync between local pipeline state and a
+ * sheets-sync.ts, bi-directional sync between local pipeline state and a
  * Google Sheet.
  *
  * Push (default): replaces tab contents for Pipeline and Tray, carrying over
@@ -10,7 +10,7 @@
  *
  * Tray: every row the person can act on, not just the well-classified ones.
  * `awaiting_approval` rows come first (approve / reject / hold), then
- * `manual_action_needed` rows (retry / reject / withdraw — user decision
+ * `manual_action_needed` rows (retry / reject / withdraw, user decision
  * 2026-09-17), each block sorted by score descending. An awaiting row without
  * an agent classification is still shown, and counted in
  * `dropped_unclassified` so nobody has to guess why the Tray is short.
@@ -74,18 +74,46 @@ const TRAY_REQUIRED_COLUMNS = ["id", "Action", "Edits"];
 const TRAY_STATUSES: PipelineStatus[] = ["awaiting_approval", "manual_action_needed"];
 
 /**
- * What a Sheet `Action` means locally. `approve` and `hold` are consumed
- * downstream (submission-runner / the daily flow) and move nothing here;
- * the rest are status moves this tool applies, each legal per
- * VALID_TRANSITIONS from the status the row is actually in.
+ * What a Sheet `Action` means locally. `hold` is consumed downstream (the
+ * daily flow owns it) and moves nothing here; the rest are status moves this
+ * tool applies, each legal per VALID_TRANSITIONS from the status the row is
+ * actually in.
+ *
+ * `approve` moves `awaiting_approval` to `approved`, and only from there. It
+ * used to move nothing at all, so the person pressed Approve in the Sheet or
+ * in the local UI, the row stayed where it was, and the next screen showed the
+ * same question again. AGENTS.md section 2 is unchanged by the move: an
+ * approve authorises preparation, never a send. On an autopilot channel the
+ * daily run was going to send the row anyway; on every other channel
+ * `approved` is where the row waits for an attended session, and
+ * tools/submission-gate.ts refuses any unattended send on it.
  */
 const ACTION_STATUS: Record<string, PipelineStatus | null> = {
-  approve: null,
+  approve: "approved",
   hold: null,
   retry: "approved",
   reject: "rejected",
   withdraw: "withdrawn",
+  reopen: "discovered",
 };
+
+/**
+ * The one status an `approve` moves a row out of. An approve on a row that is
+ * anywhere else (already approved, sent, parked, blocked) is not a move: the
+ * decision it records was made about a package that is no longer waiting, and
+ * walking the row from there would be the Tray inventing a transition nobody
+ * asked for.
+ */
+const APPROVE_FROM: PipelineStatus = "awaiting_approval";
+
+/**
+ * The two statuses a `reopen` puts back at `discovered`. A reopen is an undo of
+ * an exit, not a promotion: the row has to earn `shortlisted` again
+ * (docs/pipeline-state-machine.md). From anywhere else there is nothing to
+ * undo, and the caller is told so in words rather than handed the transition
+ * table's own error.
+ */
+const REOPEN_FROM: PipelineStatus[] = ["rejected", "withdrawn"];
 
 /** Every action the Tray (and the local UI) accepts, for a caller that validates before acting. */
 export const TRAY_ACTIONS: string[] = Object.keys(ACTION_STATUS);
@@ -97,6 +125,11 @@ export type TrayActionResult = {
   action: string;
   /** False for an action outside ACTION_STATUS; the caller reports it and leaves the row alone. */
   known: boolean;
+  /** True when this action actually moved the row, so a caller can count moves. */
+  moved: boolean;
+  /** True when the move was refused: the state machine's no, or this table's.
+   * A caller turns it into a 409 rather than a 500, because nothing broke. */
+  refused?: boolean;
   /** The row's status after the action, or null when the row could not be read. */
   status_after: PipelineStatus | null;
   /** Why the move was refused, in the Sheet pull's wording. */
@@ -105,13 +138,17 @@ export type TrayActionResult = {
 
 /**
  * Apply one Tray action to one row. This is the whole meaning of an `Action`
- * cell in one place: `approve` and `hold` move nothing here (the consuming
- * flow owns them), the rest are status moves, each legal per
- * VALID_TRANSITIONS from the status the row is actually in.
+ * cell in one place: `hold` moves nothing here (the consuming flow owns it),
+ * the rest are status moves, each legal per VALID_TRANSITIONS from the status
+ * the row is actually in, and `approve` only from `awaiting_approval`.
  *
  * Both the Sheet pull and the local web UI go through it, so a decision made
  * on the phone and the same decision made in the browser cannot diverge.
  * Neither sends anything: a decision only ever prepares.
+ *
+ * `opts.reason` is the caller's own words for what happened ("approved in the
+ * local UI", "approved in the Sheet Tray"), because the history is read by a
+ * person who wants to know which surface they were holding at the time.
  */
 export async function applyTrayAction(
   id: string,
@@ -119,19 +156,32 @@ export async function applyTrayAction(
   opts: { actor?: string; reason?: string } = {},
 ): Promise<TrayActionResult> {
   const action = String(rawAction ?? "").trim().toLowerCase();
-  if (action && !(action in ACTION_STATUS)) return { ok: false, action, known: false, status_after: null };
+  if (action && !(action in ACTION_STATUS)) return { ok: false, action, known: false, moved: false, status_after: null };
 
   const nextStatus = action ? ACTION_STATUS[action] : null;
-  if (!nextStatus) {
-    // approve / hold / edits-only: nothing moves, report where the row stands.
-    const row = await getOpportunity(id).catch(() => null);
-    return { ok: true, action, known: true, status_after: row?.status ?? null };
+  const current = await getOpportunity(id).catch(() => null);
+  // hold / edits-only, and an approve on a row that is no longer waiting on
+  // one: nothing moves, report where the row stands.
+  if (!nextStatus || (action === "approve" && current?.status !== APPROVE_FROM)) {
+    return { ok: true, action, known: true, moved: false, status_after: current?.status ?? null };
+  }
+  // A reopen from anywhere but an exit is refused in the person's own words.
+  if (action === "reopen" && current && !REOPEN_FROM.includes(current.status)) {
+    return {
+      ok: false, action, known: true, moved: false, refused: true, status_after: current.status,
+      error: `only a closed row can be reopened: this one is ${current.status}, and a reopen puts a rejected or withdrawn row back at discovered`,
+    };
   }
   try {
     const row = await setStatus(id, nextStatus, opts.reason ?? `sheet: ${action}`, { actor: opts.actor ?? "sheets-sync:pull" });
-    return { ok: true, action, known: true, status_after: row.status };
+    return { ok: true, action, known: true, moved: true, status_after: row.status };
   } catch (error: any) {
-    return { ok: false, action, known: true, status_after: null, error: `${action} → ${nextStatus} failed: ${error?.message ?? error}` };
+    const message = String(error?.message ?? error);
+    return {
+      ok: false, action, known: true, moved: false, status_after: null,
+      refused: /invalid transition/.test(message),
+      error: `${action} → ${nextStatus} failed: ${message}`,
+    };
   }
 }
 
@@ -301,7 +351,7 @@ function rowFor(r: Opportunity): (string | number)[] {
   ].join(" • ");
   return [
     r.id, r.channel, r.company, r.title,
-    r.score != null ? r.score : "",         // number, not string — so Sheets can sort
+    r.score != null ? r.score : "",         // number, not string, so Sheets can sort
     classification?.profile_relevance ?? "",
     classification?.profile_relevance_reason ?? "Pending agent classification",
     classification?.detected_domain ?? "",
@@ -396,7 +446,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
     || a.title.localeCompare(b.title),
   );
 
-  // Pipeline tab — everything. Score is a number (so the user can sort/filter).
+  // Pipeline tab, everything. Score is a number (so the user can sort/filter).
   const pipelineHeader = [
     "id", "channel", "status", "company", "title", "score", "classificationSource",
     "profileRelevance", "disciplineFit", "fitReason", "domain", "isContract", "workArrangement", "location", "locationFlex", "locationFlexQuote", "resumeId",
@@ -447,7 +497,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
     requestBody: { values: pipelineRows },
   });
 
-  // Tray tab — awaiting_approval (the person qualifies here) plus
+  // Tray tab, awaiting_approval (the person qualifies here) plus
   // manual_action_needed (the person unblocks here).
   const tray = trayRoles(all);
   const manualCount = tray.filter((r) => r.status === "manual_action_needed").length;
@@ -517,7 +567,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
 
 /**
  * Bold + freeze the header row and apply a basic filter so the user can
- * sort/filter on any column. Idempotent — re-running just refreshes the filter
+ * sort/filter on any column. Idempotent, re-running just refreshes the filter
  * range to the new row count.
  */
 export async function applyHeadersAndFilters(
@@ -615,7 +665,10 @@ export async function runPull(deps: SyncDeps): Promise<SyncReport> {
     const edits = String(row[editsIdx] ?? "").trim();
     if (!action && !edits) continue;
 
-    const applied = await applyTrayAction(id, action, { actor: "sheets-sync:pull" });
+    const applied = await applyTrayAction(id, action, {
+      actor: "sheets-sync:pull",
+      ...(action === "approve" ? { reason: "approved in the Sheet Tray" } : {}),
+    });
     if (!applied.known) {
       // Reported, row left alone: the cells stay so the person can correct it.
       unknownActions.push({ id, action });
@@ -626,7 +679,7 @@ export async function runPull(deps: SyncDeps): Promise<SyncReport> {
       errors.push(`${id}: ${applied.error}`);
       continue;
     }
-    if (action && ACTION_STATUS[action]) actionsApplied++;
+    if (applied.moved) actionsApplied++;
 
     queue.push({ id, action, edits });
     // Range row indices are 1-based; header is row 1; data starts at row 2.

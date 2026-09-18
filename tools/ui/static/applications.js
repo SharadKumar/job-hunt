@@ -1,475 +1,404 @@
 /*
- * applications.js - the applications board: one compact row per job, with a
- * filter column beside it.
+ * applications.js - the Pipeline screen (#/pipeline/<segment>), which is every
+ * row the harness holds, cut into the six segments the person works.
  *
- * A row is two lines. The first says what the job is and what it scored, the
- * second says why it is sitting here and offers the single thing the person can
- * do about it. Which button that is comes from the server (GET /api/rows
- * returns `action`), so the list, the row detail and the tests all read one
- * derivation instead of three copies of a regex.
+ * The address is the state (the redesign brief, section 3, principle 4): the
+ * segment, the channel chips, the minimum score and the sort all live in the
+ * hash query, so a deep link lands on exactly the list that was shared and the
+ * back button walks the filters as well as the screens.
  *
- * AGENTS.md section 2: nothing here sends. The buttons move a row in the local
- * pipeline, which is the same thing the Sheet's Tray column does.
+ * Every count comes from one place. The segment strip reads GET /api/summary,
+ * and the list header reads the same number back, so a tab that says 90 is
+ * never sitting above a list header that says 30 without saying which is which.
+ *
+ * Which single button a row earns is the server's `action`, never a regex here
+ * (rows-ext-api.ts owns it). The row anatomy and the controls a row carries
+ * are in pipeline-rows.js, so neither file has to be read end to end to change
+ * the other.
+ *
+ * AGENTS.md section 2: nothing on this screen sends. The buttons move a row in
+ * the local pipeline, which is the same thing the Sheet Tray's Action column
+ * does.
  */
 
 import {
-  $, APPLY_METHODS, api, clear, eyebrow, fetchInto, getSummary, guarded, h, pageHeader, panel, render, statusLabel, toast,
+  $, api, clear, getSummary, h, loadError, loadSummary, pageHeader, parseHash, placeholderRows, setQuery,
 } from "./app.js";
-import { markSentControl } from "./row-actions.js";
+import {
+  channelLabel, loadReasonHelper, markActed, pipelineRow, reopenControl, routeButton,
+} from "./pipeline-rows.js";
 
-/** Application tabs, in the order the person works them. Sent is capped at 30 rows.
- * `label` is the short name, `long` is how the filter column says it. */
-export const TABS = [
-  { key: "needs", label: "Blocked", long: "Blocked", status: "manual_action_needed" },
-  { key: "waiting", label: "To approve", long: "To approve", status: "awaiting_approval" },
-  { key: "shortlisted", label: "Shortlisted", long: "Shortlisted", status: "shortlisted" },
-  { key: "parked", label: "Parked", long: "Parked", status: "parked" },
-  { key: "sent", label: "Sent", long: "Sent", status: "submitted", limit: 30 },
-  { key: "responses", label: "Responses", long: "Responses", status: "responded,interview,offered,won" },
+/**
+ * The six segments, with the statuses behind each one. They are the same six
+ * the server counts in SEGMENTS (tools/ui/api.ts): `discovered` and
+ * `awaiting_external` belong to none of them on purpose, because neither is a
+ * queue the person works and putting them in one would make a tab disagree
+ * with the list behind it.
+ *
+ * Sent is capped at 30 rows on the server, because the archive grows without
+ * end and nobody reads the ninetieth. The cap is said out loud in the header,
+ * with the way to drop it.
+ */
+export const SEGMENTS = [
+  { key: "needs", label: "Needs you", status: "manual_action_needed" },
+  { key: "queue", label: "Queue", status: "shortlisted,drafted,awaiting_approval,approved,submission_pending" },
+  { key: "parked", label: "Parked", status: "parked" },
+  { key: "sent", label: "Sent", status: "submitted", limit: 30 },
+  { key: "replies", label: "Replies", status: "responded,interview,offered,won" },
+  { key: "closed", label: "Closed", status: "rejected,withdrawn" },
 ];
 
-/** What each tab says when it is empty: direction, not a shrug. */
+/** What each segment says when it is empty: direction, not a shrug. */
 const EMPTY = {
-  needs: "Nothing is blocked. The morning run adds rows here when a letter is blocked or a question is unanswered.",
-  waiting: "Nothing is waiting on your yes. Prepared packages land here before they go out.",
-  shortlisted: "Nothing is shortlisted. The hunt adds roles here once they fit and nothing blocks them.",
-  parked: "Nothing is parked. Roles that do not fit, or cannot be done from Sydney, end up here.",
+  needs: "Nothing needs you. The run adds rows here when it cannot finish one on its own.",
+  queue: "Nothing is in the queue. The hunt adds roles here once they fit and nothing blocks them.",
+  parked: "Nothing parked. Rows land here when a role is interstate and the ad does not say it is flexible.",
   sent: "Nothing has been sent yet. Submitted applications appear here, most recent first.",
-  responses: "No replies yet. A row moves here when you record a response, an interview, an offer or a win.",
+  replies: "No replies yet. A row moves here when you record a response, an interview, an offer or a win.",
+  closed: "Nothing closed. Rows you reject or withdraw are kept here, and can be reopened.",
 };
 
-/** Where the row detail looks for a request to open with the screening panel
- * focused. A hash carries the id and nothing else, so the intent travels here. */
-export const FOCUS_KEY = "jobHuntFocusScreening";
+/**
+ * The four kinds of work the Needs you segment groups by, in the order the
+ * brief fixes (section 4). The id on each heading is the anchor Today links
+ * at, so "12 are portals you open" opens this screen at that group.
+ */
+const GROUPS = [
+  { key: "answer_question", label: "Answer a question" },
+  { key: "decide", label: "Decide" },
+  { key: "open_portal", label: "Open a portal" },
+  // Waiting on the run, not on the person: these rows are listed and left
+  // alone, with no button to press (section 4).
+  { key: "waiting_redraft", label: "Waiting on a redraft", quiet: true },
+  { key: "other", label: "Other" },
+];
 
-/** A channel key as the person says it out loud. */
-export function channelLabel(channel) {
-  const key = String(channel || "").toLowerCase();
-  if (key === "seek") return "SEEK";
-  if (key === "linkedin_jobs" || key === "linkedin") return "LinkedIn";
-  return key.split(/[_\s-]+/).filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}
+/** How many stale applications the Sent segment shows before it offers the rest. */
+const FOLLOW_UP_SHOWN = 8;
 
-/** home.js owns the plain rewrite of a run's reason; use it when it is there.
- * Until it lands, strip the run stamp the daily writes and show the rest. */
-let plainReasonFn = null;
-export async function loadReasonHelper() {
-  if (plainReasonFn) return;
-  const mod = await import("./home.js").catch(() => null);
-  if (mod && typeof mod.plainReason === "function") plainReasonFn = mod.plainReason;
-}
-export function plainReasonText(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return "";
-  if (plainReasonFn) {
-    try { return String(plainReasonFn(raw) || "").trim() || raw; } catch { /* fall through */ }
-  }
-  return raw.replace(/^\[[^\]]*\]\s*/, "").trim();
-}
-
-/** A decision button: armed on the first press, committed on the second, and
- * posted to the local pipeline. It never submits to a channel (AGENTS.md
- * section 2); the worst it can do is move a row. */
-export function actionButton(row, action, fields, done) {
-  const classes = ["btn", action.primary ? "primary" : "", action.danger ? "danger" : "", action.small ? "sm" : ""];
-  const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: action.label });
-  // What the move does, in plain words, for whoever hovers or reads it out.
-  if (action.title) button.setAttribute("title", action.title);
-  guarded(button, action.label, async () => {
-    button.disabled = true;
-    const body = { action: action.key, ...(fields ? fields() : {}) };
-    try {
-      const result = await api(`rows/${encodeURIComponent(row.id)}/action`, { method: "POST", body });
-      toast(`${action.label}: the row is now ${statusLabel(result.status_after)}.`);
-      done();
-    } catch (error) {
-      // 409 means the state machine refused the move. Show the server's reason.
-      toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
-      button.disabled = false;
-    }
-  });
-  return button;
-}
-
-/** A button that posts to one of the two extension routes this package adds
- * (unpark, outcome). Same two-press arming as a Tray decision. */
-function routeButton(row, spec, done) {
-  const classes = ["btn", spec.primary ? "primary" : "", spec.danger ? "danger" : "", spec.small ? "sm" : ""];
-  const button = h("button", { type: "button", class: classes.filter(Boolean).join(" "), text: spec.label });
-  guarded(button, spec.label, async () => {
-    button.disabled = true;
-    try {
-      const result = await api(`rows/${encodeURIComponent(row.id)}/${spec.path}`, { method: "POST", body: spec.body });
-      toast(`${spec.label}: the row is now ${statusLabel(result.status_after)}.`);
-      done();
-    } catch (error) {
-      toast(error.status === 409 ? `Refused. ${error.message}` : error.message, "bad");
-      button.disabled = false;
-    }
-  });
-  return button;
-}
+// ---------------------------------------------------------------------------
+// The address is the state
+// ---------------------------------------------------------------------------
 
 /**
- * Open the row with the screening panel focused. On the row itself the address
- * is already right, so the press scrolls to the panel rather than doing
- * nothing: setting the same hash fires no hashchange.
+ * The screen's whole state, read off the address. `which` is the segment from
+ * the path and may carry an anchor (`needs#open_portal`), because that is how
+ * Today links at one group of a segment.
  */
-export function openScreening(id) {
-  const target = `#/row/${encodeURIComponent(id)}`;
-  const slot = document.querySelector(".screening-slot");
-  if (location.hash === target && slot && slot.childElementCount) {
-    slot.scrollIntoView({ block: "center" });
-    const focusable = slot.querySelector("input, textarea, button, select");
-    if (focusable) focusable.focus();
-    return;
-  }
-  try { sessionStorage.setItem(FOCUS_KEY, id); } catch { /* private mode: the panel still mounts */ }
-  location.hash = target;
+function stateFrom(which, query) {
+  // The router hands the fragment over on its own (`#/pipeline/needs#open_portal`
+  // is the segment `needs` and the fragment `open_portal`). An older router
+  // left it on the id, and a link may carry it as `?group=` instead, so all
+  // three are read and the segment resolves either way.
+  const [key, inId] = String(which || "").split("#");
+  const segment = SEGMENTS.find((s) => s.key === key) || SEGMENTS[0];
+  const q = query instanceof URLSearchParams ? query : new URLSearchParams();
+  const anchor = (parseHash().fragment || inId || q.get("group") || "").trim();
+  return {
+    segment,
+    anchor: GROUPS.some((g) => g.key === anchor) ? anchor : "",
+    channels: (q.get("channel") || "").split(",").map((c) => c.trim()).filter(Boolean),
+    min: (q.get("min") || "").trim(),
+    sort: q.get("sort") === "updated" ? "updated" : "score",
+    all: q.get("all") === "1",
+  };
 }
 
-/**
- * The one contextual control a row earns, from the server's derivation. A row
- * with nothing to decide gets a quiet link to its details instead, and a sent
- * row gets nothing at all.
- */
-export function contextualControl(row, done, { small = true } = {}) {
-  const act = row.action || { kind: "none" };
-  const cls = small ? "btn sm" : "btn";
-  // `decide` is the server saying there is no one obvious move: the choices it
-  // offers all sit in `also`, and none of them is the primary.
-  if (act.kind === "decide") return null;
-  // A gate refusal is the server saying there is no move at all on this board:
-  // no button here changes a policy, and a retry would hit the same gate.
-  if (act.kind === GATE_REFUSED) return null;
-  if (act.kind === "portal") {
-    return h("a", { class: cls, href: act.href || row.url, target: "_blank", rel: "noreferrer noopener", text: act.label || "Open portal" });
-  }
-  if (act.kind === "answer") {
-    return h("button", { type: "button", class: `${cls} primary`, text: act.label || "Answer", onClick: () => openScreening(row.id) });
-  }
-  if (act.post) return actionButton(row, { key: act.post, label: act.label, primary: act.primary, danger: act.danger, small }, null, done);
-  if (act.kind === "unpark") return routeButton(row, { label: act.label || "Unpark", path: "unpark", body: { reason: "unparked from the board" }, small }, done);
-  if (act.kind === "outcome") {
-    return routeButton(row, { label: act.label, path: "outcome", body: { status: act.outcome, note: "recorded from the board" }, primary: act.primary, small }, done);
-  }
-  return null;
-}
-
-/** The action kind the server sends when the submission gate refused a row on
- * policy (rows-ext-api.ts). The board reads it in two places, so it is named. */
-export const GATE_REFUSED = "gate_refused";
-
-/** The one clause of a refusal note the board has room for: what stopped it.
- * The rest of the note, the part that says what to do, is on the row page. */
-export function firstClause(text) {
-  const raw = String(text || "").replace(/\s+/g, " ").trim();
-  const match = /^[^.;]+[.;]/.exec(raw);
-  return match ? `${match[0].slice(0, -1).trim()}.` : raw;
-}
-
-/** An `also` entry, or a row's own apply method, that means the person sent
- * this one themselves somewhere the harness cannot reach. */
-const SELF_SENT = new Set(["mark-sent", "mark_sent", "applied", "self"]);
-
-/**
- * The secondary controls that sit after the primary: whatever the server hung
- * off `action.also`, plus the one the board owes an external row even when the
- * server is an older build that does not send it.
- *
- * Buttons and the things they open are returned apart, because a form belongs
- * under a row rather than inside its line of buttons.
- */
-export function alsoControls(row, done, { small = true } = {}) {
-  const act = row.action || { kind: "none" };
-  const cls = small ? "btn sm" : "btn";
-  const buttons = [];
-  const extras = [];
-  let selfSent = false;
-  for (const spec of Array.isArray(act.also) ? act.also : []) {
-    if (!spec) continue;
-    if (SELF_SENT.has(String(spec.kind || ""))) {
-      selfSent = true;
-      const control = markSentControl(row, done, { small });
-      if (spec.label) control.button.textContent = spec.label;
-      buttons.push(control.button);
-      extras.push(control.extra);
-    } else if (spec.href || spec.kind === "portal") {
-      buttons.push(h("a", { class: cls, href: spec.href || row.url, target: "_blank",
-        rel: "noreferrer noopener", text: spec.label || "Open portal" }));
-    } else if (spec.post) {
-      buttons.push(actionButton(row, { key: spec.post, label: spec.label || spec.post, danger: spec.danger, small }, null, done));
-    }
-  }
-  // An external portal row is one the person has to finish in their own
-  // browser, so it always earns the way to say they did (AGENTS.md section 2).
-  const external = act.kind === "portal" || row.applyMethod === "external"
-    || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.kind === "portal"));
-  if (external && !selfSent) {
-    const control = markSentControl(row, done, { small });
-    buttons.push(control.button);
-    extras.push(control.extra);
-  }
-  return { buttons, extras };
-}
-
-const appState = { tab: "needs", sort: "score", channels: new Set(), minScore: "", filtersOpen: false };
-
-/**
- * The lane split the rows endpoint reports for awaiting_approval: how many
- * rows actually want the person, and how many the run is already carrying.
- * Held here because the filter column draws every tab's count from one place,
- * whichever tab is open.
- */
-const laneCounts = { needs_you: null, in_flight: null };
-
-/** Only the awaiting_approval response is the To approve tally. Every status
- * reports its own split, and the shortlisted one overwrote this with a figure
- * that belonged to a different tab. */
-function rememberLaneCounts(status, data) {
-  const counts = status === "awaiting_approval" && data ? data.counts : null;
-  if (!counts) return;
-  if (typeof counts.needs_you === "number") laneCounts.needs_you = counts.needs_you;
-  if (typeof counts.in_flight === "number") laneCounts.in_flight = counts.in_flight;
-}
-
-/** A row that still wants a decision from the person. A server that does not
- * carry lanes says nothing, and then every awaiting row is theirs, exactly as
- * it was before the lanes existed. */
-export const needsYou = (row) => row.needs_you !== false;
-
-/** A row the run is already carrying. It is approved, it is going out, and it
- * is not a question (AGENTS.md section 2: the channel decides the lane). */
-export const isInFlight = (row) => row.needs_you === false
-  || Boolean(row.action && row.action.kind === "in_flight");
-
-/** One job row: two lines, and at most one button. The whole row opens the
- * detail; the button inside it does its own thing. */
-function jobRow(row, refresh) {
-  const article = h("article", { class: "app-row" });
-  const main = h("div", { class: "row-main" });
-  main.append(h("a", { class: "row-title", href: `#/row/${encodeURIComponent(row.id)}`, text: row.title || "Untitled role" }));
-  if (row.company) main.append(h("span", { class: "row-co", text: row.company }));
-  if (row.location) main.append(h("span", { class: "row-where", text: row.location }));
-  main.append(h("span", { class: "pill", text: channelLabel(row.channel) }));
-  const method = APPLY_METHODS[row.applyMethod] || row.applyMethod;
-  if (method) main.append(h("span", { class: "pill", text: method }));
-  // A job the person saved on the channel is an order to apply (AGENTS.md
-  // section 2), so it is said on the row rather than buried in the detail.
-  if (row.userSaved) main.append(h("span", { class: "pill", text: "saved by you" }));
-  // A row the run is carrying is read here rather than in To approve, so the
-  // line has to say why it is sitting among the shortlist.
-  if (isInFlight(row)) main.append(h("span", { class: "pill", text: "in flight" }));
-  const score = h("span", { class: "row-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "" });
-  const act = row.action || { kind: "none" };
-  // A refused row reads as what stopped it, in the server's plain words, rather
-  // than as the gate's own stamp. The board offers the one move it still takes:
-  // drop it. Hold keeps it here, which is where it already is, so Hold and the
-  // full explanation are left to the row page.
-  const refused = act.kind === GATE_REFUSED;
-  const shown = refused
-    ? { ...row, action: { ...act, also: (Array.isArray(act.also) ? act.also : []).filter((spec) => spec && spec.post === "reject") } }
-    : row;
-  const reason = h("p", {
-    class: "row-reason", "aria-label": "Why it is here",
-    text: (refused ? firstClause(act.note) : plainReasonText(row.reason))
-      || "No reason recorded. Open the row to read its history.",
-  });
-  const control = h("div", { class: "row-control" });
-  const button = contextualControl(shown, refresh);
-  if (button) control.append(button);
-  const { buttons, extras } = alsoControls(shown, refresh);
-  for (const extra of buttons) control.append(extra);
-  if (!button && !buttons.length && row.status !== "submitted") {
-    control.append(h("a", { class: "btn sm", href: `#/row/${encodeURIComponent(row.id)}`, text: "Details" }));
-  }
-  article.append(main, score, reason, control);
-  // A form a secondary button opens runs the width of the row, under it.
-  for (const extra of extras) article.append(h("div", { class: "row-extra" }, extra));
-  article.addEventListener("click", (event) => {
-    if (event.target.closest("a, button, input, select, textarea")) return;
-    location.hash = `#/row/${encodeURIComponent(row.id)}`;
-  });
-  return article;
-}
-
-/** The filter column: the tabs with their counts, the channels the loaded rows
- * actually use, and a floor on the score. */
-function filterCard(rows, repaint) {
-  const card = h("aside", { class: "card filter-card", id: "filter-card" });
-  card.hidden = !appState.filtersOpen && window.innerWidth < 900;
-  const body = h("div", { class: "filters" });
-  card.append(h("h2", { text: "Filters" }), body);
+/** The strip: one tab per segment, each carrying the count the list behind it
+ * will show, so a count is never a dead end (section 3, principle 1). */
+function segmentStrip(state) {
   const summary = getSummary();
-  const counts = (summary && summary.counts) || {};
-  // To approve counts only what wants the person; the rows the run is already
-  // carrying are counted on the Shortlisted tab they are read on.
-  const tally = (tab) => (tab.key === "waiting" && typeof laneCounts.needs_you === "number"
-    ? laneCounts.needs_you
-    : tab.status.split(",").reduce((n, s) => n + (counts[s] ?? 0), 0));
-  const statuses = h("div", { class: "filter-group" });
-  statuses.append(eyebrow("Status"));
-  for (const tab of TABS) {
-    const input = h("input", { type: "radio", name: "status-tab", checked: tab.key === appState.tab });
-    input.addEventListener("change", () => { location.hash = `#/applications/${tab.key}`; });
-    statuses.append(h("label", { class: "choice" }, input, h("span", { text: tab.long }),
-      h("span", { class: "tally", text: String(tally(tab)) })));
+  const counts = (summary && summary.segments) || {};
+  const strip = h("nav", { class: "segments", "aria-label": "Pipeline segments" });
+  for (const segment of SEGMENTS) {
+    const here = segment.key === state.segment.key;
+    const tab = h("a", { href: `#/pipeline/${segment.key}`, text: segment.label });
+    tab.append(h("span", { class: "tally", text: String(counts[segment.key] ?? 0) }));
+    if (here) tab.setAttribute("aria-current", "page");
+    strip.append(tab);
   }
-  body.append(statuses);
-  const channels = [...new Set(rows.map((r) => r.channel).filter(Boolean))].sort();
-  if (channels.length > 1) {
-    const group = h("div", { class: "filter-group" });
-    group.append(eyebrow("Channel"));
-    for (const channel of channels) {
-      const input = h("input", { type: "checkbox", checked: appState.channels.has(channel) });
-      input.addEventListener("change", () => {
-        if (input.checked) appState.channels.add(channel); else appState.channels.delete(channel);
-        repaint();
-      });
-      group.append(h("label", { class: "choice" }, input, h("span", { text: channelLabel(channel) }),
-        h("span", { class: "tally", text: String(rows.filter((r) => r.channel === channel).length) })));
-    }
-    body.append(group);
-  }
-  const score = h("div", { class: "filter-group" });
-  score.append(eyebrow("Minimum score"));
-  const input = h("input", { type: "number", min: "0", max: "100", step: "1", value: appState.minScore, placeholder: "Any" });
-  input.addEventListener("input", () => { appState.minScore = input.value; repaint(); });
-  body.append(score);
-  score.append(input);
-  return card;
+  return strip;
 }
 
-/** Sort and floor the fetched rows the way the filter column says. */
-function visibleRows(rows) {
-  const floor = Number(appState.minScore);
+/**
+ * The filters: a chip per channel, the score floor and the sort, all of them
+ * written to the hash query and read back from it on the next load. The old
+ * filter column was module state, so a deep link landed on whichever bucket
+ * was last chosen by whoever last used the tab.
+ */
+function filterChips(state, channels) {
+  const row = h("div", { class: "chips" });
+  if (channels.length > 1) {
+    const group = h("div", { class: "chip-group", role: "group", "aria-label": "Channel" });
+    for (const channel of channels) {
+      const on = state.channels.includes(channel);
+      const chip = h("button", { type: "button", class: "chip", "aria-pressed": on ? "true" : "false", text: channelLabel(channel) });
+      chip.addEventListener("click", () => {
+        const next = on ? state.channels.filter((c) => c !== channel) : [...state.channels, channel];
+        setQuery({ channel: next.join(",") });
+      });
+      group.append(chip);
+    }
+    row.append(group);
+  }
+
+  const min = h("input", { type: "number", min: "0", max: "100", step: "1", value: state.min, placeholder: "Any", id: "min-score" });
+  min.addEventListener("change", () => setQuery({ min: min.value.trim() }));
+  row.append(h("label", { class: "inline-field", for: "min-score" }, h("span", { text: "Min score" }), min));
+
+  const sort = h("select", { id: "sort-rows" });
+  for (const [value, label] of [["score", "Score"], ["updated", "Updated"]]) {
+    sort.append(h("option", { value, selected: state.sort === value, text: label }));
+  }
+  sort.addEventListener("change", () => setQuery({ sort: sort.value === "score" ? null : sort.value }));
+  row.append(h("label", { class: "inline-field", for: "sort-rows" }, h("span", { text: "Sort" }), sort));
+  return row;
+}
+
+/** Sort and floor the fetched rows the way the chips say. */
+function visibleRows(rows, state) {
+  const floor = Number(state.min);
   const out = rows.filter((row) => {
-    if (appState.channels.size && !appState.channels.has(row.channel)) return false;
-    if (appState.minScore !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
+    if (state.channels.length && !state.channels.includes(row.channel)) return false;
+    if (state.min !== "" && Number.isFinite(floor) && (row.score ?? 0) < floor) return false;
     return true;
   });
-  return appState.sort === "updated"
+  return state.sort === "updated"
     ? out.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
     : out.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 }
 
-/** One stale application: what it was, how long ago, and the two quiet things
- * the person may do about it. Nothing here sends (AGENTS.md section 2). */
-function followUpLine(item, refresh) {
-  const line = h("div", { class: "nudge-row" });
-  const main = h("div", { class: "row-main" });
-  main.append(h("a", { class: "row-title", href: `#/row/${encodeURIComponent(item.id)}`, text: item.title || "Untitled role" }));
-  if (item.company) main.append(h("span", { class: "row-co", text: item.company }));
-  main.append(h("span", { class: "row-where", text: `${item.days_since} days, no reply` }));
-  line.append(main);
-  const buttons = h("div", { class: "row-control" });
-  buttons.append(routeButton(item, {
-    label: "Mark responded", path: "outcome", body: { status: "responded", note: "recorded from the follow-up strip" }, small: true,
-  }, refresh));
-  if (item.nudge) {
-    const copy = h("button", { type: "button", class: "btn sm", text: "Copy nudge" });
-    copy.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(item.nudge);
-        toast("The nudge is on the clipboard. Send it yourself.");
-      } catch { toast("This browser will not let the page write to the clipboard.", "bad"); }
-    });
-    buttons.append(copy);
-  }
-  line.append(buttons);
-  return line;
+/**
+ * A group heading: the name, its count, and whatever the group offers on the
+ * same line (the way to see the rest of a capped group). The id is the anchor
+ * Today links at, so `#/pipeline/needs#open_portal` opens this screen with
+ * that heading at the top of the view.
+ */
+function groupHeading(id, label, count, aside) {
+  const head = h("h3", { class: "group-heading", id: id || null });
+  head.append(h("span", {}, label, h("span", { class: "tally", text: ` ${count}` })));
+  if (aside) head.append(aside);
+  return head;
 }
 
-/** How many stale applications the strip shows before it folds. Past this it
- * stops being a strip above the list and becomes a second list. */
-const FOLLOW_UP_SHOWN = 8;
+// ---------------------------------------------------------------------------
+// The screen
+// ---------------------------------------------------------------------------
 
-/** The strip above the Sent list: who has gone quiet. Drafts only. */
-async function followUpStrip(refresh) {
-  let data = null;
-  try { data = await api("followups?days=7"); } catch { return null; }
-  const rows = (data && data.rows) || [];
-  if (!rows.length) return null;
-  const body = h("div", { class: "nudges" });
-  for (const item of rows.slice(0, FOLLOW_UP_SHOWN)) body.append(followUpLine(item, refresh));
-  if (rows.length > FOLLOW_UP_SHOWN) {
-    const more = h("button", { type: "button", class: "btn sm", text: `Show all ${rows.length}` });
-    more.addEventListener("click", () => {
-      more.remove();
-      for (const item of rows.slice(FOLLOW_UP_SHOWN)) body.append(followUpLine(item, refresh));
-    });
-    body.append(more);
-  }
-  const title = rows.length === 1
-    ? "1 application with no reply after 7 days"
-    : `${rows.length} applications with no reply after 7 days`;
-  const card = panel(title, body);
-  card.classList.add("nudge-card");
-  card.append(h("p", { class: "grey small", text: "Nothing is sent from here. Copy the nudge and send it yourself." }));
-  return card;
-}
-
-/** `which` is the tab key from the address (#/applications/waiting), so Home
- * can link straight at the bucket it is talking about. */
-export async function viewApplications(view, which) {
-  if (which && TABS.some((t) => t.key === which)) appState.tab = which;
-  const tab = TABS.find((t) => t.key === appState.tab) || TABS[0];
+/**
+ * `which` is the segment from the address, optionally with the anchor of one
+ * Needs you group; `query` is the hash query, which carries the channel chips,
+ * the score floor and the sort.
+ */
+export async function viewApplications(view, which, query) {
+  const state = stateFrom(which, query);
   await loadReasonHelper();
-  const count = h("p", { class: "page-count", id: "row-count",
-    text: "Job Hunt drafts and sends applications overnight. Decide here on anything it could not send." });
-  const toggle = h("button", { type: "button", class: "btn filters-toggle", text: "Filters" });
-  toggle.addEventListener("click", () => {
-    appState.filtersOpen = !appState.filtersOpen;
-    if ($("#filter-card")) $("#filter-card").hidden = !appState.filtersOpen;
-  });
-  const sort = h("select", { "aria-label": "Sort rows" });
-  for (const [value, label] of [["score", "Score"], ["updated", "Updated"]]) {
-    sort.append(h("option", { value, selected: appState.sort === value, text: label }));
-  }
-  sort.addEventListener("change", () => { appState.sort = sort.value; render(); });
-  const head = pageHeader({
-    title: tab.long,
-    lede: count,
-    aside: h("div", { class: "sorter" }, toggle, h("span", { text: "Sort" }), sort),
-  });
-  const layout = h("div", { class: "layout" });
-  const column = h("div", { class: "board" });
-  const list = h("div", { class: "rows" });
-  list.append(h("p", { class: "empty", text: "Loading rows." }));
-  column.append(list);
-  layout.append(column);
-  view.append(head, layout);
 
-  const params = new URLSearchParams({ status: tab.status });
-  if (tab.limit) params.set("limit", String(tab.limit));
-  const data = await fetchInto(list, `rows?${params.toString()}`, "Could not load rows.");
-  if (!data) return;
-  rememberLaneCounts(tab.status, data);
-  let rows = data.rows || [];
-  // To approve is the person's queue and nothing else.
-  if (tab.key === "waiting") rows = rows.filter(needsYou);
-  if (tab.key === "shortlisted") {
-    // The approved rows the run is carrying are not waiting on anybody, so
-    // they are read with the rest of the queue instead of in To approve.
-    const carried = await api("rows?status=awaiting_approval").catch(() => null);
-    rememberLaneCounts("awaiting_approval", carried);
-    if (carried) rows = rows.concat((carried.rows || []).filter(isInFlight));
-  }
-  const paint = () => {
+  const count = h("p", { class: "page-count pipeline-count" });
+  const head = pageHeader({ title: "Pipeline", lede: count });
+  const strip = segmentStrip(state);
+  const chips = h("div", { class: "chips-slot" });
+  const list = h("div", { class: "list" });
+  list.append(placeholderRows(3));
+  view.append(head, strip, chips, list);
+
+  /** Fetch the segment and repaint the list in place, without moving the page.
+   * `acted` is the row an action just landed on, marked for three seconds. */
+  const refresh = async (acted) => {
+    // The list and the strip are refetched together: an action that moves a
+    // row moves it between two segments, and a stale tab count beside a fresh
+    // list is the disagreement this screen was rebuilt to end.
+    const [data] = await Promise.all([fetchSegment(state), loadSummary()]);
+    clear(strip);
+    for (const tab of [...segmentStrip(state).children]) strip.append(tab);
+    paint(data);
+    markActed(acted);
+  };
+
+  const paint = (data) => {
     clear(list);
-    const shown = visibleRows(rows);
-    $("#row-count").textContent = shown.length === 1 ? "1 row" : `${shown.length} rows`;
-    if (!shown.length) {
-      list.append(h("p", { class: "empty", text: rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[tab.key] }));
+    if (data.error) {
+      list.append(loadError("the pipeline", data.error, () => refresh()));
+      count.textContent = "";
       return;
     }
-    for (const row of shown) list.append(jobRow(row, () => render()));
+    // The chips are the channels this segment actually holds, plus whatever
+    // the address already selected, so a chip from a shared link never
+    // disappears because today's rows happen not to use that channel.
+    clear(chips);
+    chips.append(filterChips(state, [...new Set([...data.rows.map((r) => r.channel), ...state.channels])].filter(Boolean).sort()));
+    const rows = visibleRows(data.rows, state);
+    const summary = getSummary();
+    const total = (summary && summary.segments && summary.segments[state.segment.key]) ?? data.total ?? rows.length;
+    writeCount(count, rows.length, total, data);
+    if (!rows.length && !(data.followups || []).length) {
+      list.append(h("p", { class: "empty", text: data.rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[state.segment.key] }));
+      return;
+    }
+    for (const section of sections(state, rows, data, refresh)) list.append(section);
+    // Today links at one group ("12 are portals you open"). Land on that
+    // heading and give it the focus, so it is read out rather than left to be
+    // found by eye.
+    if (state.anchor) {
+      const target = $(`#${CSS.escape(state.anchor)}`);
+      if (target) {
+        target.setAttribute("tabindex", "-1");
+        target.scrollIntoView({ block: "start" });
+        target.focus({ preventScroll: true });
+      }
+    }
   };
-  layout.prepend(filterCard(rows, paint));
-  paint();
-  if (tab.key === "sent") {
-    const strip = await followUpStrip(() => render());
-    if (strip) column.prepend(strip);
+
+  paint(await fetchSegment(state));
+}
+
+/**
+ * The list header count. It is the segment count when the list is whole, and
+ * says which of the two numbers is which when it is not: "Showing 30 of 90",
+ * with the way to see the rest when it was the server that capped it.
+ */
+function writeCount(node, shown, total, data) {
+  clear(node);
+  if (shown === total) {
+    node.append(h("span", { text: shown === 1 ? "1 row" : `${total} rows` }));
+    return;
   }
+  node.append(h("span", { text: `Showing ${shown} of ${total}` }));
+  if (data.capped) {
+    node.append(h("button", { type: "button", class: "btn-text", text: "Show all", onClick: () => setQuery({ all: "1" }) }));
+  }
+}
+
+/** One fetch of the segment, plus the follow-ups the Sent segment groups by.
+ * A failure comes back as data rather than as a throw, so the header and the
+ * strip stay on screen and the retry is in the list where it failed. */
+async function fetchSegment(state) {
+  const params = new URLSearchParams({ status: state.segment.status });
+  if (state.segment.limit && !state.all) params.set("limit", String(state.segment.limit));
+  try {
+    const [data, follow] = await Promise.all([
+      api(`rows?${params.toString()}`),
+      state.segment.key === "sent" ? api("followups?days=7").catch(() => null) : Promise.resolve(null),
+    ]);
+    const rows = data.rows || [];
+    return {
+      rows,
+      total: typeof data.total === "number" ? data.total : rows.length,
+      capped: typeof data.total === "number" && data.total > rows.length,
+      followups: (follow && follow.rows) || [],
+      error: null,
+    };
+  } catch (error) {
+    return { rows: [], total: 0, capped: false, followups: [], error };
+  }
+}
+
+/** The list, in sections: the Needs you groups, the Sent follow-ups, or one
+ * flat run of rows for every other segment. */
+function sections(state, rows, data, refresh) {
+  if (state.segment.key === "needs") return needsSections(rows, refresh);
+  if (state.segment.key === "sent") return sentSections(rows, data.followups, refresh);
+  const out = [];
+  const section = h("section");
+  for (const row of rows) section.append(rowFor(state, row, refresh));
+  out.push(section);
+  return out;
+}
+
+/**
+ * One row, dressed the way its segment reads. The queue is the one place the
+ * lane and the machine's own status earn their pills: it is the difference
+ * between a row the run will send and a row waiting on the person.
+ *
+ * A reopen is the server's own action (`kind: "reopen"`), and it is the one
+ * move that asks for a reason before it posts, so it opens a form under the
+ * row instead of arming in place.
+ */
+function rowFor(state, row, refresh) {
+  const queue = state.segment.key === "queue";
+  const article = pipelineRow(row, refresh, { lanePill: queue, statusPill: queue });
+  if ((row.action || {}).kind === "reopen") {
+    const control = reopenControl(row, () => refresh(row.id));
+    // One action cell per row: a closed row that also offers Mark as applied
+    // already has one, and a second would sit on top of it in the same slot.
+    let cell = article.querySelector(":scope > .list-action");
+    if (!cell) { cell = h("div", { class: "list-action" }); article.append(cell); }
+    cell.append(control.button);
+    article.append(h("div", { class: "row-extra" }, control.extra));
+  }
+  return article;
+}
+
+/** Needs you, grouped by what the row actually needs, with an anchor per group
+ * so Today can link straight at one of them. */
+function needsSections(rows, refresh) {
+  const out = [];
+  // A server that sends no groups (an older process still running) gets a
+  // flat list rather than every row under a made-up heading.
+  if (!rows.some((row) => row.needs_you_group)) {
+    const section = h("section");
+    for (const row of rows) section.append(rowFor({ segment: { key: "needs" } }, row, refresh));
+    return [section];
+  }
+  for (const group of GROUPS) {
+    const mine = rows.filter((row) => (row.needs_you_group || "other") === group.key);
+    if (!mine.length) continue;
+    const section = h("section", { "aria-labelledby": group.key });
+    // The heading carries the anchor id itself, so Today's link lands on the
+    // heading rather than on an empty span above it.
+    section.append(groupHeading(group.key, group.label, mine.length));
+    for (const row of mine) {
+      // A row waiting on a redraft is waiting on the run, not on the person:
+      // it is listed, quietly, and there is nothing to press.
+      section.append(pipelineRow(row, refresh, { action: !group.quiet }));
+    }
+    out.push(section);
+  }
+  return out;
+}
+
+/** Sent, with the applications that have gone quiet grouped above the rest in
+ * the same row style. Nothing here sends: Mark responded records what the
+ * person already heard back. */
+function sentSections(rows, followups, refresh) {
+  const out = [];
+  if (followups.length) {
+    const section = h("section", { "aria-labelledby": "followups-heading" });
+    const body = h("div");
+    const showAll = followups.length > FOLLOW_UP_SHOWN
+      ? h("button", { type: "button", class: "btn-text", text: "Show all" })
+      : null;
+    const heading = groupHeading("followups", `No reply after 7 days`, followups.length, showAll);
+    heading.id = "followups-heading";
+    if (showAll) {
+      showAll.addEventListener("click", () => {
+        showAll.remove();
+        for (const item of followups.slice(FOLLOW_UP_SHOWN)) body.append(followUpRow(item, refresh));
+      });
+    }
+    for (const item of followups.slice(0, FOLLOW_UP_SHOWN)) body.append(followUpRow(item, refresh));
+    section.append(heading, body);
+    out.push(section);
+  }
+  const section = h("section", { "aria-labelledby": "sent-heading" });
+  if (followups.length) {
+    const heading = groupHeading("", "Sent", rows.length);
+    heading.id = "sent-heading";
+    section.append(heading);
+  }
+  for (const row of rows) section.append(pipelineRow(row, refresh));
+  out.push(section);
+  return out;
+}
+
+/** One application that has gone quiet, in the same row style as the rest of
+ * the segment, with the one thing the person can record about it. */
+function followUpRow(item, refresh) {
+  const days = item.days_since === 1 ? "1 day" : `${item.days_since} days`;
+  const article = pipelineRow({ ...item, reason: `${days} since it went out, no reply.` }, refresh, { action: false });
+  const button = routeButton(item, {
+    label: "Mark responded", path: "outcome", body: { status: "responded", note: "recorded from the pipeline" }, small: true,
+  }, () => refresh(item.id));
+  article.append(h("div", { class: "list-action" }, button));
+  return article;
 }

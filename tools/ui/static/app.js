@@ -17,7 +17,6 @@
  * confirmations use four fixed answers; section 3, no em or en dashes, and
  * Australian English throughout.
  */
-
 import { viewHome } from "./home.js";
 import { viewApplications } from "./applications.js";
 import { viewRow } from "./row.js";
@@ -25,51 +24,62 @@ import { viewResumes } from "./resumes.js";
 import { viewRuns } from "./runs.js";
 import { viewRules } from "./rules.js";
 import { viewSettings } from "./settings.js";
+import { loadShellHealth, renderShellStatus } from "./shell.js";
+// --- The shared vocabulary ---
+/*
+ * How a channel, a status, a lane, a date and a length of time are said. They
+ * live in labels.js and are exported again here, because app.js is what every
+ * screen imports from and one import list is easier to keep honest than eight.
+ */
+import {
+  APPLY_METHODS, channelLabel, clockTime, dayStamp, duration, laneLabel, localDay, shortDate, statusLabel,
+  when, whenFull,
+} from "./labels.js";
+import { asText, paragraphs, richMarkdown } from "./markdown.js";
+export {
+  APPLY_METHODS, channelLabel, clockTime, dayStamp, duration, laneLabel, localDay, shortDate, statusLabel,
+  when, whenFull, asText, paragraphs, richMarkdown,
+};
 
 // --- Constants ---
 
 /** Hash routes, in nav order, plus the row detail the nav does not show. */
-export const ROUTES = ["home", "applications", "row", "resumes", "rules", "runs", "settings"];
+export const ROUTES = ["today", "pipeline", "row", "resumes", "guardrails", "runs", "settings"];
 
 /**
- * Addresses that moved, and where they moved to. Keywords became the Resumes
- * screen's second tab (they are evidence questions about a CV, not a screen of
- * their own), Digest became Rules and Today became Runs. Every one of them is
- * still a working address: they are in the person's history, in the journal and
- * in the Home cards another package owns.
+ * Addresses that moved, and where they moved to. Home became Today,
+ * Applications became Pipeline, Rules became Guardrails, Queue is an older
+ * name for the same board, Keywords became the Resumes screen's second tab
+ * (they are evidence questions about a CV, not a screen of their own) and
+ * Digest is now part of Guardrails. Every one of them is still a working
+ * address: they are in the person's history and in the journal.
+ *
+ * `#/today` is deliberately absent. It used to mean the Runs screen; it now
+ * means the Today screen, so the route owns the address and there is nothing
+ * to forward.
  */
 export const REDIRECTS = {
-  queue: "#/applications",
+  home: "#/today",
+  applications: "#/pipeline",
+  queue: "#/pipeline",
+  rules: "#/guardrails",
   keywords: "#/resumes/evidence",
-  digest: "#/rules",
-  today: "#/runs",
+  digest: "#/guardrails",
 };
 
-/** Pipeline status in plain words. The raw keys are machinery: nobody reads
- * "manual_action_needed to manual_action_needed" and learns anything. */
-const STATUS_LABELS = {
-  discovered: "discovered", shortlisted: "shortlisted", drafted: "drafted",
-  awaiting_approval: "to approve", approved: "approved", submission_pending: "sending",
-  submitted: "sent", responded: "responded", interview: "interview", offered: "offered",
-  won: "won", rejected: "rejected", withdrawn: "withdrawn", parked: "parked",
-  awaiting_external: "waiting on them", manual_action_needed: "blocked",
-};
-
-/** A status the map has not met yet still reads as words, not as a key. */
-export function statusLabel(status) {
-  if (!status) return "";
-  return STATUS_LABELS[status] || String(status).replace(/_/g, " ");
+/**
+ * The score cell on a list row: a whole number in ink, tabular, right aligned,
+ * and nothing at all when the row was never scored. Never green: green is a
+ * verdict, and a score is not one.
+ */
+export function scoreCell(score) {
+  const value = typeof score === "number" && Number.isFinite(score) ? String(Math.round(score)) : "";
+  // No score, no cell: the row then starts where the heading starts.
+  if (!value) return document.createTextNode("");
+  return h("span", { class: "list-score", text: value });
 }
 
-/** Apply method in plain words, the way the person would say it out loud. */
-export const APPLY_METHODS = {
-  quick_apply: "quick apply",
-  easy_apply: "easy apply",
-  external: "external",
-};
-
-// --- Tiny DOM helpers. Nodes only, never an HTML string, so a company name
-// --- or a JD can never become markup.
+// --- Tiny DOM helpers. Nodes only, never an HTML string, so a JD can never become markup.
 export function h(tag, props, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
@@ -123,52 +133,23 @@ export function pageHeader({ title, lede, aside, back } = {}) {
 }
 
 /**
- * Three letter months. en-AU's own short month is "Sept", four letters and out
- * of step with the other eleven, so the UI carries its own table and every date
- * on every screen reads the same way: "17 Sep".
+ * One status line at a time, for four seconds, naming the outcome in the same
+ * words the button used ("Rejected", "Answer banked"). It is `role="status"`
+ * in the markup, so a screen reader hears it without the focus moving.
+ *
+ * A toast is for something that happened. A load that failed is said in place,
+ * with `loadError` below: a toast disappears before the person has read it.
  */
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const asDate = (value) => (value instanceof Date ? value : new Date(value));
-
-/** "17 Sep", or "" when there is no date to say. */
-export function shortDate(value) {
-  const d = asDate(value);
-  return !value || Number.isNaN(d.getTime()) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-}
-
-/** The clock on its own, 24 hour: "08:12". */
-export const clockTime = (value) => (!value || Number.isNaN(asDate(value).getTime()) ? ""
-  : asDate(value).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false }));
-
-/** "Thu 17 Sep", and with the clock when it is asked for. */
-export function dayStamp(value, withTime) {
-  const day = shortDate(value);
-  if (!day) return "";
-  const full = `${asDate(value).toLocaleDateString("en-AU", { weekday: "short" })} ${day}`;
-  return withTime ? `${full}, ${clockTime(value)}` : full;
-}
-
-/** Local time, short: "17 Sep, 08:12". The raw string when it is not a date. */
-export function when(iso) {
-  if (!iso) return "";
-  const d = asDate(iso);
-  return Number.isNaN(d.getTime()) ? String(iso) : `${shortDate(d)}, ${clockTime(d)}`;
-}
-
-/** The person's own day as YYYY-MM-DD, so "sent today" means what they mean. */
-export const localDay = (value) => {
-  const d = value ? new Date(value) : new Date();
-  return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat("en-CA").format(d); // ISO day, browser timezone
-};
-
+const TOAST_MS = 4000;
 let toastTimer = 0;
+
 export function toast(message, tone) {
   const box = $("#toast");
   box.className = tone === "bad" ? "toast bad" : "toast";
   box.textContent = message;
   box.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { box.hidden = true; }, tone === "bad" ? 8000 : 4000);
+  toastTimer = setTimeout(() => { box.hidden = true; }, TOAST_MS);
 }
 
 // --- Token and fetch ---
@@ -194,8 +175,13 @@ export class ApiError extends Error {
   }
 }
 
-/** Fetch /api/... relative to the page, so the UI works on whatever host and
- * port the local server picked. A pasted token goes out as a bearer header. */
+/**
+ * Fetch an API route. The path is absolute (`/api/...`), not relative: the
+ * server serves the shell for every extensionless path, so on a deep address
+ * like `#/row/abc` a relative `api/...` resolved against the wrong base and
+ * every call came back as the HTML shell. A pasted token goes out as a bearer
+ * header.
+ */
 export async function api(path, options) {
   const opts = options || {};
   const headers = { Accept: "application/json" };
@@ -204,7 +190,7 @@ export async function api(path, options) {
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   let response;
   try {
-    response = await fetch(`api/${path.replace(/^\/?api\/?/, "").replace(/^\//, "")}`, {
+    response = await fetch(`/api/${path.replace(/^\/?api\/?/, "").replace(/^\//, "")}`, {
       method: opts.method || "GET",
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -225,131 +211,24 @@ export async function api(path, options) {
   return data;
 }
 
-// --- Minimal markdown: paragraphs for letters, plus headings, lists and
-// --- preformatted tables for the journal. Text nodes only.
-export function paragraphs(source) {
-  const out = [];
-  for (const block of String(source).replace(/\r\n/g, "\n").split(/\n{2,}/)) {
-    const lines = block.split("\n").filter((line) => line.trim() !== "");
-    if (!lines.length) continue;
-    const p = h("p", {});
-    lines.forEach((line, i) => { if (i) p.append(h("br", {})); p.append(document.createTextNode(line.trim())); });
-    out.push(p);
-  }
-  return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
-}
+// --- Markdown, and the shapes a package field can arrive in ---
 
-export function richMarkdown(source) {
-  const lines = String(source).replace(/\r\n/g, "\n").split("\n");
-  const out = [];
-  let list = null, table = null, para = [];
-  const flushPara = () => { if (para.length) { out.push(...paragraphs(para.join("\n"))); para = []; } };
-  const flushList = () => { if (list) { out.push(list); list = null; } };
-  // A markdown table renders as preformatted text rather than as a grid.
-  const flushTable = () => { if (table) { out.push(h("pre", { text: table.join("\n") })); table = null; } };
-  const flushAll = () => { flushPara(); flushList(); flushTable(); };
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, "");
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
-    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-    // A table line is collected until the block ends; see flushTable.
-    if (line.trim().startsWith("|")) { flushPara(); flushList(); (table = table || []).push(line); continue; }
-    flushTable();
-    if (heading) { // h1 is the view title, so a document heading starts at h2
-      flushAll();
-      out.push(h(`h${Math.min(3, heading[1].length + 1)}`, { text: heading[2].trim() }));
-      continue;
-    }
-    if (bullet || numbered) {
-      flushPara();
-      (list = list || h("ul", {})).append(h("li", { text: (bullet ? bullet[1] : numbered[1]).trim() }));
-      continue;
-    }
-    flushList();
-    if (line.trim() === "") flushPara();
-    else para.push(line);
-  }
-  flushAll();
-  return out.length ? out : [h("p", { class: "grey", text: "(empty)" })];
-}
+// --- Controls, confirmation and the states a screen shows while it waits ---
 
-/** Package fields arrive as strings or as objects; show something either way. */
-export function asText(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
-}
-
-// --- Errors ---
-
-/** Errors say what happened and what to do about it. */
-export function errorBox(error, what, retry) {
-  const box = h("div", { class: "error" });
-  const unauthorised = error instanceof ApiError && (error.status === 401 || error.status === 403);
-  box.append(h("p", { text: unauthorised
-    ? `${what} The server refused it. Open Settings from the header, paste the token, then try again.`
-    : `${what} ${error.message}` }));
-  if (retry) box.append(h("button", { type: "button", class: "btn", text: "Try again", onClick: retry }));
-  return box;
-}
-
-/** Fetch for a view: on failure the host says what happened and offers a retry,
- * and null tells the caller to stop. The host is cleared either way. */
-export async function fetchInto(host, path, what) {
-  try {
-    const data = await api(path);
-    clear(host);
-    return data;
-  } catch (error) {
-    clear(host);
-    host.append(errorBox(error, what, () => render()));
-    return null;
-  }
-}
-
-// --- Inline confirm: the first press arms the button, a second press within
-// --- the window commits. No browser dialogs anywhere.
-
-const ARM_WINDOW_MS = 6000;
-let armed = null;
-
-export function disarm() {
-  if (!armed) return;
-  clearTimeout(armed.timer);
-  armed.button.classList.remove("armed");
-  armed.button.textContent = armed.restore;
-  armed.button.setAttribute("aria-label", armed.restore);
-  armed = null;
-}
-
-/**
- * Wire a button so the first press arms it and the second runs `run`, which is
- * only ever reached from a second, deliberate press. `label` is the verb the
- * armed state confirms ("Confirm turn off"); `restore` is what the button says
- * when it is not armed, which for a switch is not the same string.
+/*
+ * The inline confirm, the busy button, the placeholder rows, the load-error
+ * box and the 401 route all live in controls.js and are exported again here,
+ * because app.js is what every screen imports from.
  */
-export function guarded(button, label, run, restore) {
-  const resting = restore === undefined ? label : restore;
-  button.addEventListener("click", () => {
-    if (armed && armed.button === button) {
-      disarm();
-      run();
-      return;
-    }
-    disarm();
-    armed = { button, restore: resting, timer: setTimeout(() => { disarm(); }, ARM_WINDOW_MS) };
-    button.classList.add("armed");
-    button.textContent = `Confirm ${label.toLowerCase()}`;
-    button.setAttribute("aria-label", `Confirm ${label.toLowerCase()}. Press again to apply.`);
-    button.focus();
-  });
-  return button;
-}
+import {
+  askForToken, busy, confirmButton, disarm, errorBox, fetchInto, guarded, isUnauthorised, loadError,
+  placeholderRows, TOKEN_FOCUS_KEY, TOKEN_PROMPT,
+} from "./controls.js";
 
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") disarm();
-});
+export {
+  askForToken, busy, confirmButton, disarm, errorBox, fetchInto, guarded, isUnauthorised, loadError,
+  placeholderRows, TOKEN_FOCUS_KEY, TOKEN_PROMPT,
+};
 
 // --- Summary and policy: read once per render, shared by every screen ---
 
@@ -394,27 +273,70 @@ async function postPolicy(path, enabled) {
  * without the person, so turning it on or off is an armed, two-press action,
  * and the state on the button is re-read from the server after every change.
  */
+/**
+ * The header switch. AGENTS.md section 2: autopilot is the lane that sends
+ * without the person, so turning it on or off is an armed, two-press action,
+ * and the state on the button is re-read from the server after every change.
+ *
+ * The state is in words, with today's cap beside it, because "Autopilot" alone
+ * never answered the question the person actually has in the morning: how much
+ * of today's allowance has already gone out. With the kill switch on nothing
+ * sends whatever this button says, so the button says that instead and refuses
+ * to be pressed.
+ */
+export function switchParts(policy, summary) {
+  if (!policy) return { state: "Autopilot unavailable", tally: "" };
+  if (policy.kill_switch === true) return { state: "Kill switch on", tally: "" };
+  const sent = summary && typeof summary.sent_today === "number" ? summary.sent_today : 0;
+  const cap = typeof policy.max_per_day === "number" ? policy.max_per_day : null;
+  return {
+    state: `Autopilot ${policy.autopilot_enabled ? "on" : "off"}`,
+    tally: cap === null ? `, ${sent} today` : `, ${sent} of ${cap} today`,
+  };
+}
+
+/** The same thing as one string, for a title and an accessible name. */
+export function switchLabel(policy, summary) {
+  const { state, tally } = switchParts(policy, summary);
+  return `${state}${tally}`;
+}
+
+/** The state in words, with the cap in a span a phone drops. */
+function switchText(policy, summary) {
+  const { state, tally } = switchParts(policy, summary);
+  return [state, tally ? h("span", { class: "switch-tally", text: tally }) : null];
+}
+
 function autopilotSwitch(onChange) {
   const slot = $("#autopilot-slot");
   if (!slot) return;
   clear(slot);
   if (!policyAvailable || !policy) {
     slot.append(h("button", {
-      type: "button", class: "switch unknown", disabled: true,
+      type: "button", class: "switch btn unknown", disabled: true,
       title: "policy API unavailable", "aria-label": "Autopilot, policy API unavailable",
       text: "Autopilot unavailable",
     }));
     return;
   }
-  // The dot carries the state, so the label is just the word. A screen reader
-  // gets the state and the consequence in the aria-label instead.
   const on = policy.autopilot_enabled === true;
-  const resting = "Autopilot";
+  const killed = policy.kill_switch === true;
+  const resting = switchLabel(policy, summary);
+  // The kill switch is the brake and it lives on Settings. While it is on the
+  // header may not pretend autopilot is a live choice.
+  if (killed) {
+    slot.append(h("button", {
+      type: "button", class: "switch btn off", disabled: true,
+      title: "The kill switch halts every unattended send. Turn it off on Settings.",
+      "aria-label": "Kill switch on. Nothing sends unattended. Turn it off on Settings.",
+    }, switchText(policy, summary)));
+    return;
+  }
   const button = h("button", {
-    type: "button", class: on ? "switch on" : "switch off", "aria-pressed": on ? "true" : "false",
-    "aria-label": `Autopilot ${on ? "on" : "off"}. Press to turn ${on ? "off" : "on"}.`,
-    title: on ? "Turn autopilot off" : "Turn autopilot on", text: resting,
-  });
+    type: "button", class: on ? "switch btn on" : "switch btn off", "aria-pressed": on ? "true" : "false",
+    "aria-label": `${resting}. Press to turn autopilot ${on ? "off" : "on"}.`,
+    title: on ? "Turn autopilot off" : "Turn autopilot on",
+  }, switchText(policy, summary));
   const note = h("span", { class: "switch-note grey small" });
   guarded(button, on ? "Turn off" : "Turn on", async () => {
     button.disabled = true;
@@ -440,47 +362,104 @@ function markNav(route) {
 
 // --- Router ---
 
-/** `#/applications/sent` into `{ name: "applications", id: "sent" }`. */
+/**
+ * `#/pipeline/needs?channel=seek&min=60` into its three parts. The query is
+ * URL state, not module state: a deep link lands on exactly the list the
+ * person shared, and the back button walks the filters as well as the screens
+ * (the redesign brief, section 3, principle 4).
+ */
 function splitHash(hash) {
-  const [name, ...rest] = String(hash).replace(/^#\/?/, "").split("/");
-  return { name, id: rest.length ? decodeURIComponent(rest.join("/")) : "" };
+  const raw = String(hash).replace(/^#\/?/, "");
+  // A second `#` names a fragment inside the screen (a group heading), and
+  // is never part of the id: `#/pipeline/needs#open_portal?min=60`.
+  const frag = raw.indexOf("#");
+  const body = frag === -1 ? raw : raw.slice(0, frag);
+  const tail = frag === -1 ? "" : raw.slice(frag + 1);
+  const cut = body.indexOf("?");
+  const path = cut === -1 ? body : body.slice(0, cut);
+  let search = cut === -1 ? "" : body.slice(cut + 1);
+  let fragment = tail;
+  const tailCut = tail.indexOf("?");
+  if (tailCut !== -1) { fragment = tail.slice(0, tailCut); search = search || tail.slice(tailCut + 1); }
+  const [name, ...rest] = path.split("/");
+  return { name, id: rest.length ? decodeURIComponent(rest.join("/")) : "", query: new URLSearchParams(search), fragment: decodeURIComponent(fragment) };
+}
+
+/** `#/pipeline/needs` and `#/pipeline/needs?sort=score` are the one address. */
+function addressOf(route, id, query) {
+  const qs = query instanceof URLSearchParams ? query.toString() : String(query || "");
+  return `#/${route}${id ? `/${encodeURIComponent(id)}` : ""}${qs ? `?${qs}` : ""}`;
 }
 
 export function parseHash() {
-  let { name, id } = splitHash(location.hash || "#/home");
+  let { name, id, query, fragment } = splitHash(location.hash || "#/today");
   const moved = REDIRECTS[name];
   if (moved) {
-    // Only the applications tabs carry a segment worth keeping; the other old
+    // Only the board tabs carry a segment worth keeping; the other old
     // addresses had none, so they land on the new screen's own default.
-    const target = id && name === "queue" ? `${moved}/${encodeURIComponent(id)}` : moved;
+    const keepsSegment = name === "queue" || name === "applications" || name === "home";
+    const qs = query.toString();
+    const target = `${moved}${id && keepsSegment ? `/${encodeURIComponent(id)}` : ""}${qs ? `?${qs}` : ""}`;
     history.replaceState(null, "", target);
-    ({ name, id } = splitHash(target));
+    ({ name, id, query, fragment } = splitHash(target));
   }
-  const route = !name || !ROUTES.includes(name) ? "home" : name;
-  return { route, id };
+  const route = !name || !ROUTES.includes(name) ? "today" : name;
+  return { route, id, query, fragment };
+}
+
+/**
+ * Change the hash query without changing the screen, and without a reload
+ * loop: `replaceState` fires no hashchange, so the one re-render is the one
+ * asked for here. A key set to null, undefined or "" is dropped rather than
+ * written as empty. Returns false when the address was already what was asked
+ * for, so a caller can tell a real change from a no-op.
+ */
+export function setQuery(patch, options) {
+  const { route, id, query } = parseHash();
+  const next = new URLSearchParams(query);
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value === null || value === undefined || value === "") next.delete(key);
+    else next.set(key, String(value));
+  }
+  const target = addressOf(route, id, next);
+  if (target === (location.hash || "")) return false;
+  history.replaceState(null, "", target);
+  if (!options || options.render !== false) render();
+  return true;
 }
 
 let renderToken = 0;
+/** The screen the person was last on, so scroll is reset when they move
+ * screens and left alone when only a filter changed. */
+let lastPlace = null;
 
 export async function render() {
   disarm();
   const mine = ++renderToken;
-  const { route, id } = parseHash();
-  markNav(route === "row" ? "applications" : route);
+  const { route, id, query } = parseHash();
+  markNav(route === "row" ? "pipeline" : route);
+  closeMenu();
+  const place = `${route}/${id}`;
+  if (place !== lastPlace) {
+    window.scrollTo(0, 0);
+    lastPlace = place;
+  }
   const view = $("#view");
   clear(view);
-  await Promise.all([loadSummary(), loadPolicy()]);
+  view.dataset.route = route;
+  await Promise.all([loadSummary(), loadPolicy(), loadShellHealth()]);
   if (mine !== renderToken) return;
+  renderShellStatus();
   autopilotSwitch(() => render());
   try {
     if (route === "row") {
       if (id) await viewRow(view, id);
-      else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the applications list." }));
-    } else if (route === "applications") await viewApplications(view, id);
+      else view.append(h("p", { class: "empty", text: "No row id in the address. Pick one from the pipeline." }));
+    } else if (route === "pipeline") await viewApplications(view, id, query);
     // `id` is the Resumes tab: "" is Baselines, "evidence" is the questions.
     else if (route === "resumes") await viewResumes(view, id);
-    else if (route === "rules") await viewRules(view);
-    else if (route === "runs") await viewRuns(view);
+    else if (route === "guardrails") await viewRules(view);
+    else if (route === "runs") await viewRuns(view, id);
     else if (route === "settings") viewSettings(view);
     else await viewHome(view);
   } catch (error) {
@@ -490,10 +469,31 @@ export async function render() {
   }
 }
 
+/*
+ * Under 720 px the five nav links fold behind a Menu button. The button is in
+ * the markup rather than drawn here, so the header is complete before any
+ * script runs; all this does is toggle the one class the stylesheet reads, and
+ * say so in `aria-expanded`.
+ */
+const menuButton = document.getElementById("menu-toggle");
+const navBar = document.getElementById("nav");
+
+export function closeMenu() {
+  if (!menuButton || !navBar) return;
+  navBar.classList.add("closed");
+  menuButton.setAttribute("aria-expanded", "false");
+}
+
+if (menuButton && navBar) {
+  menuButton.addEventListener("click", () => {
+    const open = navBar.classList.toggle("closed") === false;
+    menuButton.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
 window.addEventListener("hashchange", () => {
   document.getElementById("view").focus({ preventScroll: true });
   render();
 });
 
-if (!location.hash) location.hash = "#/home";
+if (!location.hash) location.hash = "#/today";
 render();

@@ -25,10 +25,10 @@
  *     rows that have gone quiet, each with the nudge draft if one was written.
  *     Nothing here sends one (AGENTS.md section 2); it is a clipboard, not an
  *     outbox.
- *   - `POST /api/rows/:id/unpark` and `/outcome` are two status moves the Tray
- *     vocabulary has no word for. Both go through `setStatus`, so the state
- *     machine in tools/pipeline.ts refuses an illegal move and the row keeps
- *     its audit trail.
+ *   - `POST /api/rows/:id/unpark`, `/reopen` and `/outcome` are three status
+ *     moves the Tray vocabulary has no word for. All three go through
+ *     `setStatus`, so the state machine in tools/pipeline.ts refuses an illegal
+ *     move and the row keeps its audit trail.
  *   - `POST /api/rows/:id/mark-sent` is the row the harness could not finish:
  *     the person lodged it themselves in the advertiser's portal and says so.
  *     It walks the row to `submitted` through the state machine and leaves the
@@ -62,6 +62,7 @@ import * as keywordsExt from "./keywords-ext-api.ts";
 import { HUNT_SCRIPTS } from "../channels/_interface.ts";
 import { getJob, listJobs, resolveAutopilotCommand, runningJobFor, startJob } from "./jobs.ts";
 import { getPolicy } from "./policy-api.ts";
+import { channelLabel } from "./labels.ts";
 
 /**
  * A letter edited by hand at the person's own machine. `AuditEventType` is
@@ -92,6 +93,8 @@ export type RowAction = {
   /** What the button does, so the front end does not re-read the label. */
   kind:
     | "answer" | "portal" | "retry" | "reject" | "approve" | "unpark" | "outcome" | "decide" | "mark_sent"
+    /** A closed row put back at `discovered`, where it has to earn the queue again. */
+    | "reopen"
     /** The run owns this row: nothing to click, and the note says who is doing what. */
     | "in_flight"
     /** The submission gate refused it on policy; a retry would hit the same gate. */
@@ -131,6 +134,15 @@ const action = (patch: Partial<RowAction>): RowAction => ({ ...NONE, also: [], .
 
 /** Rows that are finished, or in flight in a way a button cannot help. */
 const NO_ACTION = new Set(["submitted", "won", "rejected", "withdrawn", "submission_pending"]);
+
+/**
+ * The two exits a person may undo. A reopen posts the Tray's `reopen`, which
+ * puts the row back at `discovered`; it earns `shortlisted` again or it does
+ * not (docs/pipeline-state-machine.md). It is derived here, once, so the
+ * Pipeline's Closed segment and the row page's decision card offer the same
+ * button rather than each deciding for itself which rows are reopenable.
+ */
+const REOPENABLE = new Set(["rejected", "withdrawn"]);
 
 /** The reason patterns the daily run writes when it parks a row on a human. */
 const UNANSWERED_QUESTION = /screening question|unanswered question|question is not in/i;
@@ -222,14 +234,36 @@ export function laneFor(row: { channel?: string | null; applyMethod?: string | n
 const isExternal = (row: ActionRow, reason: string): boolean =>
   String(row.applyMethod ?? "") === "external" || EXTERNAL_PORTAL.test(reason);
 
-/** "I applied myself", the only way an external row ever reaches `submitted`. */
-const markSentButton = (): RowAction => action({ kind: "mark_sent", label: "I applied myself" });
+/** The only way an external row ever reaches `submitted`: the person lodged it
+ * in the advertiser's own portal and says so. The label is the outcome, in the
+ * words docs/ui-redesign-2026-09-18.md section 7 fixes. */
+const markSentButton = (): RowAction => action({ kind: "mark_sent", label: "Mark as applied" });
 
-/** A duplicate is a decision, not an action: drop this one, or send it anyway. */
-const decideButtons = (): RowAction[] => [
-  action({ kind: "reject", label: "Reject", post: "reject", danger: true }),
-  action({ kind: "retry", label: "Retry", post: "retry" }),
+/**
+ * A duplicate is a decision, not an action, and on this harness there is only
+ * one decision to take: drop it.
+ *
+ * "Send anyway" is deliberately absent. `tools/submission-gate.ts` has no
+ * override for its dedup check: `EvaluateOpts` carries no `duplicateOverride`
+ * field, and the only thing that skips the check is `userSaved` on the
+ * autopilot lane, which is the person saving the job on the channel rather
+ * than a button here. A retry would walk the row to `approved`, hit the same
+ * `duplicate` verdict and come back parked with the same note, so offering it
+ * would be a button that undoes itself (the brief, section 3, principle 6).
+ */
+const duplicateButtons = (): RowAction[] => [
+  action({ kind: "reject", label: "Reject as duplicate", post: "reject", danger: true }),
 ];
+
+/**
+ * The statuses a `retry` is legal from. A retry posts the Tray's `retry`,
+ * which is a move to `approved`, and VALID_TRANSITIONS in tools/pipeline.ts
+ * allows that from exactly these two. The letter-blocked and duplicate
+ * derivations used to run before the status branches, so a `shortlisted` or
+ * `parked` row whose reason mentioned a letter block was offered a Retry the
+ * state machine then refused with a 409.
+ */
+const RETRY_LEGAL_FROM = new Set(["manual_action_needed", "awaiting_approval"]);
 
 /**
  * The statuses a row passes through while a run is carrying it. On the
@@ -269,13 +303,9 @@ const holdOrReject = (): RowAction[] => [
  */
 const POLICY_REFUSAL = /validation gate failed|is not on autopilot|not in autopilot|daily cap reached/i;
 
-/** A channel key as the person would say it, for the sentences below. The same
- * two special cases the board's `channelLabel` has, and title case for the rest. */
-const CHANNEL_NAMES: Record<string, string> = { seek: "SEEK", [LINKEDIN]: "LinkedIn" };
-const channelName = (channel: string): string => CHANNEL_NAMES[channel]
-  ?? (channel
-    ? channel.split(/[_\s-]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
-    : "the channel");
+/** A channel key as the person would say it, for the sentences below. One
+ * table for the whole harness: tools/ui/labels.ts, mirrored in app.js. */
+const channelName = (channel: string): string => channelLabel(channel) || "the channel";
 
 /**
  * Which policy refused it, and what the person can do about that one. The order
@@ -344,6 +374,7 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
       note: `The daily run drafts, checks and sends this through ${adapterFor(String(row.channel ?? ""))}. Nothing needed from you.`,
     });
   }
+  if (REOPENABLE.has(status)) return action({ kind: "reopen", label: "Reopen", post: "reopen" });
   if (NO_ACTION.has(status)) return NONE;
   // External first, and whatever the reason says afterwards: there is no button
   // on this machine that can finish someone else's portal.
@@ -365,9 +396,16 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
       ],
     });
   }
-  if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer", primary: true });
-  if (DUPLICATE.test(text)) return action({ kind: "decide", label: "", also: decideButtons() });
-  if (LETTER_BLOCKED.test(text)) return action({ kind: "retry", label: "Retry", post: "retry" });
+  // The label names what will happen, not what the person is being asked for:
+  // banking the answer is what lets the run finish the row (section 7).
+  if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer and retry", primary: true });
+  // Both of these end in a `retry`, so both are offered only where a retry is
+  // legal. On any other status the row falls through to its status branch and
+  // says what it is actually doing.
+  if (DUPLICATE.test(text) && RETRY_LEGAL_FROM.has(status)) {
+    return action({ kind: "decide", label: "", also: duplicateButtons() });
+  }
+  if (LETTER_BLOCKED.test(text) && RETRY_LEGAL_FROM.has(status)) return action({ kind: "retry", label: "Retry", post: "retry" });
   // Only here is an approval a real decision: on this lane nothing goes out
   // until the person is present and sends it themselves.
   if (status === "awaiting_approval") {
@@ -451,6 +489,14 @@ export type RowSummaryWithAction = RowSummary & {
   lane_reason: string;
   /** True when this row is waiting on the person rather than on a run. */
   needs_you: boolean;
+  /**
+   * Which of the four Needs you groups the row belongs in, or null when it
+   * needs the person for something outside them. The Pipeline screen groups
+   * the Needs you segment by this field rather than re-reading the reason
+   * text, so a heading, a Today count and the row's own button can never
+   * disagree about what the row needs.
+   */
+  needs_you_group: NeedsYouGroup | null;
 };
 
 export type RowsCounts = { needs_you: number; in_flight: number };
@@ -463,13 +509,45 @@ export type RowsCounts = { needs_you: number; in_flight: number };
  * whole point of the lane: `GET /api/rows?status=awaiting_approval` on a SEEK
  * row counts as nothing to do.
  */
-const needsYou = (action: RowAction): boolean => action.kind !== "in_flight" && action.kind !== "none";
+export const needsYou = (action: RowAction): boolean => action.kind !== "in_flight" && action.kind !== "none";
+
+/**
+ * Which of the four Needs you groups a row belongs in
+ * (docs/ui-redesign-2026-09-18.md, section 4: answer a question, decide, open
+ * a portal, waiting on a redraft). This is the classification `actionFor`
+ * already made, read back off the action rather than derived a second time
+ * from the reason text: Today's group counts, the Pipeline group headings and
+ * the row's own button can then never disagree about what a row needs.
+ *
+ * A row that needs the person for something outside those four (an approval,
+ * an unpark, the next rung of a response ladder) is still `needsYou`; it just
+ * has no group on Today, which lists those four and nothing else.
+ */
+export type NeedsYouGroup = "answer_question" | "decide" | "open_portal" | "waiting_redraft";
+
+const NEEDS_YOU_GROUPS: Partial<Record<RowAction["kind"], NeedsYouGroup>> = {
+  answer: "answer_question",
+  decide: "decide",
+  // The gate refused it on policy: nothing to retry, so what is left is a
+  // decision about the row itself.
+  gate_refused: "decide",
+  portal: "open_portal",
+  mark_sent: "open_portal",
+  // A retry is the run being asked for another letter, which is what the
+  // person is waiting on rather than something they do.
+  retry: "waiting_redraft",
+};
+
+export function needsYouGroup(action: RowAction): NeedsYouGroup | null {
+  if (!needsYou(action)) return null;
+  return NEEDS_YOU_GROUPS[action.kind] ?? null;
+}
 
 export async function getRowsWithActions(
   query: { status?: string | null; limit?: string | null; q?: string | null; channel?: string | null },
   ctx: ApiContext = {},
-): Promise<{ rows: RowSummaryWithAction[]; counts: RowsCounts }> {
-  const { rows } = await getRows(query, ctx);
+): Promise<{ rows: RowSummaryWithAction[]; counts: RowsCounts; total: number }> {
+  const { rows, total } = await getRows(query, ctx);
   // One policy read for the whole list: the lane is the same fact for every row
   // in the response, and re-reading the YAML per row would be a lie waiting to
   // happen if someone flipped a switch mid-request.
@@ -477,7 +555,14 @@ export async function getRowsWithActions(
   const decorated = rows.map((row) => {
     const { lane, lane_reason } = laneFor(row, policy);
     const derived = actionFor(row, row.reason, lane);
-    return { ...row, action: derived, lane, lane_reason, needs_you: needsYou(derived) };
+    return {
+      ...row,
+      action: derived,
+      lane,
+      lane_reason,
+      needs_you: needsYou(derived),
+      needs_you_group: needsYouGroup(derived),
+    };
   });
   return {
     rows: decorated,
@@ -485,6 +570,9 @@ export async function getRowsWithActions(
       needs_you: decorated.filter((row) => row.needs_you).length,
       in_flight: decorated.filter((row) => row.action.kind === "in_flight").length,
     },
+    // How many rows matched before the limit, so the list header can say
+    // "Showing 30 of 90" rather than disagree with the tab above it.
+    total,
   };
 }
 
@@ -569,6 +657,41 @@ export function normaliseCritic(critic: unknown): unknown {
   return { ...(critic as Record<string, unknown>), findings: normalised };
 }
 
+/**
+ * The submission gate's own verdict on this row, when the archive holds one.
+ *
+ * Quoted, never inferred (the brief, section 3, principle 3; AGENTS.md section
+ * 8). A row reads `submitted` because it was sent, which says nothing about
+ * what the gate found on the way, and `manual_action_needed` says nothing about
+ * which gate stopped it. So this reads a file or returns null, and the screen
+ * shows "not run" for null.
+ *
+ * Note, 2026-09-18: `tools/autopilot-submit.ts` prints its gate decision as
+ * part of the JSON summary on stdout and does not write it into the package,
+ * so on this machine the answer is null until the tool records one. The reader
+ * accepts either name a recorder might use and the field names the gate's own
+ * `GateDecision` carries.
+ */
+export type RecordedGate = { verdict: string; reason: string | null; at: string | null };
+
+export async function recordedGate(dir: string | null): Promise<RecordedGate | null> {
+  if (!dir) return null;
+  for (const name of ["submission-gate.json", "gate.json"]) {
+    const raw = await readJsonIfPresent(path.join(dir, name));
+    if (!raw || typeof raw !== "object") continue;
+    const file = raw as Record<string, unknown>;
+    const nested = (file.gate && typeof file.gate === "object" ? file.gate : file) as Record<string, unknown>;
+    const verdict = firstString(nested.action, nested.verdict, nested.decision);
+    if (!verdict) continue;
+    return {
+      verdict,
+      reason: firstString(nested.reason, nested.detail) || null,
+      at: firstString(nested.at, nested.decided_at, nested.timestamp, file.at) || null,
+    };
+  }
+  return null;
+}
+
 export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
   const detail = await getRowDetail(id, ctx);
   const policy = await getPolicy({ profileId: ctx.profileId ?? null });
@@ -589,12 +712,16 @@ export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
     package: { ...pkg, letter_critic: normaliseCritic(pkg.letter_critic) },
     package_dir: dir,
     package_files: await filesPresent(dir),
+    // Verdicts that are not in the package's own files, each quoted off a
+    // recorded one or null. Null means not run, and is never read as a pass.
+    gates: { submission_gate: await recordedGate(dir) },
     // A redraft the person asked for is pending work on this row, so it belongs
     // beside the letter it is about rather than only in the row's history.
     redraft_requested: (detail.row as { redraftRequested?: unknown }).redraftRequested ?? null,
     lane,
     lane_reason,
     needs_you: needsYou(derived),
+    needs_you_group: needsYouGroup(derived),
     action: derived,
   };
 }
@@ -691,6 +818,17 @@ const trimmed = (value: unknown): string => (typeof value === "string" ? value.t
 export async function postUnpark(id: string, body: { reason?: unknown } = {}) {
   const reason = trimmed(body.reason);
   return move(id, "shortlisted", reason ? `ui: unpark (${reason})` : "ui: unpark");
+}
+
+/**
+ * A closed row the person is putting back in front of the hunt. It re-enters
+ * at `discovered` and has to earn `shortlisted` again, exactly as
+ * docs/pipeline-state-machine.md says: a reopen is not a promotion, it is an
+ * undo. `setStatus` refuses it on anything that is not rejected or withdrawn.
+ */
+export async function postReopen(id: string, body: { reason?: unknown } = {}) {
+  const reason = trimmed(body.reason);
+  return move(id, "discovered", reason ? `ui: reopen (${reason})` : "ui: reopen");
 }
 
 /** What happened after a submission, recorded by the person who heard it. */
@@ -878,8 +1016,21 @@ export async function postRedraft(id: string, body: { reason?: unknown } = {}): 
 
 /** The two statuses a retry may start from. */
 const RETRY_FROM = ["manual_action_needed", "approved"] as const;
-/** The one-click apply methods `autopilot-submit` has an adapter for. */
-const ONE_CLICK = ["quick_apply", "easy_apply"] as const;
+
+/**
+ * The apply method to judge a row by when the row does not carry one.
+ *
+ * A SEEK ad is imported without an `applyMethod`: the channel has exactly one
+ * adapter behind it and it is Quick Apply, so an unrecorded method there is
+ * not an unknown row, it is a Quick Apply row nobody wrote the field on. Keying
+ * the retry off the stored method refused every SEEK row on this machine with
+ * a 409 about a field the person has never seen.
+ */
+function effectiveApplyMethod(row: { channel?: string | null; applyMethod?: string | null }): string {
+  const method = String(row.applyMethod ?? "").trim();
+  if (method) return method;
+  return String(row.channel ?? "") === "seek" ? "quick_apply" : "";
+}
 
 export type RetryNowResult = { ok: true; id: string; job_id: string; command: string; status_before: PipelineStatus };
 
@@ -896,18 +1047,22 @@ export type RetryNowResult = { ok: true; id: string; job_id: string; command: st
 export async function postRetryNow(id: string, ctx: ApiContext = {}): Promise<RetryNowResult> {
   const row = await getOpportunity(id);
   if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
-  const method = String(row.applyMethod ?? "unknown");
-  if (!(RETRY_FROM as readonly string[]).includes(row.status) || !(ONE_CLICK as readonly string[]).includes(method)) {
-    throw new ApiError(409, `retry runs the autopilot lane only: this row is ${row.status} with applyMethod '${method}', and the lane is ${RETRY_FROM.join(" or ")} with ${ONE_CLICK.join(" or ")}`);
+  if (!(RETRY_FROM as readonly string[]).includes(row.status)) {
+    throw new ApiError(409, `a retry starts from a row the run stopped on, or one you approved: this row is ${row.status}, and a retry runs from ${RETRY_FROM.join(" or ")}`);
   }
 
   const policy = await getPolicy({ profileId: ctx.profileId ?? null });
   if (policy.kill_switch) throw new ApiError(409, `the kill switch is on in ${policy.path}; nothing sends until it is off`);
   if (!policy.autopilot_enabled) throw new ApiError(409, `autopilot is off in ${policy.path}; turn it on before retrying a send`);
-  // The same derivation the list and the detail show, so a row the board calls
-  // attended can never be sent from this button either.
-  const lane = laneFor(row, policy);
-  if (lane.lane !== "autopilot") throw new ApiError(409, `retry runs the autopilot lane only: ${lane.lane_reason}`);
+  // The lane, and only the lane. This used to ask for an `applyMethod` in
+  // {quick_apply, easy_apply}, which is a field SEEK rows do not carry, so
+  // every SEEK retry was refused. `laneFor` is the one derivation the list,
+  // the row page and this button all read, so a row the board calls attended
+  // can never be sent from here either (AGENTS.md section 2).
+  const lane = laneFor({ channel: row.channel, applyMethod: effectiveApplyMethod(row) || null }, policy);
+  if (lane.lane !== "autopilot") {
+    throw new ApiError(409, `a retry runs the autopilot lane only, and this row is on the attended lane: ${lane.lane_reason}. Send it yourself in an attended session.`);
+  }
 
   const running = runningJobFor(id);
   if (running) throw new ApiError(409, `a retry is already running for ${id} (job ${running.id}, started ${running.started_at})`);
@@ -969,6 +1124,12 @@ export async function handle(req: ApiRequest, ctx: ApiContext): Promise<ApiResul
   if (unpark) {
     if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
     return { status: 200, body: await postUnpark(decodeURIComponent(unpark[1]), (req.body ?? {}) as { reason?: unknown }) };
+  }
+
+  const reopen = pathname.match(/^\/api\/rows\/([^/]+)\/reopen$/);
+  if (reopen) {
+    if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+    return { status: 200, body: await postReopen(decodeURIComponent(reopen[1]), (req.body ?? {}) as { reason?: unknown }) };
   }
 
   const outcome = pathname.match(/^\/api\/rows\/([^/]+)\/outcome$/);

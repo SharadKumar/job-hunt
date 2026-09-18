@@ -1,0 +1,221 @@
+/* today.css - the morning brief and the work queue under it (#/today).
+   Tokens, type and every shared primitive come from app.css; nothing here
+   introduces a colour, a radius or a shadow of its own.
+
+   The shape the redesign fixed (docs/ui-redesign-2026-09-18.md, sections 4, 6
+   and 7): one column, full width, no cards. The two column card flow that used
+   to be here left a third of the left column empty under a short card, and
+   eight bordered boxes at one visual weight said that a blocked application and
+   a keyword question were the same kind of thing. What is left is a paragraph,
+   three lists and a rhythm of 32 px between them. */
+
+/* --- The sections ------------------------------------------------------- */
+
+/* 32 px between sections, 12 px between a heading and its list, and the
+   hairline is the gap between rows (section 7, Spacing scale). */
+.today-section { margin-top: 32px; }
+
+/* Section heads use the shared .section-head; Today adds the show-all link on the right. */
+.today-head { justify-content: space-between; flex-wrap: wrap; margin-top: 0; }
+
+/* --- The reference lines ------------------------------------------------ */
+
+/* Replies, evidence questions, the last run, the channels, one resume, one
+   critic theme: a name and a value, on one line, with the values aligned in a
+   column so the dates and the counts line up down the page. */
+.today-list { border-top: 1px solid var(--rule); }
+
+.today-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+  color: inherit;
+  text-decoration: none;
+}
+
+/* The whole line is the link, so it may tint; a row carrying a button may not
+   (section 7, List row). */
+a.today-pair:hover { background: var(--wash); text-decoration: none; }
+
+.today-key { min-width: 0; overflow-wrap: anywhere; }
+.today-value { justify-self: end; text-align: right; color: var(--muted); }
+
+/* A count is a number, not a verdict: ink and tabular, never green. */
+.digest-count { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 719px) {
+  /* Under 720 the value drops under its name rather than squeezing into a
+     column two words wide. */
+  .today-pair { grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
+  .today-value { justify-self: start; text-align: left; }
+}
+
+/* The quotation under the greeting: the voice, one size down, with the
+   attribution in the sans and muted so it reads as a footnote. */
+.quote { font-style: italic; margin-top: 4px; }
+.quote-by { font-family: var(--sans); font-style: normal; font-size: 13px; color: var(--muted); }
+
+/* --- Split decision workbench ------------------------------------------ */
+
+.today-workbench {
+  display: grid;
+  grid-template-columns: minmax(320px, 384px) minmax(0, 1fr);
+  margin-top: 24px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+[data-route="today"] .brief {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  max-width: none;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+[data-route="today"] .brief p { margin: 0; }
+
+.today-queue {
+  min-width: 0;
+  padding: 24px 0;
+  background: var(--wash);
+  border-right: 1px solid var(--rule);
+}
+
+.queue-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px 16px;
+}
+
+.queue-head h2 { margin: 0; font-size: 21px; }
+.queue-head .eyebrow { margin-bottom: 4px; }
+.queue-count { color: var(--muted); font-size: 13px; }
+.queue-list { border-top: 1px solid var(--rule); }
+
+.queue-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 96px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--rule);
+  color: inherit;
+  text-decoration: none;
+}
+
+.queue-item:hover { background: var(--paper); text-decoration: none; }
+.queue-item.selected { background: var(--paper); }
+.queue-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+
+.queue-score {
+  display: grid;
+  place-items: center;
+  align-self: start;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--rule);
+  border-radius: 48px;
+  background: var(--paper);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-copy { min-width: 0; display: flex; flex-direction: column; }
+.queue-title { font-weight: 600; }
+.queue-company, .queue-reason, .queue-action { font-size: 13px; color: var(--muted); }
+.queue-company { margin-top: 4px; }
+.queue-reason { margin-top: 8px; color: var(--ink); }
+.queue-action { grid-column: 2; color: var(--you); }
+.queue-more { display: block; padding: 16px 24px 0; font-size: 13px; }
+
+.today-detail { min-width: 0; padding: 32px; }
+.workbench-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.workbench-heading { min-width: 0; }
+.workbench-heading .eyebrow { color: var(--you); }
+.workbench-heading h2 { margin: 0; font-size: 27px; }
+.workbench-facts { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+
+.workbench-fit {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted);
+  font-size: 13px;
+}
+.workbench-fit strong { color: var(--ink); font-size: 27px; font-weight: 600; }
+
+.workbench-timeline { margin-top: 32px; padding: 16px 0 24px; border-bottom: 1px solid var(--rule); }
+.workbench-timeline .timeline { flex-wrap: nowrap; }
+.workbench-timeline .timeline > li { flex: 1 1 0; min-width: 0; }
+.workbench-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--wash);
+  border-radius: 4px;
+}
+.workbench-state p { margin: 0; }
+.state-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 8px; border-radius: 8px; background: var(--you); }
+
+.today-detail .screening-card { margin-top: 24px; }
+.workbench-reason { margin-top: 24px; padding: 16px; border: 1px solid var(--rule); border-radius: 4px; }
+.workbench-reason p:last-child { margin: 0; }
+.workbench-package { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.workbench-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.workbench-section-head h3 { font-family: var(--serif); font-size: 17px; font-weight: 400; }
+.workbench-section-head a { font-size: 13px; }
+.workbench-package .row-gates { margin-top: 16px; }
+.workbench-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.workbench-empty { max-width: var(--measure); margin: 48px auto; text-align: center; }
+.workbench-empty h2 { margin: 0; }
+
+.today-support {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+.today-support .today-section { margin-top: 0; padding: 16px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+.today-support .section-head { margin-top: 0; }
+
+@media (max-width: 959px) {
+  .today-workbench { grid-template-columns: minmax(0, 1fr); }
+  .today-queue { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .today-support { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 719px) {
+  .today-workbench { border-right: 0; border-left: 0; }
+  .today-detail { grid-row: 1; }
+  .today-queue { grid-row: 2; }
+  .queue-head, .queue-item { padding-right: 16px; padding-left: 16px; }
+  .today-detail { padding: 24px 16px; }
+  [data-route="today"] .brief { display: block; }
+  [data-route="today"] .brief p { margin-bottom: 8px; }
+  .workbench-timeline .timeline { flex-wrap: wrap; }
+  .workbench-timeline .timeline > li { flex: 1 1 33%; }
+  .workbench-header { flex-direction: column; gap: 12px; }
+  .workbench-fit { align-items: flex-start; }
+  .workbench-actions { flex-direction: column; }
+  .workbench-actions .btn { width: 100%; }
+  .today-support { gap: 16px; }
+}

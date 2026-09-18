@@ -1,0 +1,168 @@
+/* resumes.css - the CV baselines and the evidence questions
+   (#/resumes, #/resumes/evidence). Tokens, type and every shared primitive
+   come from app.css; nothing here introduces a colour, a radius or a shadow
+   of its own.
+
+   One card per positioning, because a baseline is a distinct object the person
+   opens and approves. Inside it, one verdict per line, and a page fill is a
+   short horizontal bar with the percentage in ink: never red, because a page
+   at 88 percent against a 90 percent floor is worth a look, not a failure.
+
+   Local additions (nothing here belongs in app.css):
+     .fills / .fill      the row of page-fill bars, this screen only
+     .cover              a coverage bar with its label and fraction on one line
+     .verdict-line       a gate, critic or cloud reading, 15 px ink
+     .answers           the four fixed keyword answers under a list row */
+
+/* Two positionings to a row on a desktop, one under 960 px. */
+.resume-grid { grid-template-columns: minmax(0, 1fr); }
+
+@media (min-width: 960px) {
+  .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.resume-grid > p { grid-column: 1 / -1; }
+
+/* The title, the stamp and the one approval this screen offers, on one line. */
+.resume .card-head { align-items: center; }
+.resume .card-head-actions { flex-wrap: wrap; gap: 12px; }
+
+.resume-meta { margin: 0 0 16px; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+
+/* --- Page fill ----------------------------------------------------------- */
+
+.fills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 0 16px;
+}
+
+.fill { margin: 0; flex: 1 1 88px; min-width: 88px; }
+
+.fill-pct {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* app.css gives a bar 16 px of air under it; in this row the caption is the
+   air, so it is taken back here rather than changed for every screen. */
+.fill .bar { margin: 0; }
+
+/* A page under the render's own floor is warned about, never failed. */
+.fill.low .bar span { background: var(--warn); }
+
+.fill figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fill-page { color: var(--muted); text-decoration: none; }
+.fill-page:hover { color: var(--ink); text-decoration: underline; }
+.fill-low { color: var(--warn); }
+
+/* --- Gates, critic, clouds ----------------------------------------------- */
+
+.gates, .critic { margin: 0 0 12px; }
+
+/* One reading, in ink. The verdict colour lives on the pill beside the gate
+   name in the fold, not on the sentence: a tally is not a verdict. */
+.verdict-line { margin: 0 0 4px; font-size: 15px; color: var(--ink); }
+
+.verdict-list { list-style: none; margin: 0; padding: 0; }
+
+.verdict-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.verdict-list li:first-child { border-top: 0; }
+
+.verdict-name { font-size: 13px; color: var(--ink); }
+
+.verdict-why {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+/* --- Keyword coverage ---------------------------------------------------- */
+
+.covers { display: grid; gap: 8px; margin: 0 0 12px; }
+
+/* Label, bar and fraction on the one line: the fraction is the reading and it
+   used to sit above the bar where it read as a caption. */
+.cover {
+  display: grid;
+  grid-template-columns: 96px minmax(64px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.cover .bar { margin: 0; }
+.cover-label { font-size: 13px; color: var(--muted); }
+.cover-count { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* --- Files and approval -------------------------------------------------- */
+
+.resume-files { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+
+/* A file that would not open says so under the buttons, in the server's words. */
+.file-note { margin: 8px 0 0; font-size: 13px; color: var(--fail); max-width: var(--measure); }
+.file-note:empty { display: none; }
+
+.approve { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.approve-note { margin: 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+.approve-note:empty { display: none; }
+.approve-refusal { color: var(--fail); }
+
+/* --- Evidence questions -------------------------------------------------- */
+
+/* The evidence tab's banner: a nudge with a job attached, not an alarm. */
+.triage-banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--warn);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.term-search { max-width: 320px; margin: 0 0 16px; }
+
+.progress-line { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+
+.terms .term-name { font-weight: 600; }
+
+/* The four fixed answers run the width of the row, under the term they answer,
+   rather than squeezing into the action column and orphaning the fourth. */
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@media (max-width: 719px) {
+  /* Two by two rather than three and a stray: a lone full-width bar under
+     three short ones reads as a different measurement. */
+  .fill { flex: 1 1 calc(50% - 8px); }
+
+  .answers .btn, .answers button { flex: 1 1 100%; }
+  .cover { grid-template-columns: minmax(0, 1fr) auto; }
+  .cover .bar { grid-column: 1 / -1; grid-row: 2; }
+}

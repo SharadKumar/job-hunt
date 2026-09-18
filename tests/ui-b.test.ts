@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * ui-b.test.ts — the applications board's server side (tools/ui/rows-ext-api.ts).
+ * ui-b.test.ts: the applications board's server side (tools/ui/rows-ext-api.ts).
  *
  * The front end is vanilla ES modules with no build step, so everything that
  * can be decided on the server is decided on the server and pinned here: which
@@ -125,12 +125,36 @@ await test("actionFor reads the run's own reason before the row's status", () =>
   );
   assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").kind, "retry");
   assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").post, "retry");
-  const duplicate = ext.actionFor({ ...row, status: "shortlisted" }, "Duplicate of LH-07526; another agency represents it");
+  const duplicate = ext.actionFor(row, "Duplicate of LH-07526; another agency represents it");
   assert.equal(duplicate.kind, "decide", "a duplicate is a decision, not a single move");
-  assert.equal(duplicate.primary, false, "neither choice is the default one");
-  assert.deepEqual(duplicate.also.map((a) => a.kind), ["reject", "retry"], "both choices come down already decided");
-  assert.equal(duplicate.also[0].danger, true, "a reject is the destructive weight");
-  assert.equal(duplicate.also[1].post, "retry", "sending it anyway is the other choice");
+  assert.equal(duplicate.primary, false, "there is no default choice on a duplicate");
+  assert.deepEqual(duplicate.also.map((a) => a.label), ["Reject as duplicate"], "the choice comes down already decided");
+  assert.equal(duplicate.also[0].danger, true, "and it carries the destructive weight");
+  assert.ok(!duplicate.also.some((a) => a.post === "retry"),
+    "no Send anyway: tools/submission-gate.ts has no duplicate override, so a retry would hit the same verdict");
+});
+
+await test("a retry is offered only where the state machine allows one", () => {
+  // `retry` posts a move to `approved`, and VALID_TRANSITIONS allows that from
+  // manual_action_needed and awaiting_approval only. The letter-blocked and
+  // duplicate derivations used to run before the status branches, so a
+  // shortlisted or parked row whose note mentioned a letter block was offered
+  // a Retry the state machine then refused with a 409.
+  const letter = "letter-critic block (2 fail): scope wording";
+  const at = (status: string, reason: string, lane?: "autopilot" | "attended") =>
+    ext.actionFor({ id: "seek-2", status, url: "https://example.test/ad", channel: "recruiter" }, reason, lane);
+
+  assert.equal(at("manual_action_needed", letter).kind, "retry", "a blocked row is where a retry belongs");
+  assert.equal(at("awaiting_approval", letter).kind, "retry", "and an approval waiting on a fixed letter");
+  assert.equal(at("shortlisted", letter).kind, "in_flight", "a queued row falls through to what it is actually doing");
+  assert.equal(at("parked", letter).kind, "unpark", "and a parked row to the one move it has");
+  assert.equal(at("drafted", letter).kind, "in_flight");
+
+  const dup = "already submitted to this advertiser within 60 days; needs a user decision";
+  assert.equal(at("manual_action_needed", dup).kind, "decide");
+  assert.equal(at("awaiting_approval", dup).kind, "decide");
+  assert.equal(at("parked", dup).kind, "unpark", "a duplicate note on a parked row is not a decision to take here");
+  assert.equal(at("submitted", dup).kind, "none", "and a sent row is done whatever its note says");
 });
 
 await test("actionFor falls back to the status when the reason says nothing", () => {
@@ -145,9 +169,13 @@ await test("actionFor falls back to the status when the reason says nothing", ()
 await test("a sent row offers nothing, and a reply offers the next rung", () => {
   const at = (status: string) => ext.actionFor({ id: "seek-1", status, url: "https://example.test/ad" }, "SEEK success page confirmed");
   assert.equal(at("submitted").kind, "none", "a sent row is done; there is no button for it");
-  assert.equal(at("rejected").kind, "none");
-  assert.equal(at("withdrawn").kind, "none");
   assert.equal(at("won").kind, "none");
+  // The two exits are the ones a person may undo, and the server says so once,
+  // so the Closed segment and the row page offer the same button.
+  assert.equal(at("rejected").kind, "reopen");
+  assert.equal(at("rejected").post, "reopen");
+  assert.equal(at("withdrawn").label, "Reopen");
+  assert.equal(at("rejected").primary, false, "reopening is not the obvious thing to do with a closed row");
   assert.deepEqual([at("responded").outcome, at("interview").outcome, at("offered").outcome],
     ["interview", "offered", "won"], "a response walks one rung at a time");
 });
@@ -339,6 +367,64 @@ await test("unpark refuses a row that is not parked", async () => {
   assert.match(String((result.body as any).error), /invalid transition/);
 });
 
+await test("reopen is a Tray action as well as a route, and both refuse in words", async () => {
+  // The row page posts the server's own `action.post` to /action; the Pipeline
+  // posts the same thing. One vocabulary, one refusal.
+  const closed = await seed("Delivery Manager", "Reopened Co", ["rejected"], { score: 62 }, "fixed term only");
+  const result = await handleApi({
+    method: "POST", pathname: `/api/rows/${closed}/action`, body: { action: "reopen", reason: "the agency dropped the exclusive" },
+  }, ctx);
+  assert.equal(result.status, 200);
+  assert.equal((result.body as any).status_after, "discovered");
+  const row = (await get(closed))!;
+  assert.match(row.history[row.history.length - 1].reason ?? "", /ui: reopen \(the agency dropped the exclusive\)/);
+
+  const again = await handleApi({ method: "POST", pathname: `/api/rows/${closed}/action`, body: { action: "reopen" } }, ctx);
+  assert.equal(again.status, 409, "a row that is not closed has nothing to reopen");
+  assert.match(String((again.body as any).error), /only a closed row can be reopened: this one is discovered/);
+  assert.ok(!/invalid transition/.test(String((again.body as any).error)), "and it says so in words, not in the transition table's");
+});
+
+await test("reopen puts a closed row back at discovered, with its reason", async () => {
+  const closed = await seed("Integration Architect", "Withdrawn Co", ["rejected"], { score: 58 }, "fixed term only");
+  const result = await handleApi({
+    method: "POST", pathname: `/api/rows/${closed}/reopen`, body: { reason: "they moved it to a contract" },
+  }, ctx);
+  assert.equal(result.status, 200);
+  assert.equal((result.body as any).status_after, "discovered", "a reopen is an undo, not a promotion");
+  const row = (await get(closed))!;
+  const last = row.history[row.history.length - 1];
+  assert.equal(last.from, "rejected");
+  assert.match(last.reason ?? "", /ui: reopen \(they moved it to a contract\)/);
+
+  const again = await handleApi({ method: "POST", pathname: `/api/rows/${closed}/reopen`, body: {} }, ctx);
+  assert.equal(again.status, 409, "a row that is not closed has nothing to reopen");
+  assert.match(String((again.body as any).error), /invalid transition/);
+});
+
+const portalId = await seed("Enterprise Architect", "Portal Co", ["manual_action_needed"], {
+  score: 66, applyMethod: "external",
+}, "[autopilot daily-2026-09-18] external ATS: careers.portal.test");
+
+await test("every row carries the Needs you group the screen heads it under", async () => {
+  const result = await handleApi({
+    method: "GET", pathname: "/api/rows", query: new URLSearchParams({ status: "manual_action_needed,parked" }),
+  }, ctx);
+  const rows = (result.body as any).rows as any[];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  // A letter block is the run being asked for another letter: the person is
+  // waiting on it rather than doing anything about it.
+  assert.equal(byId.get(blockedId)!.needs_you_group, "waiting_redraft");
+  assert.equal(byId.get(portalId)!.needs_you_group, "open_portal", "a portal row is work the person opens");
+  assert.equal(typeof (result.body as any).total, "number", "and the response says how many matched before the limit");
+
+  const capped = await handleApi({
+    method: "GET", pathname: "/api/rows", query: new URLSearchParams({ status: "manual_action_needed,parked", limit: "1" }),
+  }, ctx);
+  assert.equal((capped.body as any).rows.length, 1, "the limit trims the rows");
+  assert.equal((capped.body as any).total, rows.length, "and the total is what the header counts against");
+});
+
 const sentId = await seed("Integration Lead", "Port Authority", ["shortlisted", "drafted", "awaiting_approval", "approved", "submitted"], { score: 70 }, "sent");
 
 await test("outcome walks a submitted row along the response ladder", async () => {
@@ -478,7 +564,7 @@ await test("the rest of the table: unanswered, duplicate, letter block, to appro
   assert.equal(ext.actionFor(row, 'unknown screening question: "How many years"').kind, "answer");
   const dup = ext.actionFor(row, "already submitted to this advertiser within 60 days; needs a user decision");
   assert.equal(dup.kind, "decide");
-  assert.deepEqual(dup.also.map((a) => a.label), ["Reject", "Retry"]);
+  assert.deepEqual(dup.also.map((a) => a.label), ["Reject as duplicate"]);
   assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording").kind, "retry");
   assert.equal(ext.actionFor({ ...row, status: "awaiting_approval" }, "package drafted").kind, "approve");
 });
@@ -662,6 +748,39 @@ async function pollJob(jobId: string, timeoutMs = 20_000): Promise<any> {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+await test("retry reads the lane, not an applyMethod a SEEK row never carries", async () => {
+  writePolicy();
+  // Every SEEK ad on this machine is imported without an applyMethod: the
+  // channel has one adapter and it is Quick Apply. Keying the retry off the
+  // stored field refused all of them with a 409 about a field nobody has seen.
+  const bare = await seed("Enterprise Architect", "Bare Method Co", ["manual_action_needed"], {
+    score: 81, userSaved: true,
+  }, "[autopilot daily-2026-09-18] letter-critic block (1 fail): scope wording");
+  const started = await handleApi({ method: "POST", pathname: `/api/rows/${bare}/retry-now`, body: {} }, ctx);
+  assert.equal(started.status, 200, "a SEEK row with no applyMethod is a Quick Apply row");
+  assert.equal((await get(bare))!.status, "approved");
+  await pollJob((started.body as any).job_id);
+
+  // The attended lane is refused in words, not in field names.
+  const recruiter = await upsert({
+    channel: "recruiter", url: "https://example.test/recruiter/1", title: "Delivery Lead",
+    company: "Agency Co", description: "JD", status: "discovered",
+  });
+  await setStatus(recruiter.id, "manual_action_needed" as never, "unsupported portal");
+  const refused = await handleApi({ method: "POST", pathname: `/api/rows/${recruiter.id}/retry-now`, body: {} }, ctx);
+  assert.equal(refused.status, 409);
+  assert.match(String((refused.body as any).error), /attended lane/);
+  assert.match(String((refused.body as any).error), /channel recruiter is attended/);
+  assert.ok(!/applyMethod/.test(String((refused.body as any).error)), "and it says so without naming a database column");
+  assert.equal((await get(recruiter.id))!.status, "manual_action_needed", "a refused retry moves nothing");
+
+  // A status a retry cannot start from is its own refusal, before the lane.
+  const parked = await seed("Platform Lead", "Parked Co", ["parked"], { score: 60 }, "interstate onsite");
+  const wrongStatus = await handleApi({ method: "POST", pathname: `/api/rows/${parked}/retry-now`, body: {} }, ctx);
+  assert.equal(wrongStatus.status, 409);
+  assert.match(String((wrongStatus.body as any).error), /this row is parked/);
+});
 
 await test("retry approves the row, starts the tool, and the job carries its output", async () => {
   writePolicy();

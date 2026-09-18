@@ -1,6 +1,13 @@
 /*
- * rules.js - the editorial rules every cover letter is checked against, and the
- * one place the person promotes a recurring critic finding into a standing rule.
+ * rules.js - the Guardrails screen (#/guardrails): the editorial rules every
+ * cover letter is checked against, what the critic keeps saying about them, and
+ * the deterministic patterns that stop a client being named.
+ *
+ * Reading order is the order the person needs it in (the brief, section 4):
+ * the rules in force first, because those are what a letter is judged against;
+ * the recurring critic themes second, because those are the rules that are not
+ * written yet; and the machine-readable patterns last, collapsed, because they
+ * are reference and not work.
  *
  * AGENTS.md section 5: recurring findings become rules, and that promotion is
  * an attended decision. So this screen writes, but only here, only on a second
@@ -10,7 +17,9 @@
  * and a regex typed into a browser is a way to quietly stop blocking something.
  */
 
-import { api, clear, errorBox, fetchInto, guarded, h, pageHeader, panel, render, toast } from "./app.js";
+import {
+  api, clear, confirmButton, errorBox, fetchInto, guarded, h, pageHeader, placeholderRows, render, toast,
+} from "./app.js";
 
 /** The noun the digest's verb class reads as. `other` names no class at all. */
 const VERB_NOUNS = {
@@ -52,82 +61,43 @@ export function ruleTextOf(theme) {
 
 const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
 
-/** One recurring theme, with the rule it proposes and the press that lands it. */
-function themeRow(theme) {
-  const row = h("article", { class: "theme" });
-  row.append(h("p", { class: "theme-head" },
-    h("span", { class: "theme-count", text: String(theme.count ?? 0) }),
-    h("span", { class: "theme-title", text: themeTitle(theme.key) })));
-  if (theme.sample) row.append(h("p", { class: "sample", text: theme.sample }));
+const section = (title, body) => h("section", { class: "guard-section" }, h("h2", { text: title }), body);
 
-  const text = ruleTextOf(theme);
-  if (!text) return row;
-  const note = h("p", { class: "grey small" });
-  const promote = h("button", { type: "button", class: "btn", text: "Promote to standing rule" });
-  guarded(promote, "Promote", async () => {
-    promote.disabled = true;
-    clear(note);
-    try {
-      await api("rules/standing", { method: "POST", body: { text, source_theme: theme.key } });
-      toast("Promoted. The critic applies it to the next letter.");
-      render();
-    } catch (error) {
-      promote.disabled = false;
-      note.textContent = error.message;
-    }
-  }, "Promote to standing rule");
-  row.append(h("div", { class: "proposed" }, h("p", { text }), promote), note);
-  return row;
-}
+// --- Standing rules ------------------------------------------------------
 
-/** Card one: what the critic keeps saying, over the last 14 days. */
-function themesCard(digest) {
-  const body = h("div", {});
-  const themes = (digest && digest.themes) || [];
-  body.append(h("p", { class: "grey small",
-    text: `Last 14 days. ${digest.verdicts ?? 0} verdicts, ${digest.blocked ?? 0} blocked.` }));
-  if (!themes.length) {
-    body.append(h("p", { class: "empty", text: "No findings in this window. Nothing to promote." }));
-    return panel("Recurring critic themes", body);
-  }
-  const recurring = themes.filter((theme) => (theme.count ?? 0) >= 2);
-  const singles = themes.filter((theme) => (theme.count ?? 0) < 2);
-  if (recurring.length) for (const theme of recurring) body.append(themeRow(theme));
-  else body.append(h("p", { class: "empty", text: "Nothing has been said twice. A single finding is a letter to fix, not a rule to write." }));
-
-  if (singles.length) {
-    const hidden = h("div", { class: "singles", hidden: true });
-    for (const theme of singles) hidden.append(themeRow(theme));
-    const toggle = h("button", { type: "button", class: "btn",
-      text: `Show ${plural(singles.length, "single finding")}`, "aria-expanded": "false" });
-    toggle.addEventListener("click", () => {
-      const open = hidden.hidden;
-      hidden.hidden = !open;
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
-      toggle.textContent = open ? "Hide the single findings" : `Show ${plural(singles.length, "single finding")}`;
-    });
-    body.append(toggle, hidden);
-  }
-  return panel("Recurring critic themes", body);
-}
-
-/** One standing rule, with the inline editor behind Edit and a guarded Remove. */
+/**
+ * One standing rule as a full-width row: the sentence at the reading measure,
+ * Edit and Remove on its first line, and the editor opening in place under it.
+ */
 function standingRow(text, index) {
-  const row = h("li", { class: "rule-row" });
-  const label = h("p", { class: "rule-text" },
-    h("span", { class: "rule-number", text: `${index + 1}` }),
-    h("span", { text }));
-  const note = h("p", { class: "grey small" });
-  const buttons = h("div", { class: "action-buttons" });
-  const edit = h("button", { type: "button", class: "btn", text: "Edit" });
-  const remove = h("button", { type: "button", class: "btn danger", text: "Remove" });
+  const row = h("div", { class: "list-row rule-row" });
+  const main = h("div", { class: "list-main" });
+  const label = h("p", { class: "rule-text", text });
+  main.append(label);
+  row.append(main);
 
-  const editor = h("div", { class: "rule-editor", hidden: true });
+  const note = h("p", { class: "rule-note" });
+  const editor = h("div", { class: "row-extra rule-editor", hidden: true });
   const area = h("textarea", { rows: "4", "aria-label": `Standing rule ${index + 1}` });
   area.value = text;
-  const save = h("button", { type: "button", class: "btn primary", text: "Save" });
+  const save = h("button", { type: "button", class: "btn btn-primary", text: "Save" });
   const cancel = h("button", { type: "button", class: "btn", text: "Cancel" });
   editor.append(area, h("div", { class: "action-buttons" }, save, cancel));
+
+  const edit = h("button", { type: "button", class: "btn", text: "Edit" });
+  const removal = confirmButton("Remove", "Confirm remove", async () => {
+    removal.button.disabled = true;
+    clear(note);
+    try {
+      await api(`rules/standing/${index}/remove`, { method: "POST", body: {} });
+      toast("Rule removed.");
+      render();
+    } catch (error) {
+      removal.button.disabled = false;
+      note.textContent = error.message;
+    }
+  }, { class: "btn btn-danger" });
+  row.append(h("div", { class: "list-action" }, edit, removal));
 
   const open = (yes) => {
     editor.hidden = !yes;
@@ -151,94 +121,161 @@ function standingRow(text, index) {
       note.textContent = error.message;
     }
   });
-  guarded(remove, "Remove", async () => {
-    remove.disabled = true;
-    clear(note);
-    try {
-      await api(`rules/standing/${index}/remove`, { method: "POST", body: {} });
-      toast("Rule removed.");
-      render();
-    } catch (error) {
-      remove.disabled = false;
-      note.textContent = error.message;
-    }
-  }, "Remove");
 
-  buttons.append(edit, remove);
-  row.append(label, editor, buttons, note);
+  row.append(editor, h("div", { class: "row-extra" }, note));
   return row;
 }
 
-/** Card two: the rules in force, each one editable in place. */
-function standingCard(rules) {
+function standingSection(rules) {
   const body = h("div", {});
   const list = (rules && rules.standing_rules) || [];
   if (!rules.exists) {
     body.append(h("p", { class: "empty",
       text: `No rules file at ${rules.path}. Run the setup skill before editing the rules.` }));
-    return panel("Standing rules", body);
+    return section("Standing rules", body);
   }
-  body.append(h("p", { class: "grey small",
-    text: `${plural(list.length, "rule")} in ${rules.path}. Each breach is a letter-critic fail.` }));
   if (!list.length) {
-    body.append(h("p", { class: "empty", text: "No standing rules yet. Promote a recurring theme above, or write one by hand." }));
-    return panel("Standing rules", body);
+    body.append(h("p", { class: "empty",
+      text: "No standing rules yet. Promote a recurring theme below, or write one into the rules file by hand." }));
+    return section("Standing rules", body);
   }
-  const ul = h("ol", { class: "rules" });
-  list.forEach((text, index) => ul.append(standingRow(text, index)));
-  body.append(ul);
-  return panel("Standing rules", body);
+  body.append(h("p", { class: "guard-lede", text: "Every letter is checked against these. A breach is a letter-critic fail." }));
+  const host = h("div", { class: "list rules" });
+  list.forEach((text, index) => host.append(standingRow(text, index)));
+  body.append(host, h("p", { class: "grey small", text: `Held in ${rules.path}.` }));
+  return section("Standing rules", body);
 }
 
-/** Card three: the deterministic pre-checks, read only, and the CV bans with them. */
-function neverNamedCard(rules) {
-  const body = h("div", {});
-  const patterns = rules.never_named || [];
-  body.append(h("p", { class: "grey small",
-    text: "A match on any line of a letter is a fail before the critic reads a word. Edit these in the file, not here." }));
-  if (!patterns.length) {
-    body.append(h("p", { class: "empty", text: "No never-named patterns. Nothing is blocked by name." }));
-  } else {
-    const ul = h("ul", { class: "patterns" });
-    for (const entry of patterns) {
-      ul.append(h("li", {},
-        h("code", { class: "pattern", text: entry.pattern }),
-        entry.issue ? h("p", { class: "grey small", text: entry.issue }) : null,
-        entry.fix ? h("p", { class: "rule-fix small", text: entry.fix }) : null));
+// --- Recurring critic themes ---------------------------------------------
+
+/** One recurring theme: the name and its count, what the rule would say, the
+ * finding that prompted it as a quotation, and the press that lands it. */
+function themeRow(theme) {
+  const row = h("div", { class: "list-row theme-row" });
+  const main = h("div", { class: "list-main" });
+  main.append(h("p", { class: "list-title", text: themeTitle(theme.key) }));
+  const text = ruleTextOf(theme);
+  if (text) main.append(h("p", { class: "list-reason", text }));
+  if (theme.sample) main.append(h("blockquote", { class: "theme-sample", text: theme.sample }));
+  row.append(main, h("span", { class: "list-score", text: String(theme.count ?? 0) }));
+
+  if (!text) return row;
+  const note = h("p", { class: "rule-note" });
+  const promote = h("button", { type: "button", class: "btn", text: "Promote to standing rule" });
+  guarded(promote, "Promote", async () => {
+    promote.disabled = true;
+    clear(note);
+    try {
+      await api("rules/standing", { method: "POST", body: { text, source_theme: theme.key } });
+      toast("Promoted. The critic applies it to the next letter.");
+      render();
+    } catch (error) {
+      promote.disabled = false;
+      note.textContent = error.message;
     }
-    body.append(ul);
+  }, "Promote to standing rule");
+  row.append(h("div", { class: "list-action" }, promote), h("div", { class: "row-extra" }, note));
+  return row;
+}
+
+function themesSection(digest) {
+  const body = h("div", {});
+  const themes = (digest && digest.themes) || [];
+  body.append(h("p", { class: "guard-lede",
+    text: `Last 14 days: ${plural(digest.verdicts ?? 0, "verdict")}, ${digest.blocked ?? 0} blocked.` }));
+  if (!themes.length) {
+    body.append(h("p", { class: "empty", text: "No findings in this window. Nothing to promote." }));
+    return section("Recurring critic themes", body);
+  }
+  const recurring = themes.filter((theme) => (theme.count ?? 0) >= 2);
+  const singles = themes.filter((theme) => (theme.count ?? 0) < 2);
+  if (recurring.length) {
+    const host = h("div", { class: "list themes" });
+    for (const theme of recurring) host.append(themeRow(theme));
+    body.append(host);
+  } else {
+    body.append(h("p", { class: "empty",
+      text: "Nothing has been said twice. A single finding is a letter to fix, not a rule to write." }));
   }
 
-  const bans = rules.editorial_bans || { rules: [] };
-  body.append(h("h3", { text: "Editorial bans" }));
-  body.append(h("p", { class: "grey small",
-    text: `The mechanical subset of the CV editorial rules, from ${bans.path}. A fail here stops a render.` }));
+  if (singles.length) {
+    const fold = h("details", { class: "disclosure" },
+      h("summary", { text: `${plural(singles.length, "single finding")}` }));
+    const host = h("div", { class: "list themes" });
+    for (const theme of singles) host.append(themeRow(theme));
+    fold.append(host);
+    body.append(fold);
+  }
+  return section("Recurring critic themes", body);
+}
+
+// --- The reference section -----------------------------------------------
+
+/** One never-named entry: what it is for, then the pattern, then the fix. */
+function patternRow(entry) {
+  return h("li", {},
+    entry.issue ? h("p", { class: "ref-what", text: entry.issue }) : h("p", { class: "ref-what", text: "No description in the file." }),
+    h("p", { class: "ref-pattern" }, h("code", { class: "pattern", text: entry.pattern })),
+    entry.fix ? h("p", { class: "ref-fix", text: entry.fix }) : null);
+}
+
+/** One editorial ban, described the same way: words first, machinery after. */
+function banRow(ban) {
+  const what = [ban.note, ban.scope ? `Applies to ${ban.scope}.` : ""].filter(Boolean).join(" ");
+  const machinery = [
+    ban.forbidden && ban.forbidden.length ? ban.forbidden.join(", ") : "",
+    ban.title_must_equal ? `title must read "${ban.title_must_equal}"` : "",
+  ].filter(Boolean).join("; ");
+  return h("li", {},
+    h("p", { class: "ref-what", text: what || ban.id }),
+    machinery ? h("p", { class: "ref-pattern" }, h("code", { class: "pattern", text: machinery })) : null,
+    h("p", { class: "ref-fix", text: `${ban.id}, severity ${ban.severity}.` }));
+}
+
+/**
+ * The machine-readable half, collapsed. Nothing in here is editable and
+ * nothing in here is coloured: a fix line that looks like a link but is not is
+ * the thing the brief, section 6, is fixing.
+ */
+function referenceSection(rules) {
+  const body = h("div", {});
+  const patterns = rules.never_named || [];
+  const bans = rules.editorial_bans || { rules: [], path: "" };
   const banned = bans.rules || [];
-  if (!banned.length) {
-    body.append(h("p", { class: "empty", text: "No editorial bans. Every CV rule is prose the writer has to read." }));
-    return panel("Never named", body);
+
+  const fold = h("details", { class: "disclosure" },
+    h("summary", { text: `Patterns and bans, ${patterns.length + banned.length} in force` }));
+  fold.append(h("p", { class: "guard-lede",
+    text: "A match on any line of a letter is a fail before the critic reads a word." }));
+  if (patterns.length) {
+    const list = h("ul", { class: "patterns" });
+    for (const entry of patterns) list.append(patternRow(entry));
+    fold.append(list);
+  } else {
+    fold.append(h("p", { class: "grey small", text: "No never-named patterns. Nothing is blocked by name." }));
   }
-  const ul = h("ul", { class: "patterns" });
-  for (const ban of banned) {
-    const meta = [ban.scope, ban.severity].filter(Boolean).join(", ");
-    ul.append(h("li", {},
-      h("p", { class: "ban-head" }, h("code", { class: "pattern", text: ban.id }),
-        meta ? h("span", { class: "grey small", text: meta }) : null),
-      ban.note ? h("p", { class: "grey small", text: ban.note }) : null,
-      ban.title_must_equal ? h("p", { class: "rule-fix small", text: `Title must read "${ban.title_must_equal}".` }) : null,
-      ban.forbidden && ban.forbidden.length
-        ? h("p", { class: "small", text: `Forbidden: ${ban.forbidden.join(", ")}` })
-        : null));
+  fold.append(h("p", { class: "grey small", text: `Edit these in ${rules.path}, not here.` }));
+
+  fold.append(h("h3", { text: "Editorial bans" }));
+  fold.append(h("p", { class: "guard-lede", text: "The mechanical subset of the CV editorial rules. A fail here stops a render." }));
+  if (banned.length) {
+    const list = h("ul", { class: "patterns" });
+    for (const ban of banned) list.append(banRow(ban));
+    fold.append(list);
+  } else {
+    fold.append(h("p", { class: "grey small", text: "No editorial bans. Every CV rule is prose the writer has to read." }));
   }
-  body.append(ul);
-  return panel("Never named", body);
+  fold.append(h("p", { class: "grey small", text: `Edit these in ${bans.path}, not here.` }));
+
+  body.append(fold);
+  return section("Never named", body);
 }
 
 export async function viewRules(view) {
-  const count = h("p", { class: "page-count", text: "Loading the rules." });
-  view.append(pageHeader({ title: "Rules", lede: count }));
-  const host = h("div", { class: "cards" });
-  host.append(h("p", { class: "empty", text: "Loading the rules." }));
+  const count = h("p", { class: "page-count" });
+  view.append(pageHeader({ title: "Guardrails", lede: count }));
+  const host = h("div", { class: "guardrails" });
+  host.append(placeholderRows(3));
   view.append(host);
 
   const rules = await fetchInto(host, "rules", "Could not load the editorial rules.");
@@ -248,7 +285,7 @@ export async function viewRules(view) {
     digest = await api("critic/digest?since=14d");
   } catch (error) {
     // The rules are the point of this screen; a digest that will not build is
-    // one card's worth of bad news, not a blank page.
+    // one section's worth of bad news, not a blank page.
     host.append(errorBox(error, "Could not load the critic digest.", null));
   }
 
@@ -256,5 +293,5 @@ export async function viewRules(view) {
   const themeCount = (digest.themes || []).filter((theme) => (theme.count ?? 0) >= 2).length;
   count.textContent = `${plural(rulesCount, "standing rule")}, ${plural(themeCount, "recurring theme")} in the last 14 days.`;
 
-  host.append(themesCard(digest), standingCard(rules), neverNamedCard(rules));
+  host.append(standingSection(rules), themesSection(digest), referenceSection(rules));
 }

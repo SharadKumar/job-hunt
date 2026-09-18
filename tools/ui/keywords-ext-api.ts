@@ -89,7 +89,13 @@ export function cvSourceReference(term: string, cvSource: string | null): { line
   return null;
 }
 
-const clip = (text: string, width = 100): string => (text.length <= width ? text : `${text.slice(0, width - 1)}…`);
+/**
+ * The evidence line, whole. It used to be cut at 100 characters with an
+ * ellipsis, and the brief (section 6) bans ellipsis truncation on a reason or
+ * a note: the screen wraps it instead. Only a runaway line is bounded, and
+ * then at a width no CV source line reaches.
+ */
+const evidenceLine = (text: string, width = 400): string => text.slice(0, width).trim();
 
 /**
  * One term's recommendation. A reject is a recommendation to answer "not
@@ -103,7 +109,7 @@ export function recommend(verdict: TriageVerdict | undefined, reference: { line:
     return { answer: "na", rule: verdict.rule, note: `${verdict.rule}: ${verdict.evidence}` };
   }
   if (reference) {
-    return { answer: "confirm", rule: "in_cv_source", note: `already in cv-source.md:${reference.line}: "${clip(reference.text)}"` };
+    return { answer: "confirm", rule: "in_cv_source", note: `already in cv-source.md:${reference.line}: "${evidenceLine(reference.text)}"` };
   }
   return { answer: null, rule: null, note: verdict ? `no rule decides this one: ${verdict.evidence}` : "not in the pending ledger" };
 }

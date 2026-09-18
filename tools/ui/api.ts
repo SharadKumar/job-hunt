@@ -1,5 +1,5 @@
 /**
- * tools/ui/api.ts — the local web UI's JSON API, as pure handlers.
+ * tools/ui/api.ts - the local web UI's JSON API, as pure handlers.
  *
  * Every endpoint is a plain async function over plain data: no sockets, no
  * `http.IncomingMessage`, no framework. tools/ui/server.ts is the only place
@@ -41,15 +41,13 @@ import {
 } from "../resume/keyword-confirm.ts";
 import { getResumes, resolveResumeFile } from "./resumes-api.ts";
 import { getPolicy, postAutopilot, postKillSwitch, type PolicyToggleBody } from "./policy-api.ts";
-import { readJsonIfExists, readYamlIfExists } from "../lib/fs.ts";
+import { readJsonIfExists } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
 
 /** Dates in the person's own day, not the machine's. */
 const DEFAULT_TIME_ZONE = "Australia/Sydney";
 const DEFAULT_ROW_LIMIT = 200;
-/** Same one-line budget the Sheet mirror keeps, so a reason reads the same in both. */
-const REASON_MAX = 160;
 const DEFAULT_KEYWORD_LIMIT = 20;
 const MAX_ROW_LIMIT = 2000;
 
@@ -104,10 +102,52 @@ export type ApiContext = {
   journalDir?: string;
 };
 
+/**
+ * The six segments the Pipeline screen is cut into
+ * (docs/ui-redesign-2026-09-18.md, section 4). `discovered` and
+ * `awaiting_external` belong to none of them on purpose: neither is a queue
+ * the person works, and putting them in one would make a tab count disagree
+ * with the list behind it.
+ */
+export const SEGMENTS = {
+  needs: ["manual_action_needed"],
+  queue: ["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending"],
+  parked: ["parked"],
+  sent: ["submitted"],
+  replies: ["responded", "interview", "offered", "won"],
+  closed: ["rejected", "withdrawn"],
+} as const satisfies Record<string, readonly string[]>;
+
+export type SegmentKey = keyof typeof SEGMENTS;
+
+/**
+ * The rows the person is actually working: what the run stopped on, and what
+ * it is carrying. Needs you, the four group counts and the in-flight tally are
+ * all counted over these and nothing else.
+ */
+const WORKED = new Set<string>([...SEGMENTS.needs, ...SEGMENTS.queue]);
+
+/** The four kinds of work the Needs you list groups by, in the doc's order. */
+export type NeedsYouGroups = {
+  answer_question: number;
+  decide: number;
+  open_portal: number;
+  waiting_redraft: number;
+};
+
 export type SummaryResponse = {
+  /** One count per machine status, as the store holds them. */
   counts: Record<string, number>;
+  /** One count per Pipeline segment; a segment tab shows exactly this number. */
+  segments: Record<SegmentKey, number>;
+  /** The Needs you groups on Today, counted the way the row API classifies them. */
+  needs_you_groups: NeedsYouGroups;
+  /** Rows waiting on the person, and rows a run is carrying. */
+  needs_you: number;
+  in_flight: number;
   total: number;
   sent_today: number;
+  max_per_day: number | null;
   autopilot_enabled: boolean;
   kill_switch: boolean;
   generated_at: string;
@@ -215,23 +255,76 @@ function timestampsOf(row: Opportunity): { first_seen_at: string | null; updated
 }
 
 /**
- * The one line that says why a row is where it is.
+ * The last line of `notes`, which is where the run writes what stopped it.
+ *
+ * `notes` is appended to, not replaced: a row parked twice carries both stamps
+ * on their own lines, and the one that explains where the row is now is the
+ * last of them. An empty trailing line is skipped rather than shown as a row
+ * with no reason.
+ */
+function lastNoteLine(notes: string | null | undefined): string {
+  const lines = String(notes ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : "";
+}
+
+/**
+ * When `notes` was last written, from the row's own history.
+ *
+ * `patch` records every field write as `field_update: <names> (<why>) [actor]`,
+ * so a note appended by the daily run leaves a dated entry naming `notes`.
+ * That is the only timestamp a note has, and without it a note written after
+ * the last status move cannot be told from one written before it. Null means
+ * the note arrived with the row (an insert writes no field_update), and then
+ * the history reason is the newer of the two by definition.
+ */
+function lastNotesWrite(history: Opportunity["history"]): { at: string; index: number } | null {
+  let found: { at: string; index: number } | null = null;
+  (history ?? []).forEach((h, index) => {
+    if (h?.at && /^field_update:[^(]*\bnotes\b/.test((h.reason ?? "").trim())) found = { at: h.at, index };
+  });
+  return found;
+}
+
+/**
+ * The one line that says why a row is where it is: whichever of the two places
+ * a reason is written was written last.
  *
  * A patch writes a history entry like `field_update: draftDir [seed]`, which is
  * machinery, not a reason: taking the last reason outright would show the
  * person plumbing instead of "letter-critic blocked: scope wording". So the
- * pick is the most recent entry that carries a reason, is not a `field_update`,
- * and actually moved the row; a row with a single history entry (the insert)
- * may still speak for itself. Then notes, then the park reason, then nothing.
+ * history candidate is the most recent entry that carries a reason, is not a
+ * `field_update`, and actually moved the row; a row with a single history entry
+ * (the insert) may still speak for itself.
+ *
+ * The other place is `notes`, which is where the daily run stamps a cap, a
+ * block or a re-park, often without moving the row at all. Taking the history
+ * reason whenever there was one hid every one of those: the row read "package
+ * prepared unattended" while its note said the gate had refused it an hour
+ * later. So the two are compared by time and the newer wins. Then the park
+ * reason, then nothing.
  */
 export function displayReason(row: Opportunity): string | null {
   const history = row.history ?? [];
   const candidates = history.filter((h) => (h?.reason ?? "").trim() && !/^field_update/.test(h.reason!.trim()));
   const moved = [...candidates].reverse().find((h) => h.from !== h.to);
   const only = history.length === 1 ? candidates[0] : undefined;
-  const text = ((moved ?? only)?.reason ?? row.notes ?? row.parkedReason ?? "").replace(/\s+/g, " ").trim();
-  if (!text) return null;
-  return text.length > REASON_MAX ? `${text.slice(0, REASON_MAX - 1)}…` : text;
+  const entry = moved ?? only;
+  const note = lastNoteLine(row.notes);
+  const wrote = lastNotesWrite(history);
+  // Both are stamped to the millisecond and a run parks a row in one go, so a
+  // move and the note explaining it routinely share a timestamp. The order
+  // they were appended in breaks the tie, and the note is always appended
+  // after the move it explains.
+  const entryAt = history.indexOf(entry as never);
+  const newerNote = Boolean(note) && Boolean(wrote)
+    && (!entry?.at || wrote!.at > entry.at || (wrote!.at === entry.at && wrote!.index > entryAt));
+  const picked = newerNote ? note : (entry?.reason ?? note ?? row.parkedReason ?? "");
+  const text = String(picked ?? "").replace(/\s+/g, " ").trim();
+  // In full. It used to be cut to 160 characters with an ellipsis, which
+  // section 6 of the redesign bans outright: a reason the person cannot read
+  // is a row they have to open for no good reason, and the gate's refusals are
+  // the longest and the most worth reading. The screens wrap it.
+  return text || null;
 }
 
 async function readTextIfExists(file: string): Promise<string | null> {
@@ -247,6 +340,19 @@ async function readTextIfExists(file: string): Promise<string | null> {
 // GET /api/summary
 // ---------------------------------------------------------------------------
 
+/**
+ * Every count the redesign needs, from one call.
+ *
+ * The screens used to derive their own: Home counted one way, the board's
+ * header another and the filter column a third, so the same pipeline reported
+ * three different figures on one screen. This is now the only place any of
+ * them is worked out, and the rule is that a count and the list it names come
+ * from the same derivation (the brief, section 3, principle 1).
+ *
+ * `needs_you`, `in_flight` and the four Needs you groups are the row API's own
+ * classification, not a second copy of it: `laneFor`, `actionFor`, `needsYou`
+ * and `needsYouGroup` all live in rows-ext-api.ts and are called here.
+ */
 export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse> {
   const timeZone = timeZoneOf(ctx);
   const today = zonedDay(nowOf(ctx), timeZone);
@@ -254,22 +360,47 @@ export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse>
   const counts = s.countsByStatus();
   const total = s.count();
 
-  const sentToday = (await listOpportunities({}))
-    .filter((r) => r.submittedAt && zonedDay(r.submittedAt, timeZone) === today).length;
+  const rows = await listOpportunities({});
+  const sentToday = rows.filter((r) => r.submittedAt && zonedDay(r.submittedAt, timeZone) === today).length;
 
-  // A fresh clone has no submission-policy.yaml; that is "autopilot is off",
-  // not an error. Malformed YAML still throws, per the fs helper's contract.
-  const policy = (await readYamlIfExists<any>(
-    path.join(resolveProfileContext(ctx.profileId ?? null).profileDir, "submission-policy.yaml"),
-    {},
-  )) ?? {};
+  // A fresh clone has no submission-policy.yaml; getPolicy reads that as
+  // "nothing is switched on", which is the truth, not an error.
+  const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+
+  const segments = Object.fromEntries(
+    Object.entries(SEGMENTS).map(([key, statuses]) => [
+      key,
+      statuses.reduce((n, status) => n + (counts[status] ?? 0), 0),
+    ]),
+  ) as Record<SegmentKey, number>;
+
+  const needs_you_groups: NeedsYouGroups = { answer_question: 0, decide: 0, open_portal: 0, waiting_redraft: 0 };
+  let needsYouTotal = 0;
+  let inFlight = 0;
+  // Only the two segments the person actually works. A `discovered` row nobody
+  // has looked at yet, and a `parked` one they already ruled out, both derive
+  // an action (open the portal, unpark) but neither is waiting on them: taken
+  // over the whole store the headline read 320 on a morning with 37 to do.
+  for (const row of rows.filter((r) => WORKED.has(r.status))) {
+    const { lane } = rowsExt.laneFor(row, policy);
+    const derived = rowsExt.actionFor(row, displayReason(row), lane);
+    if (rowsExt.needsYou(derived)) needsYouTotal += 1;
+    if (derived.kind === "in_flight") inFlight += 1;
+    const group = rowsExt.needsYouGroup(derived);
+    if (group) needs_you_groups[group] += 1;
+  }
 
   return {
     counts,
+    segments,
+    needs_you_groups,
+    needs_you: needsYouTotal,
+    in_flight: inFlight,
     total,
     sent_today: sentToday,
-    autopilot_enabled: policy?.autopilot?.enabled === true,
-    kill_switch: policy?.kill_switch === true,
+    max_per_day: policy.max_per_day,
+    autopilot_enabled: policy.autopilot_enabled,
+    kill_switch: policy.kill_switch,
     generated_at: nowOf(ctx).toISOString(),
   };
 }
@@ -321,7 +452,14 @@ function parseOffset(value: number | string | null | undefined): number {
   return Math.floor(n);
 }
 
-export async function getRows(query: RowsQuery = {}, _ctx: ApiContext = {}): Promise<{ rows: RowSummary[] }> {
+/**
+ * The rows a query matched, and how many matched before the limit cut them
+ * down. The count is what lets a list header read "Showing 30 of 90" with a
+ * way to see the rest, rather than printing 30 beside a tab that says 90 (the
+ * redesign brief, section 6: a count and the list it names agree, or the
+ * header says which one it is).
+ */
+export async function getRows(query: RowsQuery = {}, _ctx: ApiContext = {}): Promise<{ rows: RowSummary[]; total: number }> {
   const statuses = wantedStatuses(query.status);
   const limit = parseLimit(query.limit, DEFAULT_ROW_LIMIT);
   const needle = (query.q ?? "").trim().toLowerCase();
@@ -341,7 +479,7 @@ export async function getRows(query: RowsQuery = {}, _ctx: ApiContext = {}): Pro
     || a.title.localeCompare(b.title),
   );
 
-  return { rows: filtered.slice(0, limit).map(toRowSummary) };
+  return { rows: filtered.slice(0, limit).map(toRowSummary), total: filtered.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -421,13 +559,17 @@ export async function postRowAction(id: string, body: ActionBody = {}, ctx: ApiC
   if (!row) throw new ApiError(404, `no such opportunity: ${id}`);
 
   const reason = (body.reason ?? "").trim();
-  const result = await applyTrayAction(id, action, {
-    actor: "ui",
-    reason: reason ? `ui: ${action} (${reason})` : `ui: ${action}`,
-  });
+  const note = reason ? ` (${reason})` : "";
+  // An approve says where it was given, because the person reading the history
+  // later wants to know which surface they were holding. Every other action
+  // keeps the `ui:` stamp the Sheet pull's wording mirrors.
+  const said = action === "approve" ? `approved in the local UI${note}` : `ui: ${action}${note}`;
+  const result = await applyTrayAction(id, action, { actor: "ui", reason: said });
   if (!result.ok) {
+    // A refusal is a 409: the state machine, or the Tray's own rule about
+    // which status an action means anything from, said no. Nothing broke.
     const message = result.error ?? `${action} failed`;
-    throw new ApiError(/invalid transition/.test(message) ? 409 : 500, message);
+    throw new ApiError(result.refused || /invalid transition/.test(message) ? 409 : 500, message);
   }
 
   await queueDecision(queuePathOf(ctx), { id, action, edits: (body.edits ?? "").trim() });
@@ -601,27 +743,12 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
     if (method === "GET" && pathname === "/api/summary") {
       return { status: 200, body: await getSummary(ctx) };
     }
-    if (method === "GET" && pathname === "/api/rows") {
-      return {
-        status: 200,
-        body: await getRows(
-          { status: query.get("status"), limit: query.get("limit"), q: query.get("q"), channel: query.get("channel") },
-          ctx,
-        ),
-      };
-    }
-    if (method === "GET" && pathname === "/api/keywords/pending") {
-      return {
-        status: 200,
-        body: await getKeywordsPending({
-          limit: query.get("limit"),
-          offset: query.get("offset"),
-          resume: query.get("resume"),
-          q: query.get("q"),
-          all: query.get("all"),
-        }, ctx),
-      };
-    }
+    // `GET /api/rows`, `GET /api/rows/:id` and `GET /api/keywords/pending` are
+    // not routed here. rows-ext-api.ts and keywords-ext-api.ts get first
+    // refusal and answer all three with the derived fields the screens need,
+    // so a copy in this table could only ever be dead code that looked live.
+    // `getRows`, `getRowDetail` and `getKeywordsPending` stay exported: those
+    // modules wrap them.
     if (method === "POST" && pathname === "/api/keywords/record") {
       return { status: 200, body: await postKeywordsRecord((req.body ?? {}) as { answers?: Record<string, string> }, ctx) };
     }
@@ -673,12 +800,6 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
     if (action) {
       if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
       return { status: 200, body: await postRowAction(decodeURIComponent(action[1]), (req.body ?? {}) as ActionBody, ctx) };
-    }
-
-    const detail = pathname.match(/^\/api\/rows\/([^/]+)$/);
-    if (detail) {
-      if (method !== "GET") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
-      return { status: 200, body: await getRowDetail(decodeURIComponent(detail[1]), ctx) };
     }
 
     return { status: 404, body: { error: `no such endpoint: ${method} ${pathname}` } };

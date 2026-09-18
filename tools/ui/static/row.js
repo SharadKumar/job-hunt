@@ -1,477 +1,441 @@
 /*
- * row.js - one application, read end to end.
+ * row.js - one application, read end to end (#/row/<id>).
  *
- * The fact line says what the job is and what it scored. Three cards then say
- * whether the letter may go out: the critic's verdict, the mechanical gates,
- * and what is actually in the package. Then the letter beside the job
- * description, the history, and the decisions. AGENTS.md section 8: a verdict
- * that was never run is shown as missing, never read as a pass.
+ * The page answers four questions in this order: what is this, how far did it
+ * get, may the letter go out, and what is left for the person to do. So it is
+ * the breadcrumb and the title, then the facts, then the timeline, then the
+ * reason it stopped if it stopped, then the gates, then the letter beside the
+ * job description, then the question in the way, the decision, and the history
+ * last (docs/ui-redesign-2026-09-18.md, sections 4, 6 and 7).
  *
- * The letter is editable on a blocked or to-approve row. Saving it rewrites
- * cover-letter.md in the package and runs the deterministic pre-checks only;
- * the model critic runs when the row is retried through autopilot, against the
- * bytes that would go out.
+ * Two rules from AGENTS.md bite hardest here. Section 8: a verdict that was
+ * never run is shown as missing, never read as a pass, so every chip in the
+ * gates strip is quoted off a recorded verdict and a gate with no record says
+ * "not run". Section 2: the only control on this page that can put an
+ * application in front of an advertiser is "Send now via autopilot", it says
+ * so, and it is never pressed from code.
  */
 
 import {
-  actionButton, alsoControls, channelLabel, contextualControl, FOCUS_KEY, loadReasonHelper, plainReasonText,
-} from "./applications.js";
-import { api, APPLY_METHODS, asText, eyebrow, fetchInto, h, pageHeader, panel, render, statusLabel, when } from "./app.js";
-import { redraftControl, retryNowControl } from "./row-actions.js";
-import { letterCard } from "./row-letter.js";
+  APPLY_METHODS, api, askForToken, asText, clear, h, isUnauthorised, laneLabel, loadError,
+  pageHeader, placeholderRows, render, statusLabel, when, whenFull,
+} from "./app.js";
+import { decisionCard, primaryControl, redraftControl, sendNowControl } from "./row-actions.js";
+import { gatesStrip, letterCard, letterEditable } from "./row-letter.js";
+
+/** Where the pipeline leaves a request to open this row with the question
+ * focused. The board writes the same key; one string, two screens. */
+const FOCUS_KEY = "jobHuntFocusScreening";
 
 /** The reason that means a person has to answer something before the run can
- * finish. Same family of wording the daily writes into the row's notes. */
+ * finish. The same family of wording the daily writes into a row's notes. */
 const UNANSWERED_QUESTION = /screening question|unanswered question|question is not in/i;
 
-/** One small card in the stats row: a label, a verdict, and a quiet note. */
-function stat(label, value, tone, note) {
-  const card = h("div", { class: tone ? `card stat ${tone}` : "card stat" });
-  card.append(eyebrow(label), h("p", { class: "value", text: value }));
-  if (note) card.append(h("p", { class: "note", text: note }));
+// ---------------------------------------------------------------------------
+// Where this row sits, and how far it got
+// ---------------------------------------------------------------------------
+
+/** The Pipeline segments, as api.ts SEGMENTS has them. The breadcrumb goes to
+ * the one this row is in, so the way back is the list it came from. */
+const SEGMENTS = [
+  { key: "needs", label: "Needs you", statuses: ["manual_action_needed"] },
+  { key: "queue", label: "Queue", statuses: ["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending"] },
+  { key: "parked", label: "Parked", statuses: ["parked"] },
+  { key: "sent", label: "Sent", statuses: ["submitted"] },
+  { key: "replies", label: "Replies", statuses: ["responded", "interview", "offered", "won"] },
+  { key: "closed", label: "Closed", statuses: ["rejected", "withdrawn"] },
+];
+
+function segmentOf(status) {
+  return SEGMENTS.find((segment) => segment.statuses.includes(String(status || ""))) || null;
+}
+
+/** The linear queue as the person reads it. A status that is a hold or an exit
+ * is not a seventh step: it is a branch off the step it left. */
+const STEPS = [
+  { label: "discovered", statuses: ["discovered"] },
+  { label: "shortlisted", statuses: ["shortlisted"] },
+  { label: "drafted", statuses: ["drafted", "awaiting_approval"] },
+  { label: "approved", statuses: ["approved", "submission_pending"] },
+  { label: "sent", statuses: ["submitted"] },
+  { label: "reply", statuses: ["responded", "interview", "offered", "won"] },
+];
+
+const STEP_OF = {};
+STEPS.forEach((step, index) => { for (const status of step.statuses) STEP_OF[status] = index; });
+
+/** A hold or an exit, in the person's vocabulary. */
+const BRANCHES = {
+  parked: "Parked",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  awaiting_external: "Waiting on them",
+  manual_action_needed: "Stopped",
+};
+
+/** What stopped it, named by the work the server says is left. */
+const STOPPED_BY = {
+  answer: "Stopped: question unanswered",
+  portal: "Stopped: a portal to open",
+  retry: "Stopped: letter blocked",
+  decide: "Stopped: needs a decision",
+  gate_refused: "Stopped: outside the autopilot lane",
+  mark_sent: "Stopped: a portal to open",
+};
+
+function branchLabel(row, act) {
+  const status = String(row.status || "");
+  if (status !== "manual_action_needed") return BRANCHES[status] || "";
+  return STOPPED_BY[(act && act.kind) || ""] || "Stopped";
+}
+
+/**
+ * The timeline: six steps, the step the row is on filled in the person's
+ * colour, and a hold or an exit as a labelled branch under the step it left.
+ * How far it got is read off the history, so a row that came back from a stop
+ * still shows the ground it covered.
+ */
+export function timeline(row, act) {
+  const status = String(row.status || "");
+  const history = Array.isArray(row.history) ? row.history : [];
+  let reached = STEP_OF[status] ?? -1;
+  let left = -1;
+  for (const entry of history) {
+    const at = STEP_OF[String(entry && entry.to)] ?? -1;
+    if (at > reached) reached = at;
+    if (String(entry && entry.to) === status && (STEP_OF[String(entry.from)] ?? -1) > left) left = STEP_OF[String(entry.from)];
+  }
+  const branch = branchLabel(row, act);
+  // A branched row sits at the step it left, or at the furthest it reached
+  // when the history does not say where it came from.
+  const current = branch ? Math.max(left, reached, 0) : Math.max(reached, 0);
+  const list = h("ol", { class: "timeline", "aria-label": "Progress" });
+  STEPS.forEach((step, index) => {
+    const state = index === current ? "current" : index < current ? "done" : "";
+    const li = h("li", { class: state }, h("span", { class: "dot", "aria-hidden": "true" }),
+      h("span", { class: "step-label", text: step.label }));
+    if (branch && index === current) li.append(h("span", { class: "branch", text: branch }));
+    list.append(li);
+  });
+  return list;
+}
+
+// ---------------------------------------------------------------------------
+// Why it stopped
+// ---------------------------------------------------------------------------
+
+/** The run stamp the daily writes in front of a reason is machinery. */
+const plainReason = (text) => String(text || "").replace(/^\[[^\]]*\]\s*/, "").replace(/\s+/g, " ").trim();
+
+/**
+ * The reason, in full.
+ *
+ * `GET /api/rows/:id` caps `reason` at 160 characters and marks the cut. The
+ * whole sentence is on the row, in the history entry the cap was taken from,
+ * so a capped reason is completed from there rather than shown with its tail
+ * missing: section 6 bans a truncated reason outright.
+ */
+function fullReason(data, row) {
+  const shown = plainReason(data.reason);
+  if (!shown.endsWith("…")) return shown || plainReason(row.notes) || plainReason(row.parkedReason);
+  const head = shown.slice(0, -1);
+  const key = head.slice(0, 40);
+  const entries = Array.isArray(row.history) ? row.history : [];
+  const found = [...entries].reverse()
+    .map((entry) => plainReason(entry && entry.reason))
+    .find((text) => text.length > head.length && text.includes(key));
+  return found || (plainReason(row.notes).includes(key) ? plainReason(row.notes) : head);
+}
+
+/** "Why it stopped", in the serif, when the row stopped on something. */
+function stoppedLede(data, row) {
+  const act = data.action || {};
+  const refused = act.kind === "gate_refused";
+  if (String(row.status) !== "manual_action_needed" && !refused) return null;
+  const note = refused ? String(act.note || "").trim() : "";
+  const text = [note, fullReason(data, row)].filter(Boolean).join(" ");
+  if (!text) return null;
+  return h("p", { class: "row-why" }, h("span", { class: "row-why-label", text: "Why it stopped: " }), text);
+}
+
+// ---------------------------------------------------------------------------
+// The job description
+// ---------------------------------------------------------------------------
+
+/** How much of the description is shown before the fold. */
+const JD_LINES = 12;
+
+/**
+ * The advert, folded rather than scrolled. There is no inner scroll region
+ * anywhere in this UI: a nested scroll inside a page that already scrolls is a
+ * trap. The fold remembers itself per row for the session, so a person who
+ * opened it once does not open it again on every action.
+ */
+function jdCard(row, pkg) {
+  const card = h("section", { class: "card jd-card" },
+    h("div", { class: "card-head" }, h("h2", { text: "Job description" })));
+  const text = asText(row.description || pkg.jd).trim();
+  if (!text) {
+    card.append(h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." }));
+    return card;
+  }
+  const lines = text.split("\n");
+  if (lines.length <= JD_LINES) {
+    card.append(h("div", { class: "jd" }, h("pre", { text })));
+    return card;
+  }
+  const preview = h("div", { class: "jd" }, h("pre", { text: lines.slice(0, JD_LINES).join("\n") }));
+  const fold = h("details", { class: "disclosure jd-fold" },
+    h("summary", { text: "Show full description" }), h("div", { class: "jd" }, h("pre", { text })));
+  const key = `jobHuntJd:${row.id}`;
+  try { if (sessionStorage.getItem(key) === "open") fold.open = true; } catch { /* storage is off */ }
+  preview.hidden = fold.open;
+  fold.addEventListener("toggle", () => {
+    preview.hidden = fold.open;
+    try { sessionStorage.setItem(key, fold.open ? "open" : "shut"); } catch { /* storage is off */ }
+  });
+  card.append(preview, fold);
   return card;
 }
 
-/** A gate value written a dozen ways across the archive, read one way here. */
-function verdictWord(raw) {
-  if (raw === undefined || raw === null || raw === "") return null;
-  if (raw === true) return "pass";
-  if (raw === false) return "fail";
-  const text = String(typeof raw === "object" ? raw.verdict ?? raw.status ?? "" : raw).trim().toLowerCase();
-  if (text.startsWith("pass")) return "pass";
-  if (text.startsWith("warn")) return "warn";
-  if (text.startsWith("fail") || text.startsWith("block")) return "fail";
-  return text || null;
-}
+// ---------------------------------------------------------------------------
+// The history
+// ---------------------------------------------------------------------------
 
-/** The quality block, wherever a given run happened to put it. */
-function qualityOf(metadata) {
-  const meta = metadata && typeof metadata === "object" ? metadata : {};
-  const quality = (meta.quality && typeof meta.quality === "object") ? meta.quality : {};
-  const letter = (quality.coverLetter && typeof quality.coverLetter === "object") ? quality.coverLetter : {};
-  const checks = (meta.cover_letter && meta.cover_letter.checks) || {};
-  const pick = (...keys) => {
-    for (const source of [quality, letter, checks]) {
-      for (const key of keys) {
-        const value = source[key];
-        if (value !== undefined && value !== null && value !== "") return value;
-      }
-    }
-    return undefined;
-  };
-  return {
-    slop: verdictWord(pick("slop", "coverLetterSlop", "slopKiller", "slop_killer")),
-    voice: verdictWord(pick("voice", "coverLetterVoice", "voiceCheck", "voice_check")),
-    grounding: verdictWord(pick("termGrounding", "term_grounding", "termGroundingCheck")),
-    words: Number(letter.words ?? (meta.cover_letter && meta.cover_letter.word_count)) || null,
-  };
-}
-
-/** What the run put in the package, in the words the metadata uses. A run that
- * recorded the baseline approval check chose the baseline, and says so. */
-function resumeOf(metadata) {
-  const meta = metadata && typeof metadata === "object" ? metadata : {};
-  const resume = (meta.resume && typeof meta.resume === "object") ? meta.resume : {};
-  const inferred = resume.baselineApprovalCheck ? "baseline" : (resume.docx || resume.pdf ? "rendered" : "");
-  const mode = String(resume.mode ?? resume.choice ?? inferred).toLowerCase();
-  const ref = resume.ref ?? resume.resume_id ?? resume.id ?? resume.resumeId
-    ?? (typeof resume.docx === "string" ? resume.docx.split("/").pop() : null);
-  return { mode: mode || null, ref: ref ? String(ref) : null };
-}
-
-/** The stats row: the machine verdicts that decide whether a letter may go out.
- * A missing verdict says so; it is never read as a pass (AGENTS.md section 8). */
-export function statsRow(row, pkg, files) {
-  const stats = h("div", { class: "stats", "aria-label": "Gates" });
-  const critic = pkg.letter_critic;
-  if (!critic) stats.append(stat("Critic", "Critic not run", "", "No letter has been critiqued on this row."));
-  else {
-    const findings = Array.isArray(critic.findings) ? critic.findings : [];
-    const count = (severity) => findings.filter((f) => f && f.severity === severity).length;
-    stats.append(String(critic.verdict || "").toLowerCase() !== "pass"
-      ? stat("Critic", `Critic blocked, ${count("fail")} fail`, "bad", `${findings.length} findings in total.`)
-      : stat("Critic", `Critic pass, ${count("warn")} warn`, "good", `${findings.length} findings in total.`));
-  }
-  const quality = qualityOf(pkg.metadata);
-  const notes = [
-    `Slop ${quality.slop || "not recorded"}`,
-    `Voice ${quality.voice || "not recorded"}`,
-    `Term grounding ${quality.grounding || "not recorded"}`,
-  ];
-  // The gate has either let this row through or it has not. Saying "Gate
-  // waiting, blocked" said the same thing twice and read as two verdicts.
-  const sent = row.status === "submitted";
-  stats.append(stat("Gates", sent ? "Gate passed" : "Gate waiting", sent ? "good" : "", `${notes.join(". ")}.`));
-  const resume = resumeOf(pkg.metadata);
-  const names = Array.isArray(files) ? files : [];
-  const letterWords = quality.words
-    || (pkg.cover_letter ? String(pkg.cover_letter).split(/\s+/).filter(Boolean).length : null);
-  const packageNote = [
-    resume.ref ? `CV ${resume.ref}` : null,
-    letterWords ? `Letter ${letterWords} words` : "No letter in the package",
-    names.length ? `${names.length} files` : "No files found",
-  ].filter(Boolean).join(". ");
-  const label = resume.mode === "tailored" ? "Tailored CV" : resume.mode === "baseline" ? "Baseline CV"
-    : resume.mode ? "CV in the package" : "No CV recorded";
-  stats.append(stat("Package", label, resume.mode ? "" : "bad", `${packageNote}.`));
-  return stats;
-}
-
-/** The dot's colour: green when the row moved to sent, red when it moved to a
- * stop, ink for every ordinary step in between. */
-function moveTone(to) {
-  if (to === "submitted") return "good";
-  if (to === "manual_action_needed" || to === "rejected" || to === "withdrawn" || to === "parked") return "bad";
-  return "";
-}
-
-/** The reason under one entry: the first sentence, with the rest behind "more".
- * A field_update entry is an enrichment pass, not a decision, so it says which
- * fields moved and keeps the raw machinery off the page. */
-function historyReason(item) {
-  const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
-  if (fields) return h("p", { class: "tl-why", text: `updated ${fields[1].trim() || "some fields"}` });
-  if (!item.reason) return null;
-  const full = plainReasonText(item.reason);
-  // The stop has to be followed by a space or the end of the line, or a reason
-  // that names a host is cut to "External portal: rba.".
-  const match = /^[^.!?]*[.!?](?=\s|$)/.exec(full);
-  const first = match ? match[0] : full;
-  const note = h("p", { class: "tl-why", text: first });
-  if (first.length < full.length) {
-    const more = h("button", { type: "button", class: "linkish", text: "more" });
-    more.addEventListener("click", () => { note.textContent = full; more.remove(); });
-    note.append(" ", more);
-  }
-  return note;
-}
-
-/** The row's life as a timeline, newest first: a rail, a dot per move, the
- * time, what moved, and why. */
-function historyBlock(history) {
-  const entries = Array.isArray(history) ? history : [];
-  if (!entries.length) return panel("History", h("p", { class: "grey", text: "No transitions recorded on this row yet." }));
-  const ul = h("ul", { class: "timeline" });
-  for (const item of [...entries].reverse()) {
-    const tone = moveTone(item.to);
-    const li = h("li", { class: tone ? `tl ${tone}` : "tl" });
-    const from = item.from ? statusLabel(item.from) : "new";
-    li.append(h("span", { class: "tl-dot", "aria-hidden": "true" }),
-      h("p", { class: "tl-when", text: when(item.at) }),
-      h("p", { class: "tl-move", text: `${from} to ${statusLabel(item.to) || "unknown"}` }));
-    const why = historyReason(item);
-    if (why) li.append(why);
-    ul.append(li);
-  }
-  return panel("History", ul);
-}
-
-/**
- * Approve is a real move on a row that is waiting for one. On a blocked row it
- * is a trap: it marks the package approved, and the next run reads the same
- * finding, blocks it again and parks it. So it is offered on the statuses where
- * it means something and on no others.
- */
-const APPROVABLE = new Set(["awaiting_approval", "shortlisted", "drafted"]);
-
-/** The rows where asking for a fresh letter is worth anything: the letter has
- * not gone out, and there is still a run coming that could rewrite it. */
-const REDRAFTABLE = new Set(["manual_action_needed", "awaiting_approval", "approved", "shortlisted", "parked"]);
-
-/** The standing decisions, in the order they are offered. Approve is not one of
- * them: it is contextual, and only on a row that can take it. */
-const DECISIONS = [
-  { key: "hold", label: "Hold" },
-  { key: "reject", label: "Reject", danger: true },
-  { key: "withdraw", label: "Withdraw", danger: true },
-];
-
-/** A row the run is already carrying: it is not waiting on anybody here, and
- * the only thing left to decide is whether to pull it out of the run. */
-const IN_FLIGHT = "in_flight";
-/** A row that is ready but may only go out with the person in the chair. */
-const ATTENDED_SEND = "attended_send";
-/** A row the submission gate refused on policy. A retry hits the same gate, so
- * neither retry is drawn and the banner says what would actually move it. */
-const GATE_REFUSED = "gate_refused";
-/** The two decisions an in-flight row still takes, and the two a refused row
- * takes. Approve is not one of them: on an in-flight row the run has already
- * approved it, and on a refused one a yes changes no policy. */
-const IN_FLIGHT_DECISIONS = new Set(["hold", "reject"]);
-
-/** The lane table, read once a session. A row that does not carry its own lane
- * still has one, because the channel decides it (AGENTS.md section 2). */
-let lanesRead = null;
-const lanes = () => (lanesRead ||= api("lanes").catch(() => null));
-
-/**
- * Which lane the row is in, as a pill on the fact line. Green is the
- * unattended lane, grey is the attended one, and why it landed there is the
- * pill's title. With neither the row's lane nor the table there is no pill:
- * better silent than guessing which lane would send this.
- */
-function lanePill(row, table) {
-  const of = (map) => (table && table[map] ? table[map][row.channel] : "");
-  const said = row.lane || of("lane_of");
-  const lane = said === "autopilot" || said === "attended" ? said : "";
-  if (!lane) return null;
-  const pill = h("span", { class: `pill lane-pill lane-pill-${lane}`, text: lane });
-  const why = String(row.lane_reason || of("reason_of") || "").trim();
-  if (why) pill.setAttribute("title", why);
-  return pill;
-}
-
-/**
- * The banner over the decision card: which lane has this row, and what that
- * means for the person reading it. Only the two lane actions draw one; every
- * other row is a decision and says so with its buttons.
- */
-function laneBanner(act, row) {
-  const inFlight = act.kind === IN_FLIGHT;
-  // A refused row draws the same banner in grey: the gate stopped it for a
-  // reason, and the reason is what the person has to act on, not a button.
-  if (act.kind === GATE_REFUSED) {
-    const box = h("section", { class: "lane-banner lane-banner-refused", role: "note" });
-    box.append(h("p", { class: "lane-head", text: act.label || "Outside the autopilot lane" }));
-    const why = String(act.note || row.lane_reason || "").trim();
-    if (why) box.append(h("p", { class: "lane-note", text: why }));
-    return box;
-  }
-  if (!inFlight && act.kind !== ATTENDED_SEND) return null;
-  const box = h("section", { class: `lane-banner lane-banner-${inFlight ? "autopilot" : "attended"}`, role: "note" });
-  if (inFlight) {
-    box.append(h("p", { class: "lane-head", text: act.label || "Autopilot handles this" }));
-    const note = String(act.note || row.lane_reason || "").trim();
-    box.append(h("p", { class: "lane-note", text: note || `The next run sends it through ${sendsThrough(row)}.` }));
-  } else {
-    box.append(h("p", { class: "lane-head", text: "Ready to send in an attended session." }));
-    box.append(h("p", { class: "lane-note", text: "Run /submit-approved with the person present." }));
-  }
-  return box;
-}
-
-// A refused row is the one row that never wants a retry: both retries would
-// hand it back to the gate that just refused it.
-const wantsRetry = (act) => act.kind !== GATE_REFUSED
-  && (act.kind === "retry" || act.post === "retry"
-    || (Array.isArray(act.also) && act.also.some((spec) => spec && spec.post === "retry")));
-
-/** What a decision does, in the words the person would use. The title is on
- * the button, so the explanation is there when it is wanted and silent when it
- * is not. */
-const DECISION_HELP = {
-  approve: "Let the next run send it",
-  hold: "Keep it here",
-  reject: "Not applying",
-  withdraw: "Applied but pulling out",
-  retry: "Put it back in the queue for the next run",
+/** Each move in the person's vocabulary. The machine's own word for it goes in
+ * the pill after it, once (the brief, section 3, principle 5). */
+const MOVES = {
+  discovered: "Found on the channel",
+  shortlisted: "Into the queue",
+  drafted: "Package drafted",
+  awaiting_approval: "Ready for a decision",
+  approved: "Approved",
+  submission_pending: "Being sent",
+  submitted: "Sent",
+  responded: "Replied",
+  interview: "Interview",
+  offered: "Offer",
+  won: "Won",
+  rejected: "Rejected",
+  withdrawn: "Withdrawn",
+  parked: "Parked",
+  awaiting_external: "Waiting on them",
+  manual_action_needed: "Stopped",
 };
 
-/** The channel and method an unattended send would go out through. */
-const SEND_METHOD = { easy_apply: "Easy Apply", quick_apply: "Quick Apply" };
-function sendsThrough(row) {
-  const method = SEND_METHOD[row.applyMethod];
-  return method ? `${channelLabel(row.channel)} ${method}` : "the channel it came from";
+/** A reason longer than this is folded, with its first sentence on show. */
+const REASON_FOLD = 240;
+
+/** The reason under one entry, in full. A field_update entry is an enrichment
+ * pass, not a decision, so it says which fields moved and keeps the machinery
+ * off the page. */
+function historyReason(item) {
+  const fields = /^field_update:\s*([^([]*)/.exec(item.reason || "");
+  if (fields) return h("p", { class: "hist-why", text: `Updated ${fields[1].trim() || "some fields"}.` });
+  const full = plainReason(item.reason);
+  if (!full) return null;
+  if (full.length <= REASON_FOLD) return h("p", { class: "hist-why", text: full });
+  const match = /^[^.!?]*[.!?](?=\s|$)/.exec(full);
+  const first = match ? match[0] : `${full.slice(0, 120)}`;
+  const fold = h("details", { class: "disclosure hist-fold" },
+    h("summary", { text: "Show the full reason" }), h("p", { class: "hist-why", text: full }));
+  return h("div", {}, h("p", { class: "hist-why", text: first }), fold);
 }
 
-/** The two fields a decision can carry. The notes field is for the run to read,
- * so it only appears once a decision that a run acts on has been pressed. */
-function decisionFields() {
-  const reason = h("input", { type: "text", id: "decide-reason", placeholder: "Optional" });
-  const notes = h("textarea", { id: "decide-notes", placeholder: "Optional" });
-  // The aside belongs on the label's own line. A `.field` is a grid, so a
-  // second span stacked "goes into the history" under "Reason" and made a
-  // four-word hint look like a second field.
-  const labelled = (control, text, help) => h("label", { class: "field", for: control.id },
-    h("span", { class: "field-label", text: help ? `${text} (${help})` : text }), control);
-  const notesField = labelled(notes, "Notes for the next run", "edits to the letter or package");
-  notesField.hidden = true;
-  return {
-    reason,
-    node: h("div", { class: "action-fields" }, labelled(reason, "Reason", "goes into the history"), notesField),
-    reveal: () => { notesField.hidden = false; },
-    values: () => ({
-      ...(reason.value.trim() ? { reason: reason.value.trim() } : {}),
-      ...(notes.value.trim() ? { edits: notes.value.trim() } : {}),
-    }),
-  };
+/** The row's life, newest first: what moved, the machine's own transition in a
+ * muted pill after it, and the reason in full under it. */
+function historyCard(history) {
+  const entries = Array.isArray(history) ? history.filter(Boolean) : [];
+  const card = h("section", { class: "card history-card" }, h("h2", { text: "History" }));
+  if (!entries.length) {
+    card.append(h("p", { class: "grey", text: "No transitions recorded on this row yet." }));
+    return card;
+  }
+  const list = h("ol", { class: "history" });
+  for (const item of [...entries].reverse()) {
+    const from = item.from || "new";
+    const li = h("li", {});
+    const head = h("p", { class: "hist-head" });
+    head.append(h("span", { class: "hist-move", text: MOVES[item.to] || statusLabel(item.to) || "Moved" }));
+    head.append(h("span", { class: "pill pill-status", text: `${from} to ${item.to || "unknown"}` }));
+    head.append(h("span", { class: "hist-when", text: when(item.at), title: whenFull(item.at) }));
+    li.append(head);
+    const why = historyReason(item);
+    if (why) li.append(why);
+    list.append(li);
+  }
+  card.append(list);
+  return card;
 }
 
-/**
- * The decision card. "Retry now" is at the top, because it is the one control
- * that does something on this machine rather than moving a row. Under it the
- * moves: the one this row is waiting on, whatever else the server hung off it,
- * and the three standing decisions.
- *
- * `screeningOnPage` suppresses the Answer button, because the panel it would
- * scroll to is already on the page and the panel is the answer.
- */
-function actionBar(data, row, onDone, { screeningOnPage = false, decision } = {}) {
-  const body = h("div", {});
-  const buttons = h("div", { class: "action-buttons" });
-  const extras = h("div", { class: "action-extra" });
-  const act = data.action || { kind: "none" };
-  const fields = () => decision.values();
-  // The run is carrying this one. Nothing here approves it again; the only
-  // question left is whether to take it back out of the run.
-  const inFlight = act.kind === IN_FLIGHT;
-  // The gate refused this one on policy. Same shape as in flight: the two
-  // moves that are left, and nothing that pretends a rerun would help.
-  const refused = act.kind === GATE_REFUSED;
-  // Whatever the server already hung off `also` is drawn once, so a standing
-  // decision that is also an `also` entry is not offered twice.
-  const alsoPosts = new Set((Array.isArray(act.also) ? act.also : [])
-    .map((spec) => spec && spec.post).filter(Boolean));
+// ---------------------------------------------------------------------------
+// The page
+// ---------------------------------------------------------------------------
 
-  // The run again, here, now. It is not a move, so it sits above the moves.
-  if (wantsRetry(act)) {
-    const retry = retryNowControl(row, () => render());
-    body.append(h("div", { class: "action-buttons" }, retry.button),
-      h("p", { class: "grey small", text: `Runs the critic and the gate again and sends through ${sendsThrough(row)} if they pass.` }),
-      retry.extra);
-  }
+/** The statuses tools/autopilot-submit.ts will start from, and the two apply
+ * methods it has an adapter for (rows-ext-api.ts, postRetryNow). A send is
+ * offered only where the server would accept one. */
+const SEND_FROM = new Set(["manual_action_needed", "approved"]);
+const ONE_CLICK = new Set(["quick_apply", "easy_apply"]);
 
-  body.append(eyebrow(inFlight ? "Take it out of the run" : "Move this application"), buttons, extras);
-  // With "Retry now" above it the tray retry is the slower of the two, so it
-  // says which one it is and gives up the black button to the one that runs.
-  const primary = wantsRetry(act) && act.post === "retry"
-    ? { ...act, primary: false, label: "Retry in the next run" }
-    : { ...act, primary: true };
-  if (!refused && !(act.kind === "answer" && screeningOnPage)) {
-    const contextual = contextualControl({ ...row, action: primary }, onDone, { small: false });
-    if (contextual) {
-      if (act.post && DECISION_HELP[act.post]) contextual.title = DECISION_HELP[act.post];
-      buttons.append(contextual);
-    }
-  }
-  const also = alsoControls({ ...row, action: act }, onDone, { small: false });
-  for (const button of also.buttons) buttons.append(button);
-  for (const extra of also.extras) extras.append(extra);
+const canSend = (row, lane) => lane === "autopilot" && SEND_FROM.has(String(row.status)) && ONE_CLICK.has(String(row.applyMethod));
 
-  if (APPROVABLE.has(row.status) && act.post !== "approve" && !inFlight && !refused) {
-    const approve = actionButton(row, { key: "approve", label: "Approve", title: DECISION_HELP.approve,
-      primary: !buttons.childElementCount }, fields, onDone);
-    approve.addEventListener("click", decision.reveal);
-    buttons.append(approve);
+/** The facts, in one line: what the job is and how it is applied for. The
+ * status is not among them; it is on the timeline and in the status pill. */
+function factsLine(row) {
+  // "unknown" is the classifier saying it could not tell. Saying nothing is
+  // the same fact without the machinery.
+  const said = (value) => (value && String(value).toLowerCase() !== "unknown" ? value : null);
+  const facts = [
+    row.company,
+    row.location,
+    said(row.classification?.work_arrangement || row.workArrangement),
+    said(APPLY_METHODS[row.applyMethod] || row.applyMethod),
+  ].filter(Boolean);
+  const line = h("p", { class: "detail-meta", text: facts.join(", ") });
+  if (row.url) {
+    line.append(document.createTextNode(facts.length ? ", " : ""),
+      h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
   }
-  for (const spec of DECISIONS) {
-    if (act.post === spec.key || alsoPosts.has(spec.key)) continue;
-    if ((inFlight || refused) && !IN_FLIGHT_DECISIONS.has(spec.key)) continue;
-    const button = actionButton(row, { ...spec, title: DECISION_HELP[spec.key] }, fields, onDone);
-    if (spec.key === "hold") button.addEventListener("click", decision.reveal);
-    buttons.append(button);
-  }
-  body.append(decision.node,
-    h("p", { class: "grey small", text: "Each button asks twice: press, then press Confirm. Nothing is sent to a channel from here." }));
-  return panel("Your decision", body);
+  return line;
 }
 
-/**
- * The screening panel belongs to another work package. Mount it when the row is
- * stuck on a question, and when an answer is banked offer the retry that puts
- * the row back on the autopilot path.
- */
-async function mountScreening(host, row, reason) {
-  if (!UNANSWERED_QUESTION.test(String(reason || ""))) return;
-  const mod = await import("./screening.js").catch(() => null);
-  if (!mod || typeof mod.screeningPanel !== "function") return;
-  const banked = h("div", { class: "banked" });
-  const node = mod.screeningPanel({
-    row,
-    reason,
-    onBanked: () => {
-      while (banked.firstChild) banked.firstChild.remove();
-      // The answer is in the file now, so the thing worth offering is the run
-      // that reads it, not another trip through the morning queue.
-      const retry = retryNowControl(row, () => render());
-      banked.append(h("p", { text: "Answer banked. Retry now?" }), retry.button, retry.extra);
-      // guarded() arms on the first press, so one programmatic press leaves the
-      // button armed and focused: the person's press is the one that commits.
-      retry.button.click();
-    },
-  });
-  if (node) host.append(node);
-  host.append(banked);
+/** The pills a row wears: which lane has it, whether the person saved it, and
+ * the machine's own status, said once. */
+function pillLine(row, data) {
+  const line = h("p", { class: "row-pills" });
+  const lane = laneLabel(data.lane);
+  if (lane) {
+    const pill = h("span", { class: `pill ${data.lane === "attended" ? "pill-you" : "pill-autopilot"}`, text: lane });
+    if (data.lane_reason) pill.setAttribute("title", data.lane_reason);
+    line.append(pill);
+  }
+  if (row.userSaved) line.append(h("span", { class: "pill", text: "saved by you" }));
+  const status = statusLabel(row.status);
+  if (status) line.append(h("span", { class: "pill pill-status", text: status }));
+  if (typeof row.score === "number" && Number.isFinite(row.score)) {
+    line.append(h("span", { class: "row-score", text: `Score ${Math.round(row.score)}` }));
+  }
+  return line;
 }
 
 export async function viewRow(view, id) {
-  view.append(h("p", { class: "empty", text: "Loading the row." }));
-  // The history's reasons are run stamps until home.js's rewriter is loaded.
-  await loadReasonHelper();
-  const laneTable = lanes();
-  const data = await fetchInto(view, `rows/${encodeURIComponent(id)}`, "Could not load this row.");
-  if (!data) return view.prepend(pageHeader({ title: "Row", back: h("a", { href: "#/applications", text: "Applications" }) }));
-  const row = data.row || {};
-  const pkg = data.package || {};
-  // One box for the whole page, so a single rule gives every top-level section
-  // the same 24 px under the one before it (see .row-page in app.css).
   const page = h("div", { class: "row-page" });
   view.append(page);
+  page.append(pageHeader({ title: "Application", back: h("a", { href: "#/pipeline", text: "Pipeline" }) }));
+  page.append(placeholderRows(3));
+
+  let data = null;
+  try {
+    data = await api(`rows/${encodeURIComponent(id)}`);
+  } catch (error) {
+    if (isUnauthorised(error)) return askForToken();
+    clear(page);
+    page.append(pageHeader({ title: "Application", back: h("a", { href: "#/pipeline", text: "Pipeline" }) }));
+    page.append(loadError("this row", error, () => render()));
+    return;
+  }
+
+  clear(page);
+  const row = data.row || {};
+  const pkg = data.package || {};
+  const act = data.action || { kind: "none" };
+  const done = () => render();
+  const segment = segmentOf(row.status);
+
+  // The one control that can send, built once and mounted wherever the page
+  // has a place for it: the top right when a send is the move, and the
+  // screening card when a question is in the way of one.
+  const sendable = canSend(row, data.lane);
+  const send = sendable && (act.kind === "retry" || act.kind === "answer")
+    ? sendNowControl(row, done, { enabled: act.kind === "retry" }) : null;
+
+  const screeningSlot = h("div", { class: "screening-slot" });
+  const focusQuestion = () => {
+    screeningSlot.scrollIntoView({ block: "center", behavior: "auto" });
+    const first = screeningSlot.querySelector("input, select, textarea, button");
+    if (first) first.focus();
+  };
+  // A send says what it will do before it is pressed, so the button, the
+  // sentence and the progress line stack together at the top right.
+  const primary = send && act.kind === "retry"
+    ? { node: h("div", { class: "send-aside" }, send.node, send.help, send.line) }
+    : primaryControl(data, row, done, { onAnswer: focusQuestion });
+
   page.append(pageHeader({
     title: row.title || "Untitled role",
-    back: h("a", { href: "#/applications", text: "Applications" }),
+    back: h("a", { href: segment ? `#/pipeline/${segment.key}` : "#/pipeline",
+      text: segment ? `Pipeline / ${segment.label}` : "Pipeline" }),
+    aside: primary ? primary.node : null,
+    lede: h("div", { class: "row-intro" }, pillLine(row, data), factsLine(row),
+      primary && primary.extra ? primary.extra : null),
   }));
-  const facts = [
-    row.company, row.location,
-    typeof row.score === "number" ? `score ${Math.round(row.score)}` : null,
-    row.classification?.work_arrangement || row.workArrangement,
-    APPLY_METHODS[row.applyMethod] || row.applyMethod,
-    row.userSaved ? "saved by you" : null, statusLabel(row.status) || null,
-  ].filter(Boolean);
-  const line = h("p", { class: "detail-meta", text: `${facts.join(", ")}. ` });
-  const pill = lanePill(row, await laneTable);
-  if (pill) line.append(pill, document.createTextNode(" "));
-  if (row.url) line.append(h("a", { href: row.url, rel: "noreferrer noopener", target: "_blank", text: "Open the advert" }));
-  page.append(line);
+  page.append(timeline(row, act));
 
-  page.append(statsRow(row, pkg, data.package_files));
+  const why = stoppedLede(data, row);
+  if (why) page.append(why);
 
-  // Letter left at reading measure, JD right and quieter, the two cards the
-  // same height with the JD scrolling inside its own card. Stacked on a phone,
-  // letter first, because the letter is what the decision is about. With no
-  // letter in the package there is nothing to read beside, so the JD takes the
-  // full width.
-  const decision = decisionFields();
-  const redraft = REDRAFTABLE.has(row.status)
-    ? redraftControl(row, data.redraft_requested, () => decision.reason.value, { small: true })
-    : null;
-  if (redraft) redraft.button.addEventListener("click", decision.reveal);
-  const hasLetter = asText(pkg.cover_letter).trim() !== "";
-  const editable = row.status === "manual_action_needed" || row.status === "awaiting_approval";
+  page.append(gatesStrip(pkg, data.package_files));
+
+  // The letter and the advert side by side from 960 up, letter first on a
+  // phone, because the letter is what the decision is about.
+  const redraft = redraftControl(row, data.redraft_requested, null);
+  const hasLetter = asText(pkg.cover_letter).trim() !== "" || letterEditable(row.status);
   const columns = h("div", { class: hasLetter ? "columns" : "columns one" });
   if (hasLetter) columns.append(letterCard(row, pkg, redraft));
-  const jdText = asText(row.description || pkg.jd);
-  const jd = h("section", { class: "card jd-card" }, h("div", { class: "card-head" }, h("h2", { text: "Job description" })));
-  jd.append(jdText.trim()
-    ? h("div", { class: "jd" }, h("pre", { text: jdText }))
-    : h("p", { class: "grey", text: "No job description stored for this row. Open the advert to read it." }));
-  columns.append(jd);
+  columns.append(jdCard(row, pkg));
   page.append(columns);
-  if (!hasLetter && editable) page.append(letterCard(row, pkg, redraft));
 
-  // The order the page is read in: what it is, whether it may go, what it
-  // says, the question in the way, the decision, and the history last.
-  const rest = h("div", { class: "stack" });
-  const done = () => { location.hash = "#/applications"; render(); };
-  const screening = h("div", { class: "screening-slot" });
-  // The panel mounts on exactly this condition, so the bar can leave the
-  // Answer button out without waiting for the panel's module to load.
+  page.append(screeningSlot);
+  const decision = decisionCard(data, row, done);
+  if (decision) page.append(decision);
+  page.append(historyCard(row.history));
+
+  // The question in the way, if there is one on file. The card mounts itself
+  // and answers for whether there is anything to ask, so the slot stays empty
+  // rather than carrying an empty card.
+  await mountScreening(screeningSlot, row, data, send);
+  focusIfAsked(row, focusQuestion);
+}
+
+/**
+ * The screening card, when a question is unanswered. `send` arrives disabled:
+ * banking an answer enables it and puts the focus on it, and the person's own
+ * press is the one that sends (AGENTS.md section 2).
+ */
+async function mountScreening(slot, row, data, send) {
+  const act = data.action || {};
   const reason = data.reason || row.notes;
-  const screeningOnPage = UNANSWERED_QUESTION.test(String(reason || ""));
-  // The lane banner sits directly above the decision card, because it is the
-  // answer to the question the buttons under it are about to ask.
-  const banner = laneBanner(data.action || { kind: "none" }, row);
-  rest.append(screening);
-  if (banner) rest.append(banner);
-  rest.append(actionBar(data, row, done, { screeningOnPage, decision }), historyBlock(row.history));
-  page.append(rest);
-  await mountScreening(screening, row, reason);
+  if (act.kind !== "answer" && !UNANSWERED_QUESTION.test(String(reason || ""))) return;
+  const mod = await import("./screening.js").catch(() => null);
+  if (!mod || typeof mod.screeningCard !== "function") return;
+  const card = await mod.screeningCard({
+    row,
+    reason,
+    send: send && act.kind === "answer" ? send : null,
+    onBanked: () => {
+      if (!send) return;
+      send.button.disabled = false;
+      send.button.focus();
+    },
+  });
+  if (card) return slot.append(card);
+  if (act.kind !== "answer") return;
+  // The run stopped on a question and the file has none: say so rather than
+  // leave the person looking for a card that is not there.
+  const note = h("section", { class: "card screening-card" }, h("h2", { text: "A question in the way" }),
+    h("p", { text: "The run stopped on a question, and nothing unanswered is on file for this row. Open the advert to see what it asked." }));
+  if (send) note.append(h("div", { class: "screening-send" }, send.node, send.help, send.line));
+  slot.append(note);
+}
+
+/** A press on the board's Answer button opens this page with the question
+ * already in view. The intent travels in sessionStorage, because a hash
+ * carries the row id and nothing else. */
+function focusIfAsked(row, focus) {
   try {
-    if (sessionStorage.getItem(FOCUS_KEY) === row.id) {
-      sessionStorage.removeItem(FOCUS_KEY);
-      screening.scrollIntoView({ block: "center" });
-      const focusable = screening.querySelector("input, textarea, button, select");
-      if (focusable) focusable.focus();
-    }
-  } catch { /* storage is off; the panel is still on the page */ }
+    if (sessionStorage.getItem(FOCUS_KEY) !== row.id) return;
+    sessionStorage.removeItem(FOCUS_KEY);
+    focus();
+  } catch { /* storage is off; the card is still on the page */ }
 }

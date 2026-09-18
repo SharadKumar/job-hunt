@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * tools/ui/server.ts — the local web UI: a dependency-free node:http server in
+ * tools/ui/server.ts - the local web UI: a dependency-free node:http server in
  * front of tools/ui/api.ts and the static front end in tools/ui/static/.
  *
  * It exists so the person can qualify roles, read a prepared package and drain
