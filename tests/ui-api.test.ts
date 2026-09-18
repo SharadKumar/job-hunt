@@ -99,7 +99,65 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   assert.equal(summary.autopilot_enabled, true, "autopilot.enabled is read from the profile policy");
   assert.equal(summary.kill_switch, false);
   assert.ok(summary.generated_at.endsWith("Z"));
+  assert.equal(summary.max_per_day, 10, "the cap comes off the same policy read");
   console.log("  ✓ summary counts, sent_today and the policy flags");
+}
+
+{
+  // GET /api/summary is the single source of every count the screens show.
+  // Home, the board header and the filter column each used to derive their
+  // own, so one screen reported three different figures for one pipeline
+  // (docs/ui-redesign-2026-09-18.md, section 2).
+  const summary = await api.getSummary(ctx);
+  assert.deepEqual(
+    Object.keys(summary).sort(),
+    [
+      "autopilot_enabled", "counts", "generated_at", "in_flight", "kill_switch", "max_per_day",
+      "needs_you", "needs_you_groups", "segments", "sent_today", "total",
+    ],
+    "the summary response shape is the contract",
+  );
+  assert.deepEqual(
+    Object.keys(summary.segments).sort(),
+    ["closed", "needs", "parked", "queue", "replies", "sent"],
+    "one count per Pipeline segment, section 4",
+  );
+  assert.equal(summary.segments.needs, 1, "needs is manual_action_needed");
+  assert.equal(summary.segments.queue, 2, "queue is shortlisted through submission_pending");
+  assert.equal(summary.segments.sent, 1, "sent is submitted");
+  assert.equal(summary.segments.parked + summary.segments.replies + summary.segments.closed, 0,
+    "and nothing seeded is parked, replied or closed");
+  const bySegment = Object.values(summary.segments).reduce((a, b) => a + b, 0);
+  assert.equal(bySegment, summary.total, "every seeded row lands in exactly one segment");
+
+  assert.deepEqual(
+    Object.keys(summary.needs_you_groups).sort(),
+    ["answer_question", "decide", "open_portal", "waiting_redraft"],
+    "the four Needs you groups Today lists",
+  );
+  // The one blocked row was stopped by the letter critic, so it is waiting on
+  // a redraft. The classification is the row API's own, not a second copy.
+  assert.equal(summary.needs_you_groups.waiting_redraft, 1, "a letter block is a row waiting on a redraft");
+  assert.equal(summary.needs_you_groups.answer_question, 0);
+  assert.equal(summary.needs_you_groups.open_portal, 0);
+  assert.equal(summary.needs_you_groups.decide, 0);
+  assert.equal(typeof summary.needs_you, "number");
+  assert.equal(typeof summary.in_flight, "number");
+
+  // Counted over the two segments the person actually works. A `discovered`
+  // row nobody has looked at and a `parked` one they already ruled out both
+  // derive an action, and neither is waiting on them.
+  const rows = await import("../tools/ui/rows-ext-api.ts");
+  const worked = [...api.SEGMENTS.needs, ...api.SEGMENTS.queue].join(",");
+  const listed = await rows.getRowsWithActions({ status: worked, limit: "2000", q: null, channel: null }, ctx);
+  assert.equal(summary.needs_you, listed.counts.needs_you, "needs_you must be the count the list reports");
+  assert.equal(summary.in_flight, listed.counts.in_flight, "and so must in_flight");
+  assert.equal(
+    Object.values(summary.needs_you_groups).reduce((a, b) => a + b, 0) <= summary.needs_you,
+    true,
+    "and no group may count a row the headline does not",
+  );
+  console.log("  ✓ summary is the one source of the segment, needs-you and lane counts");
 }
 
 {
@@ -150,6 +208,33 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   assert.equal(parked.id, notesId);
   assert.equal(parked.reason, "interstate onsite", "no history reason falls back to the note");
   console.log("  ✓ reason falls back to notes");
+}
+
+{
+  // A note written after the last move is the newer of the two, and it is the
+  // one that says where the row actually is. Taking the history reason
+  // whenever there was one hid every capped, blocked and re-parked note: the
+  // row read "package prepared unattended" while its note said the gate had
+  // refused it an hour later.
+  const cappedId = await seed("Enterprise Architect", "Cap Co", ["shortlisted", "drafted", "awaiting_approval", "approved"],
+    {}, "autopilot daily-2026-09-18: package prepared unattended");
+  await patch(cappedId, { notes: "[autopilot daily-2026-09-18] autopilot daily cap reached (5/5), the rest waits for tomorrow" }, "autopilot", "gate capped");
+  const capped = (await api.getRows({ status: "approved" }, ctx)).rows.find((r) => r.id === cappedId)!;
+  assert.match(capped.reason ?? "", /daily cap reached/, "the newer of the two wins, and here that is the note");
+
+  // The other way round: a row moved after its note was written still reads as
+  // the move, so a park note does not outlive the unpark.
+  await setStatus(cappedId, "manual_action_needed", "adapter failed on the review page");
+  const moved = (await api.getRows({ status: "manual_action_needed" }, ctx)).rows.find((r) => r.id === cappedId)!;
+  assert.equal(moved.reason, "adapter failed on the review page", "a move after the note is the newer of the two");
+
+  // Only the last line of a note is shown: `notes` is appended to, and the
+  // line that explains where the row is now is the last of them.
+  await patch(cappedId, { notes: "[autopilot daily-2026-09-18] first park\n[autopilot daily-2026-09-19] letter-critic block (1 fail): scope wording" }, "autopilot", "park note");
+  const lastLine = (await api.getRows({ status: "manual_action_needed" }, ctx)).rows.find((r) => r.id === cappedId)!;
+  assert.match(lastLine.reason ?? "", /letter-critic block/, "the last note line is the one on screen");
+  assert.ok(!/first park/.test(lastLine.reason ?? ""), "and the one before it is history, not a headline");
+  console.log("  ✓ the reason is whichever of the two was written last");
 }
 
 // ---------- row detail ----------
@@ -213,8 +298,23 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   assert.deepEqual(queue, [{ id: manualId, action: "retry", edits: "shorter opener" }], "the decision lands in the approval queue");
 
   const approve = await api.postRowAction(awaitingId, { action: "approve" }, ctx);
-  assert.equal(approve.status_after, "awaiting_approval", "approve queues the row and moves nothing");
+  // AGENTS.md section 2: an approve authorises preparation, never a send. It
+  // has to move the row all the same, or the person presses Approve and the
+  // screen shows them the same question again.
+  assert.equal(approve.status_after, "approved", "approve moves the row out of the approval queue");
   assert.equal(approve.queued, true);
+  const approved = (await get(awaitingId))!;
+  assert.equal(approved.status, "approved");
+  const approvedAt = approved.history[approved.history.length - 1];
+  assert.equal(approvedAt.from, "awaiting_approval");
+  assert.equal(approvedAt.reason, "approved in the local UI", "the history says which surface it was given on");
+
+  // A second approve on the same row is not a second move: there is nothing
+  // left to approve, and walking on from `approved` is not the Tray's to do.
+  const again = await api.postRowAction(awaitingId, { action: "approve" }, ctx);
+  assert.equal(again.status_after, "approved", "an approve on a row that already moved changes nothing");
+  assert.equal((await get(awaitingId))!.history.length, approved.history.length, "and writes no history");
+
   const queue2 = JSON.parse(fs.readFileSync(queuePath, "utf8"));
   assert.equal(queue2.length, 2, "a second decision is merged in, not written over the first");
   console.log("  ✓ retry and approve carry the Sheet pull's semantics");
@@ -414,8 +514,12 @@ clouds:
   assert.equal(card.pages[0].low, false);
   assert.equal(card.pages[1].fill, 62);
   assert.equal(card.pages[1].low, true, "62 percent is under the 75 percent floor the audit declares");
+  assert.deepEqual(card.pages.map((p: any) => p.page), [1, 2], "each page carries its own number for the fill bars");
+  assert.equal(card.pages[1].threshold, 75, "and the floor it is measured against");
   for (const page of card.pages) {
-    assert.match(page.src, /^api\/resumes\/example-resume\/file\/[^/]+\.png$/, "a page is served through the file route");
+    // Absolute: the server serves the app shell for every extensionless path,
+    // so a relative `api/...` resolved against whatever hash the person was on.
+    assert.match(page.src, /^\/api\/resumes\/example-resume\/file\/[^/]+\.png$/, "a page is served through the file route");
   }
 
   const ats = card.gates.find((g: any) => g.name === "ats");
@@ -426,6 +530,7 @@ clouds:
     { verdict: "pass", round: 2, findings_count: 0 },
     "the critic line reads off <prefix>.critic.json",
   );
+  assert.deepEqual(card.critic.findings, [], "the open findings come with the count, so the screen can show them");
   assert.deepEqual(card.keywords.must_have, { surfaced: 14, total: 18 });
   assert.deepEqual(card.keywords.renderable, { surfaced: 31, total: 40 });
   assert.equal(card.clouds.length, 1);
@@ -435,7 +540,7 @@ clouds:
   assert.match(card.files.md, /\/file\/.+\.md$/);
 
   // The urls the card hands out must resolve through the file route itself.
-  const page = await api.handleApi({ method: "GET", pathname: `/${card.pages[0].src}` }, ctx);
+  const page = await api.handleApi({ method: "GET", pathname: card.pages[0].src }, ctx);
   assert.equal(page.status, 200);
   assert.equal(page.headers?.["content-type"], "image/png");
   assert.equal(page.headers?.["cache-control"], "no-store", "an artefact is never cached");
@@ -453,7 +558,7 @@ clouds:
   const absent = await api.handleApi({ method: "GET", pathname: "/api/resumes/example-resume/file/missing.png" }, ctx);
   assert.equal(absent.status, 404, "a name that is not there is a 404");
 
-  const wrongMethod = await api.handleApi({ method: "POST", pathname: `/${card.pages[0].src}` }, ctx);
+  const wrongMethod = await api.handleApi({ method: "POST", pathname: card.pages[0].src }, ctx);
   assert.equal(wrongMethod.status, 405, "the file route is read-only");
   console.log("  ✓ resumes list, page urls, traversal and extension refusals");
 }
@@ -491,7 +596,9 @@ clouds:
     const authed = await fetch(`${base}/api/summary`, { headers: { authorization: "Bearer s3cret" } });
     assert.equal(authed.status, 200);
     assert.equal(authed.headers.get("cache-control"), "no-store", "nothing the UI serves is cacheable");
-    assert.equal(((await authed.json()) as any).total, 5);
+    // The same summary the handler returns, over HTTP: counted rather than
+    // written down, so seeding one more row above does not fail the token test.
+    assert.equal(((await authed.json()) as any).total, (await api.getSummary(ctx)).total);
 
     const wrong = await fetch(`${base}/api/summary`, { headers: { authorization: "Bearer nope" } });
     assert.equal(wrong.status, 401);

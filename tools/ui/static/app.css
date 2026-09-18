@@ -1,55 +1,88 @@
 /*
- * app.css - the whole stylesheet for the local harness UI.
+ * app.css - the tokens, the type, the layout and the primitives every screen
+ * in the local harness UI is built from. One file per screen sits beside this
+ * one (today.css, pipeline.css, row.css, resumes.css, guardrails.css,
+ * runs.css, settings.css) and owns nothing that is shared.
  *
- * The room this has to work in: a senior contractor deciding, on a phone or a
- * laptop, whether a letter the harness wrote may go out against a job ad. The
- * page is a plain white job board: system sans, a 1140 px column, light grey
- * hairlines, light grey pills, and one green accent for the numbers that
- * matter. Nothing shouts except a verdict that failed.
+ * The room this has to work in: one person, in the morning, after an
+ * unattended run, deciding what the machine did under their name and what it
+ * still needs from them. The page is a private control room, not a dashboard:
+ * a written brief at the top, quiet hairline lists under it, and one accent
+ * colour that means "your action" and nothing else.
  *
- * Two hard requirements carried forward:
- *   1. usable at 360 px and on a desktop,
- *   2. dark and light purely through prefers-color-scheme, no theme toggle.
- *     Light is the design; dark is a modest translation of it.
- *
- * House rules enforced here: flat surfaces with no drop shadow, one accent
- * colour, uppercase only on the 12 px section labels, and no motion beyond a
- * background change on hover.
+ * The contract is docs/ui-redesign-2026-09-18.md, sections 3, 6 and 7. The
+ * house rules it fixes, enforced here:
+ *   1. two families, both already on the machine: a serif for voice, the
+ *      system sans for data. Nothing is fetched.
+ *   2. `--you` is the only decorative colour, and it is never used on
+ *      something that is not a link or an action. Verdict colours are used
+ *      only for verdicts. A score is a number in ink, tabular, never green.
+ *   3. flat surfaces: no drop shadow anywhere.
+ *   4. one spacing scale: 4, 8, 12, 16, 24, 32, 48, and nothing else. The one
+ *      component metric off it is the 10 px side padding section 7 fixes for a
+ *      form field.
+ *   5. no all-caps labels, no ellipsis truncation, no inner scroll region.
+ *   6. breakpoints at 720 and 960, and a tap target of 40 px on a touch
+ *      screen.
+ *   7. dark and light purely through prefers-color-scheme, no theme toggle.
  */
 
 :root {
   color-scheme: light dark;
 
-  --page: #ffffff;      /* the page itself */
-  --card: #ffffff;      /* cards sit on the page, told apart by a hairline */
-  --hover: #fafafa;     /* the only hover effect on a card */
-  --ink: #111827;       /* body text, headings, primary button fill */
-  --grey: #6b7280;      /* secondary text and small labels */
-  --line: #e5e7eb;      /* every border */
-  --pill: #f3f4f6;      /* tag background */
-  --pill-ink: #374151;  /* tag text */
-  --green: #16a34a;     /* score, sent, pass */
-  --red: #dc2626;       /* block, fail, reject, kill switch */
-  --amber: #b45309;     /* a warn: worth a look, not a blocker */
+  --paper: #ffffff;   /* the page */
+  --ink: #141414;     /* text, primary button fill */
+  --muted: #66655f;   /* secondary text, small labels */
+  --rule: #dcdbd6;    /* hairlines */
+  --wash: #f4f3ef;    /* selected row, code, tag fill */
+  --you: #2337c6;     /* the person's lane: needs you, links, primary action */
+  --pass: #1a7f3c;    /* machine verdict: pass, sent */
+  --fail: #b3261e;    /* machine verdict: fail, block, reject, kill switch */
+  --warn: #8a5a00;    /* warn: worth a look */
+  --sidebar: #14233b;  /* persistent navigation */
+  --sidebar-ink: #ffffff;
+  --sidebar-muted: rgba(255, 255, 255, 0.68);
+  --sidebar-active: rgba(255, 255, 255, 0.12);
+  --sidebar-w: 216px;
+  --shell-h: 64px;
 
-  --maxw: 1140px;
+  /*
+   * The names the screens were written against, while each screen is being
+   * rewritten in its own pass. They are aliases, not a second palette: every
+   * one of them resolves to a token above, so nothing on screen can drift
+   * from the table in docs/ui-redesign-2026-09-18.md. A screen agent drops
+   * the alias from its own file as it goes.
+   */
+  --page: var(--paper);
+  --card: var(--paper);
+  --hover: var(--wash);
+  --grey: var(--muted);
+  --line: var(--rule);
+  --pill: var(--wash);
+  --pill-ink: var(--muted);
+  --green: var(--pass);
+  --red: var(--fail);
+  --amber: var(--warn);
+
+  --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  --sans: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+
+  --maxw: 1080px;
   --gutter: 24px;
-  --measure: 68ch;
+  --measure: 62ch;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #0b0f17;
-    --card: #111827;
-    --hover: #161f2e;
-    --ink: #e5e7eb;
-    --grey: #9aa3b2;
-    --line: #253044;
-    --pill: #1b2537;
-    --pill-ink: #cbd3e1;
-    --green: #35c46b;
-    --red: #f2685f;
-    --amber: #d98324;
+    --paper: #0e0f11;
+    --ink: #e8e6e1;
+    --muted: #9d9b94;
+    --rule: #2a2c30;
+    --wash: #17181b;
+    --you: #8fa0ff;
+    --pass: #4cc574;
+    --fail: #f2685f;
+    --warn: #d9a03a;
   }
 }
 
@@ -58,19 +91,22 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--page);
+  background: var(--paper);
   color: var(--ink);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.4;
   -webkit-text-size-adjust: 100%;
 }
 
 a { color: inherit; }
 a:hover { text-decoration: underline; }
 
+/* Every interactive element carries the same visible ring, so a keyboard can
+   always see where it is (section 7, Keyboard and focus). */
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--you);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -89,8 +125,8 @@ a:hover { text-decoration: underline; }
 /* --- Header ------------------------------------------------------------- */
 
 .top {
-  background: var(--page);
-  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
 }
 
 /* The bar stretches its children, so a nav link is as tall as the bar and its
@@ -134,8 +170,12 @@ a:hover { text-decoration: underline; }
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
-.nav a:hover { text-decoration: none; border-bottom-color: var(--grey); }
-.nav a[aria-current="page"] { font-weight: 500; border-bottom-color: var(--ink); }
+.nav a:hover { text-decoration: none; border-bottom-color: var(--rule); }
+.nav a[aria-current="page"] { font-weight: 600; border-bottom-color: var(--you); }
+
+/* Above 720 px the nav is always shown, so the Menu button is not. Scoped to
+   the header so it beats the `.btn` display the button also carries. */
+.top .menu-toggle { display: none; }
 
 /* A screen's own tabs, on the page rather than in the header: the same
    underline the nav uses, one step down the type scale, so the second level of
@@ -150,16 +190,15 @@ a:hover { text-decoration: underline; }
   align-items: center;
   text-decoration: none;
   font-size: 13px;
-  color: var(--grey);
+  color: var(--muted);
   padding-bottom: 4px;
   border-bottom: 2px solid transparent;
 }
-.tabs a:hover { text-decoration: none; color: var(--ink); border-bottom-color: var(--grey); }
-.tabs a[aria-current="page"] { color: var(--ink); font-weight: 500; border-bottom-color: var(--ink); }
+.tabs a:hover { text-decoration: none; color: var(--ink); border-bottom-color: var(--rule); }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--you); }
 
 /* The cog is a bare icon, not a second button: the autopilot switch is the one
-   bordered control up here, so the two stop reading as a pair. The gap is
-   24 px everywhere except switch to cog, which the -8 px pulls back to 16. */
+   bordered control up here, so the two stop reading as a pair. */
 .nav .cog {
   align-self: center;
   display: inline-flex;
@@ -167,23 +206,20 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   width: 36px;
   height: 36px;
-  margin-left: -8px;
   margin-bottom: 0;
   border: 0;
   background: none;
-  border-radius: 8px;
-  color: var(--grey);
+  border-radius: 4px;
+  color: var(--muted);
 }
 .nav .cog:hover { color: var(--ink); background: none; text-decoration: none; }
 .nav .cog:focus-visible { color: var(--ink); }
 .nav .cog[aria-current="page"] { color: var(--ink); }
 
-/* The autopilot switch: a button that says the lane it is in. Green dot on,
-   grey dot off, and the armed state turns the whole control green as every
-   other two-press control does. */
+/* The autopilot switch: a button that says the lane it is in, in words, with
+   today's cap beside it. The dot repeats the state for a glance, and under
+   720 px the dot and the word are all that is left. */
 .switch-slot { align-self: center; display: inline-flex; align-items: center; gap: 8px; }
-
-.switch { border-radius: 8px; }
 
 .switch::before {
   content: "";
@@ -192,61 +228,17 @@ a:hover { text-decoration: underline; }
   height: 8px;
   margin-right: 8px;
   border-radius: 8px;
-  background: var(--grey);
+  background: var(--muted);
   vertical-align: baseline;
 }
 
-.switch.on::before { background: var(--green); }
-.switch.off::before { background: var(--red); }
-.switch.unknown::before { background: var(--grey); }
-.switch.armed::before { background: #ffffff; }
+.switch.on::before { background: var(--pass); }
+.switch.off::before { background: var(--fail); }
+.switch.unknown::before { background: var(--muted); }
 .switch-note { max-width: 240px; }
 
-.token-fields { display: grid; gap: 12px; margin: 12px 0; }
-
-.token-fields input {
-  font: inherit;
-  width: min(100%, 420px);
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-}
-
-.commands {
-  margin: 0;
-  padding: 16px;
-  overflow: auto;
-  background: var(--pill);
-  border-radius: 8px;
-  font-size: 13px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  font-variant-ligatures: none;
-}
-
-/* On a phone the wordmark takes its own line and the nav sits under it, with
-   the settings cog still hard right. */
-/* On a phone the wordmark takes its own line and the nav keeps to one line
-   under it, scrolling sideways rather than wrapping into a second row. */
-@media (max-width: 639px) {
-  .top-inner { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; gap: 8px; }
-  .brand { flex: 1 0 100%; white-space: nowrap; }
-  .nav {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 16px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .nav::-webkit-scrollbar { display: none; }
-  .nav a { white-space: nowrap; }
-}
-
-.alarm { color: var(--red); font-weight: 600; }
+.alarm { color: var(--fail); font-weight: 600; }
+.ok { color: var(--pass); font-weight: 600; }
 
 /* --- Page furniture ----------------------------------------------------- */
 
@@ -259,7 +251,7 @@ a:hover { text-decoration: underline; }
 
 /* One header for every screen: 32 px of air above it, the title, whatever the
    screen puts on the title's baseline, the lede 4 px under the title, and
-   24 px before the first card. Nothing else sets the top of a screen. */
+   24 px before the first section. Nothing else sets the top of a screen. */
 .page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -272,155 +264,379 @@ a:hover { text-decoration: underline; }
 .page-header .lede, .page-header .page-count { grid-column: 1 / -1; }
 .page-aside { justify-self: end; display: flex; align-items: center; gap: 8px; }
 
-@media (max-width: 719px) {
-  .page-header { grid-template-columns: minmax(0, 1fr); }
-  .page-aside { justify-self: start; order: 1; margin-top: 12px; }
-}
-
-/* The line under the greeting: the quotation in italics, then the attribution
-   in regular weight, both on the one line, wrapping at the reading measure. */
-.quote { max-width: 72ch; font-size: 15px; }
-.quote-text { font-style: italic; }
-.quote-by { font-size: 15px; font-weight: 400; color: var(--grey); }
-
-/* The subtitle under any page title: 17 px so it reads as a sentence rather
-   than as a caption, grey, and 4 px under the title. */
-.lede {
-  margin: 4px 0 0;
-  font-size: 17px;
-  line-height: 1.5;
-  color: var(--grey);
-  max-width: var(--measure);
-}
-
+/* The voice: page titles, ledes, section headings, empty states and the brief
+   are set in the serif. Rows, forms and pills stay in the sans. */
 h1 {
   margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-family: var(--serif);
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 h2 {
   margin: 0 0 12px;
-  font-size: 17px;
-  font-weight: 600;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.45;
 }
 
 h3 { margin: 0; font-size: 15px; font-weight: 600; }
 
-.page-count { margin: 4px 0 0; color: var(--grey); font-size: 13px; max-width: var(--measure); }
-
-.eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--grey);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+/* The subtitle under any page title: a sentence, not a caption. */
+.lede {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: var(--measure);
 }
 
-.sorter { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--grey); }
+.page-count { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: var(--measure); }
+
+/* The one crumb back to the list a detail page was opened from. */
+.backlink { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+/* A small label. Sentence case at 13 px in muted: nothing in this UI shouts
+   (section 6, Global components). */
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.measure { max-width: var(--measure); }
+.grey, .small { color: var(--muted); }
+.small { font-size: 13px; }
+
+.sorter { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
 
 /* A bare select, anywhere it is not inside a labelled .field. */
 select {
   font: inherit;
   font-size: 15px;
   color: var(--ink);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
   height: 36px;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
-/* --- Cards -------------------------------------------------------------- */
+/* --- The brief ----------------------------------------------------------
+   The paragraph Today opens with. Serif, 17 px, 62ch. Its numbers are live and
+   each one is a link into the list it counts, underlined in the person's
+   colour rather than coloured, so the sentence still reads as a sentence.
+   A zero is plain text: there is nothing behind it to open. */
 
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.cards { display: grid; gap: 24px; }
-
-/* A card whose title row carries controls: the title left, small buttons hard
-   right, both on one baseline. The h2 keeps its size and gives up its margin
-   to the row. */
-.card-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 12px;
-}
-
-.card-head h2 { margin: 0; }
-.card-head-actions { display: flex; align-items: center; gap: 8px; }
-.card-head-actions:empty { display: none; }
-
-.job:hover { background: var(--hover); }
-
-.job-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.job-title {
+.brief {
+  margin: 0;
+  max-width: var(--measure);
+  font-family: var(--serif);
   font-size: 17px;
-  font-weight: 600;
-  text-decoration: none;
-  letter-spacing: -0.01em;
+  line-height: 1.45;
 }
 
-.score { color: var(--green); font-weight: 600; white-space: nowrap; }
+.brief p { margin: 0 0 12px; }
+.brief p:last-child { margin-bottom: 0; }
 
-.job-meta { margin: 4px 0 0; color: var(--grey); font-size: 13px; }
+.brief a, a.brief-number {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-decoration-color: var(--you);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.brief a:hover, a.brief-number:hover { text-decoration-thickness: 2px; }
+
+/* --- Lists -------------------------------------------------------------- */
+
+/*
+ * The list is the shape of this UI. Full width, hairline separated, no card
+ * around a row: a row is a line to scan, and a card's worth of padding around
+ * each one buries the list.
+ *
+ * Three cells (section 7): the main cell with the title, its pills, one meta
+ * line and the reason in full; the score, right aligned on the title baseline;
+ * and one action, vertically centred. Under 720 px the grid becomes one
+ * column and the button goes full width under the reason.
+ */
+.list { display: block; border-top: 1px solid var(--rule); }
+
+.list-row {
+  display: grid;
+  /* Three columns: the score leads, so a ranked list scans as a column of
+     numbers down the left; the text takes the middle; the actions sit in a
+     right rail as wide as their widest button. Nothing floats in between. */
+  grid-template-columns: 3ch minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* A whole row that is a link may tint on hover. A row carrying buttons must
+   not: the tint would promise a click the row itself does not answer. */
+a.list-row, .list-row.is-link { color: inherit; text-decoration: none; }
+a.list-row:hover, .list-row.is-link:hover { background: var(--wash); text-decoration: none; }
+/* A serif heading with its count beside it, the head of every list section. */
+.section-head { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 12px; }
+.section-head h2, .section-head h3 { margin: 0; }
+.section-head .tally { font-family: var(--sans); font-size: 17px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The row the person just acted on, marked for three seconds and then let go.
+   A bar drawn in the row's own box rather than a shadow: this UI has none. */
+.list-row.just-acted { position: relative; }
+.list-row.just-acted::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  width: 2px;
+  background: var(--you);
+}
+
+.list-main { grid-column: 2; grid-row: 1 / span 3; min-width: 0; }
+/* A row with nothing to rank (a rule, a run, a term) does not keep an empty
+   score gutter: its text starts where the heading starts. */
+.list-row:not(:has(> .list-score)) .list-main { grid-column: 1 / span 2; }
+
+.list-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+.list-title:hover { text-decoration: underline; }
+
+/* The pills follow the title on its own line and wrap as one group. Singly
+   they orphan, and a lone pill on line two reads as a different row. */
+.list-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* One meta line, 13 px muted: employer, location, apply method. */
+.list-meta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* The reason in full. Truncation is banned: a reason the person cannot read
+   is a row they have to open for no good reason (section 6). */
+.list-reason {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+.list-score {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  padding-top: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The rail: top aligned with the title, right aligned, one button under the
+   next at one width, so a row with two choices reads as a short menu rather
+   than two buttons jostling on a line. The negative top margin brings a 32 px
+   button level with the 22 px title line. */
+.list-action {
+  grid-column: 3;
+  grid-row: 1 / span 3;
+  align-self: start;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: -4px;
+  min-width: 0;
+}
+.list-action .btn, .list-action button { width: 100%; }
+
+/* A group of rows is a section with its own heading and count, and a link to
+   the whole list when the group is capped. */
+.group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 24px 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.group-heading .tally { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- Pills -------------------------------------------------------------- */
+
+/*
+ * A pill is a label, never a link and never a button. There is one for the
+ * lane, one for "saved by you", one for the apply method when the method is
+ * what decides the lane, and one for the status. Channel is text in the meta
+ * line, because a channel is not a state (section 6).
+ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* The person's lane. `--you` means your action, so only this one takes it. */
+.pill-you { background: transparent; border-color: var(--you); color: var(--you); }
+/* The machine's lane stays quiet: the run needs nothing from anybody. */
+.pill-autopilot { background: transparent; border-color: var(--rule); color: var(--muted); }
+/* The machine's own word for where the row is, shown once beside the person's. */
+.pill-status { background: var(--wash); color: var(--ink); }
+
+/* A verdict is quoted, never invented, and it carries the word as well as the
+   colour so it is not colour alone that says it. */
+.pill-pass { background: transparent; border-color: var(--pass); color: var(--pass); }
+.pill-fail { background: transparent; border-color: var(--fail); color: var(--fail); }
+.pill-warn { background: transparent; border-color: var(--warn); color: var(--warn); }
+.pill-none { background: transparent; border-color: var(--rule); color: var(--muted); }
 
 .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
-.pill {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--pill);
-  color: var(--pill-ink);
-}
+/* --- Segments: the tab strip with counts -------------------------------- */
 
-.rule { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
-
-.why { margin: 0; color: var(--ink); }
-
-.job-foot {
+/*
+ * The Pipeline segments, and any strip like them. Each tab carries the count
+ * the list behind it will show, so a count is never a dead end and never
+ * disagrees with the list it names. A zero stays visible and muted: an empty
+ * segment is an answer.
+ */
+.segments {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 16px;
+  align-items: baseline;
+  gap: 24px;
+  margin: 0 0 16px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
 }
 
-.when { color: var(--grey); font-size: 13px; }
+.segments::-webkit-scrollbar { display: none; }
 
-.foot-actions { display: flex; gap: 8px; }
+.segments a, .segments button {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  height: auto;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.segments a:hover, .segments button:hover { background: none; color: var(--ink); text-decoration: none; }
+.segments .tally { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.segments [aria-current="page"], .segments [aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--you);
+}
+
+/* --- Chips: the filters that sit under the strip ------------------------ */
+
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 0 0 16px; }
+
+.chip {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover { background: var(--wash); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.chip .dot { width: 8px; height: 8px; border-radius: 8px; background: var(--muted); }
+.chip.good .dot { background: var(--pass); }
+.chip.warn .dot { background: var(--warn); }
+.chip.bad .dot { background: var(--fail); }
+
+/* An inline label and its control on one baseline: "Min score [ ]", "Sort [v]". */
+.inline-field { display: inline-flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+.inline-field input[type="number"] {
+  font: inherit;
+  font-size: 15px;
+  width: 64px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
 
 /* --- Buttons ------------------------------------------------------------ */
 
-/* One button size everywhere: 36 px tall, 14 px of side padding, whatever the
-   weight. Primary, secondary, destructive and the header switch all sit on the
-   same line without anyone having to nudge a margin. */
+/*
+ * One button. 36 px on a detail page, 32 px in a list, 12 px of side padding,
+ * 4 px radius, weight 600. Primary is the ink fill and there is one per view
+ * region; everything else is the hairline secondary; destructive is that
+ * secondary with `--fail` text, never red text on its own.
+ */
 button, .btn {
   font: inherit;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   height: 36px;
-  padding: 0 14px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--card);
+  padding: 0 12px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
   color: var(--ink);
   cursor: pointer;
   text-decoration: none;
@@ -430,182 +646,222 @@ button, .btn {
   justify-content: center;
 }
 
-button:hover, .btn:hover { background: var(--hover); text-decoration: none; }
+button:hover, .btn:hover { background: var(--wash); text-decoration: none; }
 
-.primary {
+/* In a list a button is 32 px, so the row keeps its line height. */
+.list .btn, .list button, .list-action .btn, .list-action button, .btn.sm, button.sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.primary, .btn-primary {
   background: var(--ink);
   border-color: var(--ink);
-  color: var(--page);
+  color: var(--paper);
 }
-.primary:hover { background: var(--ink); opacity: 0.9; }
+.primary:hover, .btn-primary:hover { background: var(--ink); opacity: 0.9; }
 
-.danger { color: var(--red); border-color: var(--line); }
-.danger:hover { border-color: var(--red); background: var(--card); }
+.danger, .btn-danger { color: var(--fail); border-color: var(--rule); }
+.danger:hover, .btn-danger:hover { border-color: var(--fail); background: var(--paper); }
 
-/* Armed: one press arms, the second commits. Green for a positive action,
-   red for a destructive one, never a dialog. */
+/* Disabled keeps its label: a control whose words vanish tells the person
+   nothing about why it will not move. */
+button[disabled], .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* Busy: the label becomes the present participle and the width is locked, so
+   the row does not jump while a job runs. */
+button[aria-busy="true"], .btn[aria-busy="true"] { cursor: progress; }
+
+/*
+ * The confirm state. One press arms the button, the second commits, and a
+ * Cancel beside it (and Escape) backs out. The armed button takes the primary
+ * style; a destructive one takes the fail fill so the second press is never
+ * the same colour as the first. There are no native confirm() dialogs in this
+ * UI at all.
+ */
 .armed {
-  background: var(--green);
-  border-color: var(--green);
-  color: #ffffff;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
-.armed:hover { background: var(--green); }
-.armed.danger {
-  background: var(--red);
-  border-color: var(--red);
-  color: #ffffff;
+.armed:hover { background: var(--ink); opacity: 0.9; }
+.armed.danger, .armed.btn-danger {
+  background: var(--fail);
+  border-color: var(--fail);
+  color: var(--paper);
 }
-.armed.danger:hover { background: var(--red); }
+.armed.danger:hover, .armed.btn-danger:hover { background: var(--fail); }
 
-button[disabled] { opacity: 0.45; cursor: default; }
+.confirm { display: inline-flex; align-items: center; gap: 8px; }
 
-/* --- Applications layout ------------------------------------------------------- */
-
-.layout { display: grid; gap: 24px; align-items: start; }
-
-@media (min-width: 900px) {
-  .layout { grid-template-columns: 280px minmax(0, 1fr); }
-}
-
-.filter-card h2 {
-  margin: 0;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.filters { display: grid; gap: 16px; padding-top: 16px; }
-
-.filter-group { display: grid; gap: 4px; }
-
-.choice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  padding: 4px 0;
-  cursor: pointer;
-}
-
-.choice input { margin: 0; accent-color: var(--ink); }
-.choice .tally { margin-left: auto; color: var(--grey); font-size: 13px; }
-
-.filters input[type="number"] {
-  font: inherit;
-  font-size: 15px;
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-}
-
-.filters-toggle { display: none; }
-
-@media (max-width: 899px) {
-  .filters-toggle { display: inline-flex; }
-  .filter-card[hidden] { display: none; }
-}
-
-/* --- Row detail --------------------------------------------------------- */
-
-/* One rhythm down the row page: every top-level section sits 24 px under the
-   one before it. Each section used to set its own margin, so the decision
-   card, which set none, ended up flush against the letter above it. Adjacent
-   margins collapse, so the page header's own 24 px stays 24 px. */
-.row-page > * + * { margin-top: 24px; }
-
-.backlink { margin: 0 0 8px; color: var(--grey); font-size: 13px; }
-
-.detail-meta { margin: 0; color: var(--grey); }
-.detail-meta a { color: var(--ink); }
-
-.detail-reason { margin: 12px 0 0; max-width: var(--measure); }
-
-.stats {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.stat .value { margin: 0; font-size: 17px; font-weight: 600; }
-.stat.good .value { color: var(--green); }
-.stat.bad .value { color: var(--red); }
-.stat .note { margin: 4px 0 0; font-size: 13px; color: var(--grey); }
-
-.columns { display: grid; gap: 24px; align-items: stretch; }
-
-/* Both cards are the same height and neither runs past the other. */
-.columns > .card { display: flex; flex-direction: column; min-width: 0; }
-/* Stacked on a phone, or alone on a desktop, the job description keeps a box
-   of its own rather than running the page down. */
-.jd { overflow: auto; max-height: 460px; }
-
-@media (min-width: 900px) {
-  .columns { grid-template-columns: 3fr 2fr; }
-  /* The letter sets the height. A flex basis of zero keeps the job description
-     out of the row's own sizing, so it fills whatever the letter leaves and
-     scrolls inside its card instead of running past it. With no letter on the
-     page (.one) there is nothing to match, so it keeps its own box. */
-  .columns:not(.one) > .card > .jd { flex: 1 1 0; min-height: 0; max-height: none; }
-}
-
-.letter { max-width: var(--measure); }
-.letter p { margin: 0 0 1em; }
-
-.jd pre {
-  margin: 0;
-  white-space: pre-wrap;
-  font: inherit;
+/* Cancel is a word, not a third button competing with the two beside it. */
+.btn-text, .linkish, .linky, .more {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
   font-size: 13px;
-  color: var(--grey);
+  font-weight: 400;
+  color: var(--muted);
+  text-decoration: underline;
+}
+.btn-text:hover, .linkish:hover, .linky:hover, .more:hover { background: none; color: var(--ink); }
+
+.btn.disabled { color: var(--muted); cursor: not-allowed; }
+.btn.disabled:hover { background: var(--paper); }
+
+/* app.css gives every button a display of its own, which beats the browser's
+   own [hidden] rule, so a button hidden in script stayed on the page. Said
+   here once, for every button in the UI. */
+button[hidden], .btn[hidden], .mark-sent[hidden], .job-progress[hidden] { display: none; }
+
+/* --- Cards -------------------------------------------------------------- */
+
+/* A card is reserved for a distinct object the person opens or approves: a
+   resume baseline, a run, a rule. A list of rows is not a stack of cards, and
+   a card never nests inside another. */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 16px;
 }
 
-.stack { display: grid; gap: 24px; }
+.card > h2 { font-size: 17px; margin: 0 0 12px; }
 
-/* Which lane this row is in, said once in the fact line. The reason the lane
-   was chosen is the pill's title, so it is there on hover and silent until. */
-.lane-pill { margin-left: 8px; }
-.lane-pill-autopilot { color: var(--green); }
-.lane-pill-attended { color: var(--grey); }
+.cards { display: grid; gap: 24px; }
 
-/* The banner over the decision card. Green says the run owns this row and the
-   person is reading a record, not making a decision; grey says the opposite,
-   that nothing goes anywhere until they are in the chair (AGENTS.md 2). */
-.lane-banner {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 20px;
+/* A card whose title row carries controls: the title left, buttons hard
+   right, both on one baseline. */
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
 }
-.lane-banner-autopilot { border-color: var(--green); }
-.lane-banner p { margin: 0; max-width: var(--measure); }
-.lane-banner .lane-head { font-weight: 600; }
-.lane-banner-autopilot .lane-head { color: var(--green); }
-.lane-banner .lane-note { margin-top: 4px; color: var(--grey); font-size: 13px; }
 
-.findings, .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.findings li { padding-left: 12px; border-left: 2px solid var(--line); }
-.history li { border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; }
-.history li:first-child { border-top: 0; padding-top: 0; }
-.history .at { color: var(--grey); }
+.card-head h2 { font-size: 17px; margin: 0; }
+.card-head-actions { display: flex; align-items: center; gap: 8px; }
+.card-head-actions:empty { display: none; }
 
-.grey, .small { color: var(--grey); }
-.measure { max-width: var(--measure); }
-.small { font-size: 13px; }
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 16px 0; }
+.why { margin: 0; color: var(--ink); }
+
+/* --- The timeline: a linear sequence of steps --------------------------- */
+
+/*
+ * The queue as steps: discovered, shortlisted, drafted, approved, sent, reply.
+ * A dot on a hairline spine with its label under it. The step the row is on is
+ * filled in the person's colour; a hold or an exit is a labelled branch under
+ * the step it left, in the person's own words, because it is not a seventh
+ * step.
+ */
+.timeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timeline > li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  flex: 1 1 96px;
+  min-width: 96px;
+  position: relative;
+}
+
+/* The spine: one hairline behind the dots, drawn from each step to the next. */
+.timeline > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 100%;
+  height: 1px;
+  background: var(--rule);
+}
+
+.timeline .dot {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.timeline .step-label { text-align: center; }
+
+.timeline .done .dot { background: var(--ink); border-color: var(--ink); }
+.timeline .done .step-label { color: var(--ink); }
+
+.timeline .current .dot { width: 10px; height: 10px; background: var(--you); border-color: var(--you); }
+.timeline .current .step-label { color: var(--you); font-weight: 600; }
+
+/* The branch: what stopped, said in the person's vocabulary, under the step it
+   left the line at. */
+.timeline .branch { color: var(--fail); text-align: center; }
+
+/* --- Disclosure --------------------------------------------------------- */
+
+/* A fold: the raw log, a reference section, a long description. The summary is
+   a text link in ink with a chevron that turns, never a button. It is also how
+   anything long is shown: there is no inner scroll region in this UI. */
+.disclosure { margin: 0; font-size: 15px; }
+.disclosure > summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  list-style: none;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform-origin: 25% 50%;
+  transition: transform 120ms ease;
+}
+.disclosure[open] > summary::before { transform: rotate(90deg); }
+.disclosure > summary:hover { text-decoration: underline; }
+.disclosure > *:not(summary) { margin-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure > summary::before { transition: none; }
+}
+
+/* --- Forms -------------------------------------------------------------- */
 
 .action-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-
 .action-fields { display: grid; gap: 16px; margin-bottom: 12px; }
 
-/* A labelled control: the label above, an optional grey aside beside it, and
-   the control under both. One shape for every form in the UI. */
+/* A labelled control: the label 4 px above the field, the help under it, and
+   an error that replaces the help rather than stacking under it. One shape for
+   every form in the UI. */
 .field { display: grid; gap: 4px; min-width: 0; }
 /* An author display beats the browser's own [hidden] rule, so it is said here. */
 .field[hidden] { display: none; }
-.field-label { font-size: 13px; font-weight: 500; }
-.field-help { font-size: 13px; }
-.field > .field-label + .field-help { margin-top: -4px; }
+.field-label { font-size: 13px; font-weight: 400; color: var(--muted); }
+.field-help { font-size: 13px; color: var(--muted); }
+.field-error { font-size: 13px; color: var(--fail); }
+.field > .field-label + .field-help { margin-top: 0; }
 
 .field input, .field select, .field textarea {
   font: inherit;
@@ -613,409 +869,355 @@ button[disabled] { opacity: 0.45; cursor: default; }
   width: 100%;
   min-width: 0;
   height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
   color: var(--ink);
 }
 
-.field textarea { height: auto; min-height: 96px; padding: 8px 12px; resize: vertical; }
+.field textarea { height: auto; min-height: 96px; padding: 8px; resize: vertical; }
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 1px;
+  outline: 2px solid var(--you);
+  outline-offset: 2px;
 }
 
 .action-fields input, .action-fields textarea {
   font: inherit;
   font-size: 15px;
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
   color: var(--ink);
 }
 
 .action-fields textarea { min-height: 96px; resize: vertical; }
 
-/* --- Keywords, today, digest -------------------------------------------- */
+/* A form or a progress line a button opens runs the width of the row, under
+   the line it belongs to, rather than squeezing into the control column. */
+.row-extra { grid-column: 1 / -1; }
+.row-extra:empty { display: none; }
 
-/* A question is a decision row, not a stack of radios: term, context, four
-   answers side by side, then Record and Skip. About 140 px tall, so four of
-   them are on screen at once. */
-.term { border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 0 0 16px; }
-.term legend {
-  float: left;
-  width: 100%;
-  padding: 0;
-  margin-bottom: 4px;
-  font-size: 17px;
-  font-weight: 600;
-}
+/* The decision bar is one row of buttons; everything any of them has to say
+   lands here, under it, so the bar keeps its shape however much is said. */
+.action-extra { display: grid; gap: 8px; margin-bottom: 16px; }
+.action-extra:empty { display: none; }
 
-.term-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.term-head .kind { font-size: 13px; font-weight: 400; color: var(--grey); }
-.term .context, .term .options, .term .more { clear: both; }
-.term .context { margin: 0; color: var(--grey); font-size: 13px; }
-
-/* Two lines of context, and a bare toggle for the rest of it. */
-.context.clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.more {
-  height: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 13px;
-  color: var(--grey);
-  text-decoration: underline;
-}
-.more:hover { background: none; color: var(--ink); }
-
-/* A green dot beside a term a plan calls must-have. */
-.must {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 8px;
-  background: var(--green);
-}
-
-.term-row { display: flex; align-items: stretch; gap: 8px; margin: 12px 0 0; }
-
-.options.segmented {
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-
-@media (max-width: 719px) {
-  .term-row { flex-wrap: wrap; }
-  .options.segmented { flex: 1 0 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .term-actions { width: 100%; justify-content: space-between; }
-}
-
-.seg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-height: 36px;
-  padding: 4px 8px;
-  border: 2px solid var(--line);
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.seg:hover { background: var(--hover); }
-.seg.on { border-color: var(--ink); }
-.seg:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
-.seg input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
-
-/* The keyword drain: the whole pending list on the left, the bundle of four on
-   the right, so the person can see how much is left and jump about in it. */
-.kw-layout { margin-top: 0; }
-
-@media (min-width: 900px) {
-  .kw-layout { grid-template-columns: 240px minmax(0, 1fr); }
-  .kw-list { position: sticky; top: 88px; }
-}
-
-.kw-list h2 { margin: 0 0 12px; font-size: 17px; }
-
-.kw-list input[type="search"] {
-  font: inherit;
-  font-size: 15px;
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-}
-
-/* The list scrolls inside its own box rather than running the page down: two
-   hundred terms beside a four-card bundle is a column nobody reaches the end
-   of, and the bundle is what the person is answering. */
-.kw-terms {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-.kw-term {
-  font: inherit;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: auto;
-  padding: 4px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-
-.kw-term:hover { background: var(--hover); }
-.kw-term .name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kw-term .kind { color: var(--grey); font-size: 13px; }
-.kw-term .must { flex: 0 0 auto; }
-.kw-term .tally { color: var(--grey); font-size: 13px; }
-.kw-group { margin: 12px 0 4px; }
-.kw-group:first-child { margin-top: 0; }
-.kw-term .mark { width: 12px; color: var(--grey); }
-.kw-term .mark.done { color: var(--green); }
-
-.progress-line { margin: 0 0 8px; color: var(--grey); font-size: 13px; }
-
-.bar {
-  height: 6px;
-  margin: 0 0 16px;
-  border-radius: 8px;
-  background: var(--pill);
-  overflow: hidden;
-}
-
-.bar span { display: block; height: 100%; background: var(--green); }
-
-.terms-toggle { display: none; margin: 0 0 16px; }
-
-@media (max-width: 899px) {
-  .terms-toggle { display: inline-flex; }
-  .kw-list[hidden] { display: none; }
-}
+/* --- Prose, stamps and bars --------------------------------------------- */
 
 .prose { max-width: var(--measure); }
-.prose h2 { margin-top: 24px; font-size: 17px; }
-.prose h3 { margin-top: 20px; }
+.prose h2 { margin-top: 24px; font-size: 21px; }
+.prose h3 { margin-top: 16px; }
 .prose pre {
   overflow: auto;
   font-size: 13px;
-  background: var(--pill);
+  background: var(--wash);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 .prose ul { padding-left: 16px; }
 
-.digest-count { color: var(--green); font-weight: 600; margin-right: 8px; }
-.sample { margin: 8px 0 0; color: var(--grey); font-size: 13px; }
-.proposed > div { flex: 1 1 320px; max-width: var(--measure); }
-
-.proposed {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-/* --- Resumes -------------------------------------------------------------
-   One card per positioning: the approval stamp, the pages as they render, the
-   gates as dots, and the files. No render or approve control lives here;
-   AGENTS.md section 5 keeps both with resume-writer and the person. */
-
-/* Two positionings to a row on a desktop, one under 900 px. A card is a title
-   row, a positioning line, a two column body (pages left, verdicts right) and
-   the files, which keeps it near 320 px tall so the row does not stagger. */
-.resume-grid { grid-template-columns: minmax(0, 1fr); }
-
-@media (min-width: 900px) {
-  .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-.resume-grid > p { grid-column: 1 / -1; }
-
-.resume h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
-.resume h2 .stamp { margin-left: auto; }
-.resume-positioning { margin: 0 0 16px; }
-
-.resume-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: start; }
-.resume-facts { display: grid; gap: 8px; align-content: start; }
-
-/* On a phone the two columns would squeeze the chips into a ribbon, so the
-   pages go above the verdicts instead. */
-@media (max-width: 719px) {
-  .resume-body { grid-template-columns: minmax(0, 1fr); }
-}
-.resume-facts .chips, .resume-facts .critic-line, .resume-facts .covers, .resume-facts p { margin: 0; }
-.resume-files { margin: 16px 0 0; }
-
+/* Where the state of a rendered thing is stamped: approved, stale, missing. */
 .stamp {
   display: inline-block;
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--pill);
-  color: var(--pill-ink);
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  background: var(--wash);
+  color: var(--ink);
   font-size: 13px;
-  font-weight: 600;
 }
 
-.stamp.approved { color: var(--green); border-color: var(--green); }
-.stamp.stale { color: var(--amber); border-color: var(--amber); }
-.stamp.missing { color: var(--red); border-color: var(--red); }
+.stamp.approved { color: var(--pass); border-color: var(--pass); background: transparent; }
+.stamp.stale { color: var(--warn); border-color: var(--warn); background: transparent; }
+.stamp.missing { color: var(--fail); border-color: var(--fail); background: transparent; }
 
-.pages { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; align-content: start; }
-.page-fig { margin: 0; display: grid; gap: 4px; justify-items: center; }
-
-.page {
-  display: block;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+.bar {
+  height: 4px;
+  margin: 0 0 16px;
+  border-radius: 4px;
+  background: var(--wash);
   overflow: hidden;
-  background: var(--card);
 }
 
-.page.low { border-color: var(--red); }
-.page-img { display: block; height: 96px; width: auto; }
-.page-fig figcaption { font-size: 12px; }
-.page-fig .bad { color: var(--red); }
+.bar span { display: block; height: 100%; background: var(--ink); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+/* --- Safety ------------------------------------------------------------- */
 
-.chip {
-  display: inline-flex;
-  align-items: center;
+.safety p:first-child { margin-top: 0; }
+
+/* --- Loading, empty, error, toast --------------------------------------- */
+
+/*
+ * A screen draws its title at once and stands three placeholder rows where the
+ * list will be. No spinner, no "Loading." sentence: both say less than the
+ * shape of what is coming.
+ */
+.placeholder { border-top: 1px solid var(--rule); opacity: 0.4; }
+
+.placeholder-row {
+  display: grid;
   gap: 8px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: var(--pill);
-  color: var(--pill-ink);
-  font-size: 13px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
-.chip .dot { width: 8px; height: 8px; border-radius: 8px; background: var(--grey); }
-.chip.good .dot { background: var(--green); }
-.chip.warn .dot { background: var(--amber); }
-.chip.bad .dot { background: var(--red); }
+.placeholder-row span { display: block; height: 12px; border-radius: 4px; background: var(--wash); }
+.placeholder-row span:first-child { width: 40%; }
+.placeholder-row span:last-child { width: 70%; }
 
-.critic-line { margin: 0 0 8px; }
-.critic-line.bad { color: var(--red); }
-.critic-line.warn { color: var(--amber); }
-
-.covers { display: grid; gap: 8px; margin: 0 0 8px; }
-.covers .cover p { margin: 0 0 4px; }
-.covers .bar { margin: 0; max-width: 320px; }
-
-.btn.disabled { color: var(--grey); cursor: default; }
-.btn.disabled:hover { background: var(--card); }
-
-/* --- Home ---------------------------------------------------------------
-   A dashboard of cards, each a summary of one screen and a link into it.
-   Nothing here acts: Home reads, the screen it links to decides. Every card
-   is the anchor, so the whole box is the target and nothing inside it is
-   interactive; the hover tint is the only thing that moves. */
-
-/* The cards are very different heights, so a grid row leaves a hole beside the
-   short one. A multi-column flow packs them instead: each card stays whole
-   (break-inside: avoid) and the next one starts straight underneath. */
-.home-grid { column-count: 1; column-gap: var(--gutter); }
-
-@media (min-width: 720px) {
-  .home-grid { column-count: 2; }
+/* An empty state is a sentence: what would put something here, and the next
+   thing to do. */
+.empty, .error {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+  max-width: var(--measure);
 }
 
-.home-card {
-  display: block;
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  margin-bottom: 24px;
-}
-a.home-card, a.home-card:hover { text-decoration: none; color: inherit; }
-a.home-card:hover { background: var(--hover); }
-.home-card h2 { margin-bottom: 16px; }
-.home-line { margin: 0 0 8px; }
-.home-big { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.empty { color: var(--muted); }
+.error { color: var(--ink); }
+.error p { margin: 0 0 12px; }
 
-.home-row {
-  margin: 0 0 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+/* A load that failed is said in place, at the top of the list it failed to
+   fill, with the retry beside it. Never a toast: a toast for a load failure
+   disappears before the person has read what broke. */
+.load-error {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink);
 }
 
-.home-row:first-of-type { border-top: 0; padding-top: 0; }
-.home-row p { margin: 0; flex: 1 0 100%; }
-/* Not a link: inside a card that is itself the anchor, the title of a row is
-   only the row's own emphasis. */
-.home-row-title { font-weight: 600; }
+.load-error p { margin: 0; }
 
-.home-actions { margin: 12px 0 0; }
-
-.home-journal {
-  margin: 0;
-  max-height: 260px;
-  overflow: auto;
-  font-size: 13px;
-  color: var(--grey);
-}
-
-.home-journal h2,
-.home-journal h3 { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
-.home-journal h2:first-child,
-.home-journal h3:first-child { margin-top: 0; }
-.home-journal p { margin: 0 0 8px; }
-.home-journal ul { margin: 0 0 8px; padding-left: 20px; }
-.home-journal li { margin: 0 0 4px; }
-.home-journal pre { margin: 0 0 8px; overflow: auto; }
-
-/* --- Safety ------------------------------------------------------------- */
-
-.safety { border-left: 2px solid var(--red); padding-left: 16px; }
-.safety p:first-child { margin-top: 0; }
-.kill { border-color: var(--red); }
-
-/* One term, one decision: Record goes live beside the answers, Skip sits at the
-   right of the same row. */
-.term-actions { display: flex; align-items: center; gap: 8px; margin: 0; flex: 0 0 auto; }
-
-/* --- Empty, error, toast ------------------------------------------------ */
-
-.empty, .error {
-  margin: 0;
-  padding: 20px;
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  color: var(--grey);
-}
-
-.error { color: var(--ink); }
-.error p { margin: 0 0 12px; }
-
+/*
+ * One status line at a time, bottom left, for four seconds. It names the
+ * outcome in the same words the button used ("Rejected", "Answer banked").
+ */
 .toast {
   position: fixed;
-  left: 50%;
+  left: var(--gutter);
   bottom: 24px;
-  transform: translateX(-50%);
-  max-width: min(540px, calc(100vw - 32px));
-  padding: 12px 16px;
-  border-radius: 8px;
+  max-width: min(540px, calc(100vw - 48px));
+  padding: 12px;
+  border-radius: 4px;
   background: var(--ink);
-  color: var(--page);
+  color: var(--paper);
   font-size: 15px;
   z-index: 20;
 }
 
-.toast.bad { background: var(--red); color: #ffffff; }
+.toast.bad { background: var(--fail); color: var(--paper); }
+
+/* --- Decision workbench shell ------------------------------------------ */
+
+/* The desktop shell keeps orientation and operating state visible while a
+   screen changes. It uses the same static HTML and no added dependency. */
+body { background: var(--wash); }
+
+.top {
+  position: fixed;
+  z-index: 20;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
+  border: 0;
+}
+
+.top .wrap { max-width: none; padding: 24px; }
+
+.top-inner {
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 24px;
+}
+
+.brand { color: var(--sidebar-ink); }
+
+.nav {
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.nav a[data-nav]:not(.cog) {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  margin: 0;
+  color: var(--sidebar-muted);
+}
+
+.nav a[data-nav]:not(.cog):hover {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  text-decoration: none;
+}
+
+.nav a[data-nav][aria-current="page"]:not(.cog) {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  font-weight: 600;
+}
+
+.nav a[data-nav="guardrails"] { margin-top: 16px; }
+
+.switch-slot {
+  width: 100%;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--sidebar-active);
+}
+
+.switch-slot .switch {
+  width: 100%;
+  height: auto;
+  min-height: 36px;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  font-size: 13px;
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  border-color: var(--sidebar-active);
+}
+.switch-slot .switch-tally { display: none; }
+
+.nav .cog { align-self: flex-start; color: var(--sidebar-muted); }
+
+.nav .cog:hover, .nav .cog:focus-visible, .nav .cog[aria-current="page"] {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+}
+
+.shell-status {
+  position: fixed;
+  z-index: 15;
+  top: 0;
+  right: 0;
+  left: var(--sidebar-w);
+  min-height: var(--shell-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 32px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.shell-date { font-family: var(--serif); font-size: 17px; }
+.shell-state { display: flex; align-items: center; gap: 16px; color: var(--muted); font-size: 13px; }
+.shell-lane { color: var(--ink); font-weight: 600; }
+
+.view {
+  width: calc(100% - var(--sidebar-w));
+  max-width: none;
+  min-height: 100vh;
+  margin-left: var(--sidebar-w);
+  padding: calc(var(--shell-h) + 32px) 32px 48px;
+}
+
+.card { background: var(--paper); }
+
+/* --- Responsive --------------------------------------------------------- */
+
+/* 960: the row page is allowed its second column. Below it, one column. */
+@media (max-width: 959px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 720: one column everywhere, stacked rows, full-width buttons, and the nav
+   behind a Menu button so the wordmark and the autopilot state still fit. */
+@media (max-width: 719px) {
+  body { background: var(--paper); }
+  .top {
+    position: static;
+    width: auto;
+    background: var(--paper);
+    color: var(--ink);
+    border-bottom: 1px solid var(--rule);
+  }
+  .top .wrap { padding: 0 var(--gutter); }
+  .top-inner { height: auto; min-height: 64px; flex-direction: row; }
+  .brand { color: var(--ink); }
+  .shell-status { display: none; }
+  .view { width: 100%; min-height: 0; margin-left: 0; padding: 0 var(--gutter) 32px; }
+
+  .page-header { grid-template-columns: minmax(0, 1fr); }
+  .page-aside { justify-self: start; order: 1; margin-top: 12px; }
+
+  .list-row { grid-template-columns: 3ch minmax(0, 1fr); }
+  .list-main { grid-column: 2; grid-row: 1; }
+  .list-score { grid-column: 1; grid-row: 1; }
+  .list-action { grid-column: 1 / span 2; grid-row: 2; justify-self: stretch; margin-top: 8px; }
+
+  .chips { gap: 8px; }
+
+  .top-inner { flex-wrap: wrap; align-items: center; padding-top: 12px; padding-bottom: 12px; gap: 8px; }
+  .brand { flex: 1 1 auto; white-space: nowrap; }
+
+  .top .menu-toggle { display: inline-flex; order: 2; }
+
+  /* The bar keeps the switch and the cog; the five links wrap under it, one to
+     a line, and only when the Menu button says so. */
+  .nav {
+    order: 3;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0 16px;
+  }
+  .nav a[data-nav]:not(.cog) {
+    order: 1;
+    flex: 1 0 100%;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    border-top: 0;
+    margin-bottom: 0;
+    color: var(--ink);
+    background: transparent;
+    border-radius: 0;
+  }
+  .nav a[data-nav="guardrails"] { margin-top: 0; }
+  .nav.closed a[data-nav]:not(.cog) { display: none; }
+  .nav .cog { order: 0; color: var(--muted); }
+  .nav .cog:hover, .nav .cog:focus-visible, .nav .cog[aria-current="page"] { color: var(--ink); background: transparent; }
+  .switch-slot { order: 0; width: auto; margin-top: 0; padding-top: 0; border-top: 0; }
+  .switch-slot .switch { width: auto; color: var(--ink); background: var(--paper); border-color: var(--rule); }
+  /* The switch keeps its dot and its word; the cap goes with the space. */
+  .switch .switch-tally { display: none; }
+  .switch-note { display: none; }
+
+  .timeline > li { flex: 1 1 33%; min-width: 0; }
+}
+
+/* A finger is not a mouse pointer: every target it has to hit is 40 px. */
+@media (pointer: coarse) {
+  button, .btn, .list .btn, .list button, .chip, .segments a, .nav a {
+    min-height: 40px;
+  }
+  .btn-text, .linkish, .linky, .more { min-height: 40px; }
+}

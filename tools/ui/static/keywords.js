@@ -1,22 +1,26 @@
 /*
- * keywords.js - draining the pending keyword confirmations, one term at a time.
+ * keywords.js - the Resumes screen's "Evidence questions" tab: the keyword
+ * ledger, as a list the person can walk down and answer.
  *
- * This is the Resumes screen's "Evidence questions" tab: a pending term is the
- * ledger asking whether a term the market wants is actually true of this
- * person, which is a question about their CV. The Resumes screen draws the page
- * header and hands its lede down, so `viewKeywords` renders under that title
- * when it is given one and draws its own when it is not.
+ * A pending term is the ledger asking whether a term the market wants is
+ * actually true of this person, which is a question about their CV. The
+ * Resumes screen draws the page header and hands its lede down, so
+ * `viewKeywords` renders under that title when it is given one and draws its
+ * own when it is not.
  *
- * Hundreds of terms sit pending, so the view keeps its own pass: the order to
- * work through, where the person is in it, what they settled and what they put
- * off. It lives in sessionStorage, so a refresh does not lose the place.
+ * The shape is the list row every other screen uses (the brief, section 7):
+ * the term, where it came from on the meta line, and the four fixed answers as
+ * four secondary buttons under it. One press records one term, so a decision
+ * lands the moment it is made and the row leaves the list.
  *
- * AGENTS.md section 9: four fixed answers, no default, and never more than four
- * questions on screen at once. Each term is recorded on its own, so a decision
- * lands the moment it is made and the freed slot fills from the queue behind it.
+ * AGENTS.md section 9: four fixed answers, verbatim, no default and no fifth.
+ * A confirmed term authorises nothing on its own; the fact still has to be
+ * written into the CV source, which is what the line under the list says.
  */
 
-import { api, clear, errorBox, h, pageHeader, panel, render, toast } from "./app.js";
+import {
+  api, clear, errorBox, h, loadError, pageHeader, placeholderRows, render, toast,
+} from "./app.js";
 
 /* AGENTS.md section 9: four fixed answers and no others, recommended first.
  * The labels are verbatim; the values are what POST /api/keywords/record wants. */
@@ -31,8 +35,8 @@ const KEYWORD_OPTIONS = [
  * The ledger recommends an answer per term, and the tag goes on that answer
  * rather than always on the first one: "AGSVA" is a clearance, not a skill, and
  * recommending "Confirm and update source" for it is how the queue filled up
- * with rows nobody should have been asked about. No answer is pre-selected
- * either way; the tag is a hint, not a default.
+ * with rows nobody should have been asked about. Nothing is pre-selected: the
+ * tag is a hint, not a default.
  */
 const RECOMMENDED = " (Recommended)";
 const recommendedAnswer = (item) => {
@@ -40,36 +44,50 @@ const recommendedAnswer = (item) => {
   return KEYWORD_OPTIONS.some((option) => option.value === answer) ? answer : "";
 };
 
-/** AGENTS.md section 9: never ask more than four at a time. */
-const KEYWORD_BUNDLE = 4;
+/** How many rows are drawn before "Show all". Hundreds at once is a page
+ * nobody reaches the end of, and every one of them carries four buttons. */
+const PAGE_SIZE = 40;
 
 /**
- * "Unsure / keep pending" is the same decision as Skip, so it needs no button
- * press: the card leaves on its own. It waits this long first, so a mis-click
- * can be changed by picking another answer before the card goes.
+ * Past this many pending terms the ledger is mostly rows that are not skills at
+ * all, and answering them one at a time is the wrong job: /keyword-triage
+ * clears those deterministically and leaves the real questions behind.
  */
-const PENDING_SKIP_MS = 400;
+const TRIAGE_THRESHOLD = 40;
 
 const KEYWORD_SESSION = "harnessKeywordSession";
-const blankPass = () => ({ pass: [], cursor: 0, decided: [], skipped: [], requeued: [] });
 
 function readKeywordSession() {
   try {
     const raw = JSON.parse(sessionStorage.getItem(KEYWORD_SESSION) || "null");
-    if (raw && Array.isArray(raw.pass)) return { ...blankPass(), ...raw };
+    if (raw && Array.isArray(raw.decided)) return { decided: raw.decided, skipped: raw.skipped || [] };
   } catch { /* blocked or corrupt storage just starts a fresh pass */ }
-  return blankPass();
+  return { decided: [], skipped: [] };
 }
 
 const saveKeywordSession = (state) => {
   try { sessionStorage.setItem(KEYWORD_SESSION, JSON.stringify(state)); } catch { /* private mode: memory only */ }
 };
 
+/** The four words the ledger uses for what a term is. Anything else, or a term
+ * the API does not classify, shows no word rather than a guessed one. */
+const CATEGORIES = ["tool", "method", "certification", "concept"];
+
+const categoryOf = (item) => {
+  const raw = String(item.category ?? item.kind ?? "").trim().toLowerCase();
+  return CATEGORIES.includes(raw) ? raw : "";
+};
+
+/** True when any plan behind the term calls it must-have. The ledger may say so
+ * on the term or on the pending rows it groups. */
+const mustHave = (item) => item.must_have === true || item.tier === "must_have"
+  || (item.plans || []).some((plan) => plan && (plan.must_have === true || plan.tier === "must_have"));
+
 /**
- * The roles an evidence hint names. The hint is written for a tool ("cv-source
- * .md:25,118 (Forward Deployed Engineer, Nterprise Corp; ...)"), and the file
- * and the line numbers are no help to a person deciding whether they have done
- * a thing, so only the names in the brackets are shown.
+ * The roles an evidence hint names. The hint is written for a tool
+ * ("cv-source.md:25,118 (Principal Consultant, Example Corp; ...)"), and the
+ * file and the line numbers are no help to a person deciding whether they have
+ * done a thing, so only the names in the brackets are shown.
  */
 function evidenceRoles(hint) {
   const inside = /\(([^()]+)\)\s*$/.exec(String(hint || ""));
@@ -87,139 +105,86 @@ function askedBy(item) {
   return said.length ? `Asked by ${said.join("; ")}` : "";
 }
 
-/** The context line: how often it came up, which positioning wants it, which
- * advert asked, and which roles the source says might evidence it. */
+/** Where the term came from, as the meta line under it. */
 function contextOf(item) {
   const roles = evidenceRoles(item.evidence_hint);
   return [
+    categoryOf(item),
     item.count === 1 ? "seen once" : `seen ${item.count} times`,
     (item.resumes || []).join(", "),
     askedBy(item),
     roles ? `Evidence: ${roles}` : "",
-  ].filter(Boolean).join(". ");
+  ].filter(Boolean).join(", ");
 }
 
 /**
- * One question as a decision row: the term, the context under it, the four
- * answers as a segmented control, and the two buttons that resolve it. Record
- * is black and stays disabled until an answer other than "Unsure / keep
- * pending" is picked; Skip puts the term to the back of the pass. 1 to 4 pick
- * an answer while the focus is in the card.
+ * One pending term as a list row: the term and its pills on line one, where it
+ * came from on line two, the ledger's own note on line three, and the four
+ * answers as four secondary buttons on a full-width line under them.
  */
-function termCard(item, handlers) {
-  const set = h("fieldset", { class: "term" });
-  const head = h("legend", { class: "term-head" }, h("span", { class: "term-name", text: item.term }));
-  if (mustHave(item)) head.append(h("span", { class: "must", "aria-label": "must have", title: "must-have on a plan" }));
-  const kind = categoryOf(item);
-  if (kind) head.append(h("span", { class: "kind", text: kind }));
-  set.append(head);
-
-  // Why the ledger thinks what it thinks, in its own words, under the term.
+function termRow(item, handlers) {
+  const row = h("div", { class: "list-row term-row" });
+  const main = h("div", { class: "list-main" });
+  const title = h("p", { class: "list-title term-name", text: item.term });
+  if (mustHave(item)) {
+    title.append(h("span", { class: "list-pills" }, h("span", { class: "pill", text: "Must have" })));
+  }
+  main.append(title);
+  const context = contextOf(item);
+  if (context) main.append(h("p", { class: "list-meta", text: context }));
   const advice = String((item.recommendation && item.recommendation.note) || "").trim();
-  if (advice) set.append(h("p", { class: "term-advice grey small", text: advice }));
+  if (advice) main.append(h("p", { class: "list-reason", text: advice }));
+  row.append(main);
 
-  const text = contextOf(item);
-  const context = h("p", { class: "context clamp", text });
-  set.append(context);
-  // Long context is clamped to two lines rather than pushing the answers down.
-  if (text.length > 90) {
-    const more = h("button", { type: "button", class: "more", text: "more" });
-    more.addEventListener("click", () => {
-      more.textContent = context.classList.toggle("clamp") ? "more" : "less";
-    });
-    set.append(more);
-  }
-
-  const options = h("div", { class: "options segmented" });
+  const answers = h("div", { class: "row-extra answers" });
+  const problem = h("div", { class: "row-extra" });
   const advised = recommendedAnswer(item);
+  const buttons = [];
   for (const option of KEYWORD_OPTIONS) {
-    const label = h("label", { class: "seg" },
-      h("input", { type: "radio", name: `term:${item.term}`, value: option.value, dataset: { term: item.term } }),
-      h("span", { text: option.value === advised ? `${option.label}${RECOMMENDED}` : option.label }));
-    options.append(label);
+    const button = h("button", {
+      type: "button",
+      class: "btn",
+      text: option.value === advised ? `${option.label}${RECOMMENDED}` : option.label,
+    });
+    button.addEventListener("click", async () => {
+      for (const other of buttons) other.disabled = true;
+      clear(problem);
+      const failure = await handlers.onAnswer(item.term, option.value);
+      // The row stays on screen when the write failed: nobody answers twice.
+      if (failure) {
+        for (const other of buttons) other.disabled = false;
+        problem.append(errorBox(failure, "Could not record this answer. Nothing was written.", null));
+      }
+    });
+    buttons.push(button);
+    answers.append(button);
   }
-
-  const problem = h("div", {});
-  const record = h("button", { type: "button", class: "btn primary", text: "Record", disabled: true });
-  const skip = h("button", { type: "button", class: "btn", text: "Skip" });
-  let pendingTimer = 0;
-  const answerOf = () => {
-    const picked = options.querySelector("input[type=radio]:checked");
-    return picked ? picked.value : "";
-  };
-  options.addEventListener("change", () => {
-    clearTimeout(pendingTimer);
-    const answer = answerOf();
-    for (const label of options.querySelectorAll(".seg")) {
-      label.classList.toggle("on", label.querySelector("input").checked);
-    }
-    record.disabled = !answer || answer === "pending";
-    // The mis-click window: another answer inside it cancels the departure.
-    if (answer === "pending") pendingTimer = setTimeout(() => handlers.onSkip(item.term), PENDING_SKIP_MS);
-  });
-  set.addEventListener("keydown", (event) => {
-    const n = Number(event.key);
-    if (!(n >= 1 && n <= KEYWORD_OPTIONS.length) || event.metaKey || event.ctrlKey) return;
-    const input = options.querySelectorAll("input")[n - 1];
-    input.checked = true;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    event.preventDefault(); // 1 to 4 answer the term the focus is in
-  });
-  skip.addEventListener("click", () => { clearTimeout(pendingTimer); handlers.onSkip(item.term); });
-  record.addEventListener("click", async () => {
-    const answer = answerOf();
-    if (!answer || answer === "pending") return;
-    record.disabled = true;
-    clear(problem);
-    const failure = await handlers.onRecord(item.term, answer);
-    // The answer stays on screen when the write failed: nobody picks it twice.
-    if (failure) {
-      record.disabled = false;
-      problem.append(errorBox(failure, "Could not record this answer. Nothing was written.", null));
-    }
-  });
-  // One row: the four answers, then Record, then Skip on the right of it.
-  set.append(h("div", { class: "term-row" }, options, h("div", { class: "term-actions" }, record, skip)), problem);
-  return set;
+  row.append(answers, problem);
+  return row;
 }
-
-/** The four words the ledger uses for what a term is. Anything else, or a term
- * the API does not classify, shows no word rather than a guessed one. */
-const CATEGORIES = ["tool", "method", "certification", "concept"];
-
-const categoryOf = (item) => {
-  const raw = String(item.category ?? item.kind ?? "").trim().toLowerCase();
-  return CATEGORIES.includes(raw) ? raw : "";
-};
-
-/** The heading each category gets in the left list, and the catch-all for a
- * term the ledger did not classify. */
-const CATEGORY_GROUPS = [
-  ["tool", "Tools"], ["method", "Methods"], ["certification", "Certifications"], ["concept", "Concepts"], ["", "Other"],
-];
-
-/** True when any plan behind the term calls it must-have. The ledger may say so
- * on the term or on the pending rows it groups. */
-const mustHave = (item) => item.must_have === true || item.tier === "must_have"
-  || (item.plans || []).some((plan) => plan && (plan.must_have === true || plan.tier === "must_have"));
-
-/**
- * Past this many pending terms the ledger is mostly rows that are not skills at
- * all, and answering them one at a time is the wrong job: /keyword-triage
- * clears those deterministically and leaves the real questions behind.
- */
-const TRIAGE_THRESHOLD = 40;
 
 export async function viewKeywords(view, opts) {
   const options = opts || {};
-  const count = options.lede || h("p", { class: "page-count", text: "Loading pending terms." });
-  const banner = h("p", { class: "triage-banner", hidden: true });
-  const layout = h("div", { class: "layout kw-layout" });
-  const left = h("aside", { class: "card kw-list", id: "kw-list" });
-  const right = h("div", { class: "stack" });
+  const count = options.lede || h("p", { class: "page-count" });
   if (!options.lede) view.append(pageHeader({ title: "Evidence questions", lede: count }));
-  view.append(banner, layout);
+
+  const banner = h("p", { class: "triage-banner", hidden: true });
+  const search = h("input", {
+    type: "search", id: "term-search", placeholder: "e.g. Kafka", "aria-label": "Search the pending terms",
+  });
+  const controls = h("div", { class: "field term-search" },
+    h("label", { class: "field-label", for: "term-search", text: "Search" }), search);
+  const progress = h("p", { class: "progress-line" });
+  const host = h("div", {});
+  host.append(placeholderRows(3));
+  view.append(banner, controls, progress, host);
+
+  const session = readKeywordSession();
+  const decided = new Set(session.decided);
+  const skipped = new Set(session.skipped);
   let terms = [];
+  let showAll = false;
+
   const load = async () => {
     const data = await api("keywords/pending?all=1");
     terms = data.terms || [];
@@ -230,149 +195,66 @@ export async function viewKeywords(view, opts) {
       ? ""
       : `Run /keyword-triage first: it clears rows that are not skills. ${pending} pending.`;
   };
-  try { await load(); } catch (error) { return layout.append(errorBox(error, "Could not load the pending terms.", () => render())); }
-  layout.append(left, right);
 
-  const state = readKeywordSession();
-  const decided = new Set(state.decided), skipped = new Set(state.skipped), requeued = new Set(state.requeued);
-  let listOpen = false;
-  /** Keep the session order, drop what has since been answered, append what is new. */
-  const reconcile = () => {
-    const live = new Set(terms.map((t) => t.term));
-    state.pass = state.pass.filter((t) => live.has(t));
-    const seen = new Set(state.pass);
-    for (const item of terms) if (!seen.has(item.term)) state.pass.push(item.term);
-    for (const term of [...skipped]) if (!live.has(term)) skipped.delete(term);
-    state.cursor = Math.max(0, Math.min(state.cursor, state.pass.length));
-  };
-
-  const repaint = () => {
-    Object.assign(state, { decided: [...decided], skipped: [...skipped], requeued: [...requeued] });
-    saveKeywordSession(state);
-    paintBundle();
-    paintList();
-  };
-  reconcile();
-
-  const toggle = h("button", { type: "button", class: "btn terms-toggle", text: "All terms" });
-  toggle.addEventListener("click", () => { listOpen = !listOpen; left.hidden = !listOpen; });
-  const heading = h("h2", {});
-  const search = h("input", { type: "search", placeholder: "Search terms", "aria-label": "Search terms" });
-  const list = h("ul", { class: "kw-terms" });
-  search.addEventListener("input", () => paintList());
-  left.append(heading, search, list);
-
-  /** One row in the left list: the term, what kind of thing it is, a green dot
-   * when a plan calls it must-have, and the count only when it says something
-   * (almost every pending term is asked once, so a column of 1s is noise). */
-  function termRow(item) {
-    const done = decided.has(item.term), put = skipped.has(item.term);
-    const button = h("button", {
-      type: "button", class: "kw-term",
-      title: done ? "Decided this session" : put ? "Skipped this session" : item.term,
-    },
-      h("span", { class: done ? "mark done" : put ? "mark put" : "mark", text: done ? "\u2713" : put ? "\u2022" : "" }),
-      h("span", { class: "name", text: item.term }));
-    if (mustHave(item)) button.append(h("span", { class: "must", title: "must-have on a plan", "aria-label": "must have" }));
-    const kind = categoryOf(item);
-    if (kind) button.append(h("span", { class: "kind", text: kind }));
-    if ((item.count ?? 0) > 1) button.append(h("span", { class: "tally", text: String(item.count) }));
-    // Jumping moves the window to start at that term, wherever the pass had it.
-    button.addEventListener("click", () => {
-      const at = state.pass.indexOf(item.term);
-      if (at < 0) return;
-      state.cursor = at; listOpen = false; repaint();
-    });
-    return h("li", {}, button);
+  const retry = () => render();
+  try {
+    await load();
+  } catch (error) {
+    clear(host);
+    host.append(loadError("the pending terms", error, retry));
+    return;
   }
 
-  function paintList() {
-    heading.textContent = toggle.textContent = `All terms (${terms.length})`;
-    left.hidden = !listOpen && window.innerWidth < 900;
-    clear(list);
-    const needle = search.value.trim().toLowerCase();
-    const shown = needle ? terms.filter((t) => t.term.toLowerCase().includes(needle)) : terms;
-    if (!shown.length) return list.append(h("li", { class: "grey small", text: needle ? "No term matches that search." : "Nothing pending." }));
-    // Must-have first, because those are the terms a plan is waiting on, then
-    // one group per kind of thing so a run of certifications can be answered
-    // together rather than one at a time between concepts.
-    const byTerm = (a, b) => a.term.localeCompare(b.term);
-    const must = shown.filter((item) => mustHave(item)).sort(byTerm);
-    const rest = shown.filter((item) => !mustHave(item));
-    const groups = [["Must have", must]];
-    for (const [key, label] of CATEGORY_GROUPS) {
-      groups.push([label, rest.filter((item) => categoryOf(item) === key).sort(byTerm)]);
-    }
-    for (const [label, items] of groups) {
-      if (!items.length) continue;
-      list.append(h("li", { class: "kw-group eyebrow", text: `${label} (${items.length})` }));
-      for (const item of items) list.append(termRow(item));
-    }
-  }
-
-  /** Take a resolved term out of the pass, keeping the window where it is so
-   * the freed slot fills from the queue behind it. */
-  const drop = (term) => {
-    const at = state.pass.indexOf(term);
-    if (at < 0) return;
-    state.pass.splice(at, 1);
-    if (at < state.cursor) state.cursor -= 1;
-  };
-
-  /** Put one term off: it goes to the back of the pass once, so the pass still
-   * ends, and the skipped ones are offered again as a fresh pass. */
-  const skipTerm = (term) => {
-    skipped.add(term);
-    drop(term);
-    if (!requeued.has(term)) { requeued.add(term); state.pass.push(term); }
-    repaint();
-  };
-
-  /** Record one term. Returns the error on failure so the card can show it. */
-  const recordTerm = async (term, answer) => {
+  /** Answer one term. Returns the error on failure so the row can show it. */
+  const answer = async (term, value) => {
     try {
-      const result = await api("keywords/record", { method: "POST", body: { answers: { [term]: answer } } });
-      const n = (value) => (Array.isArray(value) ? value.length : value ?? 0);
+      const result = await api("keywords/record", { method: "POST", body: { answers: { [term]: value } } });
+      const n = (v) => (Array.isArray(v) ? v.length : v ?? 0);
       toast([`Recorded ${term}.`, n(result.skipped_already_answered) ? "Already answered." : "",
         n(result.unmatched) ? "Unmatched." : ""].filter(Boolean).join(" "));
-      decided.add(term);
-      skipped.delete(term);
-      drop(term);
-      await load(); // the recorded term leaves the left list
-      reconcile();
-      repaint();
+      if (value === "pending") skipped.add(term); else decided.add(term);
+      saveKeywordSession({ decided: [...decided], skipped: [...skipped] });
+      await load();
+      paint();
       return null;
     } catch (error) {
       return error;
     }
   };
 
-  function paintBundle() {
-    clear(right);
-    const settled = decided.size + skipped.size;
-    const togo = Math.max(0, terms.length - skipped.size);
-    const pct = Math.round((settled * 100) / (decided.size + terms.length || 1));
-    right.append(h("p", { class: "progress-line", text: `Decided ${decided.size}, skipped ${skipped.size}, ${togo} to go.` }),
-      h("div", { class: "bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct) },
-        h("span", { style: `width: ${pct}%` })), toggle);
-    const bundle = state.pass.slice(state.cursor, state.cursor + KEYWORD_BUNDLE)
-      .map((term) => terms.find((item) => item.term === term)).filter(Boolean);
-    if (!terms.length) return right.append(h("p", { class: "empty", text: "Nothing pending. Every mined term has an answer. The next hunt will add more." }));
-    if (!bundle.length) {
-      const again = h("button", { type: "button", class: "btn primary", text: "Start again with the skipped ones" });
-      again.addEventListener("click", () => { state.pass = [...skipped]; state.cursor = 0; requeued.clear(); repaint(); });
-      return right.append(panel("This pass is done", h("div", {},
-        h("p", { text: `Every pending term has been seen this pass. ${skipped.size} skipped.` }),
-        skipped.size ? again : h("p", { class: "grey small", text: "Nothing was put off. The next hunt mines more terms." }))));
+  function paint() {
+    clear(host);
+    const needle = search.value.trim().toLowerCase();
+    const live = terms.filter((item) => !skipped.has(item.term));
+    const matching = needle ? live.filter((item) => item.term.toLowerCase().includes(needle)) : live;
+    progress.textContent = `Decided ${decided.size}, skipped ${skipped.size}, ${live.length} to go.`;
+
+    if (!terms.length) {
+      host.append(h("p", { class: "empty",
+        text: "Nothing pending. Every term the hunt mined has an answer. The next run adds more." }));
+      return;
     }
-    const form = h("form", {});
-    form.addEventListener("submit", (event) => event.preventDefault());
-    for (const item of bundle) form.append(termCard(item, { onRecord: recordTerm, onSkip: skipTerm }));
-    form.append(h("p", { class: "grey small measure",
+    if (!matching.length) {
+      host.append(h("p", { class: "empty", text: needle
+        ? `No pending term matches "${search.value.trim()}". Clear the search to see the rest.`
+        : "Nothing left in this pass. Reopen the screen to see the terms you put off." }));
+      return;
+    }
+
+    const shown = showAll ? matching : matching.slice(0, PAGE_SIZE);
+    if (matching.length > shown.length) {
+      const more = h("button", { type: "button", class: "btn-text", text: "Show all" });
+      more.addEventListener("click", () => { showAll = true; paint(); });
+      host.append(h("p", { class: "group-heading" },
+        h("span", { class: "tally", text: `Showing ${shown.length} of ${matching.length}` }), more));
+    }
+    const list = h("div", { class: "list terms" });
+    for (const item of shown) list.append(termRow(item, { onAnswer: answer }));
+    host.append(list);
+    host.append(h("p", { class: "grey small measure",
       text: "A confirmed term authorises nothing on its own. The fact still has to be written into the CV source." }));
-    right.append(form);
   }
 
-  paintBundle();
-  paintList();
+  search.addEventListener("input", () => { showAll = false; paint(); });
+  paint();
 }

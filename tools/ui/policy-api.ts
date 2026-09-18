@@ -1,5 +1,5 @@
 /**
- * tools/ui/policy-api.ts — the two switches the local UI is allowed to flip.
+ * tools/ui/policy-api.ts - the two switches the local UI is allowed to flip.
  *
  * `autopilot.enabled` and `kill_switch` in the profile's submission-policy.yaml
  * are the gates every unattended send passes through (AGENTS.md section 2).

@@ -37,6 +37,7 @@ process.env.AUDIT_DIR = path.join(root, "audit");
 delete process.env.HARNESS_PROFILE;
 
 const api = await import("../tools/ui/api.ts");
+const workspace = await import("../tools/ui/workspace-api.ts");
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures", "ui-c");
 const ctx = { journalDir: path.join(root, "state", "journal", "summary") };
@@ -137,6 +138,84 @@ await test("the run detail carries the summary and the letters sent unattended",
     !body.letters_sent.some((entry: any) => /not a send/i.test(entry.title)),
     "the parser must stop at the next heading of the same level",
   );
+});
+
+await test("the run detail is structure, not a wall of markdown", async () => {
+  const res = await call("GET", "/api/runs/2026-09-17");
+  const body = res.body as any;
+
+  // The list row for the same day, so the page draws its verdict without a
+  // second request and cannot disagree with the list it was opened from.
+  assert.equal(body.run.exit_code, 0);
+  assert.equal(body.run.duration_s, 4401);
+  assert.equal(body.run.started_at, "2026-09-16T21:00:05.000Z", "the start instant reaches the page as an instant");
+  assert.equal(body.from_audit, false, "there is a summary, so nothing is read from the audit log");
+
+  // Sent, off the summary's own "Sent today" bullets.
+  assert.equal(body.sent.length, 1);
+  assert.deepEqual(
+    { title: body.sent[0].title, company: body.sent[0].company, location: body.sent[0].location, at: body.sent[0].at },
+    { title: "Solution Architect", company: "Example Pty Ltd", location: "Sydney NSW", at: "08:24" },
+  );
+  assert.match(body.sent[0].note, /^autopilot, /, "what else the bullet said is kept, after the who");
+  assert.equal(body.sent[0].id, null, "no row in this store matches, so the page links at nothing");
+
+  // Stopped, off the escalations, grouped by what kind of stop it is.
+  assert.equal(body.stopped.length, 1, "one kind of stop in this summary");
+  assert.equal(body.stopped[0].kind, "letter");
+  assert.equal(body.stopped[0].label, "Waiting on a redraft");
+  assert.deepEqual(body.stopped[0].rows, [{
+    id: "seek-cccc3333",
+    title: "AI Engineer",
+    company: "The Example Network",
+    reason: "Letter-critic block",
+    next: "fix the letter, then rerun autopilot:submit",
+  }]);
+
+  // Numbers, in the order the run wrote them.
+  assert.deepEqual(body.numbers.map((n: any) => n.label).slice(0, 3), ["Sent today", "Autopilot sends", "Total submitted"]);
+  assert.equal(body.numbers[0].value, "2");
+
+  // And the raw text is still there, for the fold at the bottom of the page.
+  assert.match(body.markdown, /## Numbers/);
+  assert.match(body.log, /starting daily run/);
+  assert.equal(body.log_truncated, false, "a short log is read whole, and never printed twice");
+  assert.equal(body.log_path, "state/journal/launchd/2026-09-17.log");
+  assert.equal(body.letters_sent.length, 2);
+});
+
+await test("a sent line survives a title with 'at' in it and a bracketed location", () => {
+  const one = workspace.parseSentLine("07:26 Agile Delivery Project Manager at Precision Sourcing (Sydney NSW (Hybrid)). autopilot, CV.docx.");
+  assert.equal(one!.title, "Agile Delivery Project Manager");
+  assert.equal(one!.company, "Precision Sourcing", "the nested bracket must not be read as the company");
+  assert.equal(one!.location, "Sydney NSW (Hybrid)");
+  assert.equal(one!.at, "07:26");
+  const bare = workspace.parseSentLine("Lead Engineer at Example Co");
+  assert.deepEqual(
+    { title: bare!.title, company: bare!.company, location: bare!.location, at: bare!.at, note: bare!.note },
+    { title: "Lead Engineer", company: "Example Co", location: null, at: null, note: null },
+  );
+});
+
+await test("a stop is put in the group its reason names", () => {
+  for (const [reason, kind] of [
+    ["unknown screening question: \"How many years\"", "question"],
+    ["letter-critic block (2 fail)", "letter"],
+    ["external ATS: example.myworkdayjobs.com", "portal"],
+    ["already submitted within 60 days", "duplicate"],
+    ["validation gate failed: autopilot_fit", "gate"],
+    ["daily cap reached", "cap"],
+    ["kill switch on", "kill_switch"],
+    ["something nobody has met before", "other"],
+  ] as [string, string][]) {
+    assert.equal(workspace.stopKind(reason).kind, kind, `stopKind(${JSON.stringify(reason)})`);
+  }
+  // The groups come back in the fixed order, whatever order the rows arrived in.
+  const grouped = workspace.groupStopped([
+    { id: "a", title: "A", company: null, reason: "external ATS: x", next: null },
+    { id: "b", title: "B", company: null, reason: "unknown screening question: \"x\"", next: null },
+  ]);
+  assert.deepEqual(grouped.map((g: any) => g.kind), ["question", "portal"]);
 });
 
 await test("a run detail for a day with nothing is empty, not an error", async () => {

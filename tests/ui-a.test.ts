@@ -249,6 +249,25 @@ await test("a bogus row can be dropped", async () => {
     "removing something that was never there is not an error");
 });
 
+await test("the screening dispatcher answers each route by name, and 404s the rest", async () => {
+  // The bug this pins: the table fell through to postScreeningRemove for any
+  // route in ROUTES that had no branch of its own, so a request that never
+  // asked to delete anything would have deleted a banked answer.
+  const source = fs.readFileSync(path.join(REPO, "tools/ui/health-api.ts"), "utf8");
+  const dispatcher = source.slice(source.lastIndexOf("export async function handle("));
+  assert.match(dispatcher, /if \(pathname === "\/api\/screening\/remove"\) return \{ status: 200, body: await postScreeningRemove/,
+    "the remove route must be answered by name");
+  assert.match(dispatcher, /return \{ status: 404, body: \{ error: `no such endpoint: \$\{method\} \$\{pathname\}` \} \};\s*\}\s*$/,
+    "and anything the table does not wire up must be a 404, not a deletion");
+
+  const before = fs.readFileSync(screeningFile, "utf8");
+  assert.equal(await screening.handle({ method: "GET", pathname: "/api/screening/nowhere" }, {}), null,
+    "a path outside the table is not this module's to answer");
+  const wrongMethod = await screening.handle({ method: "GET", pathname: "/api/screening/remove" }, {});
+  assert.equal(wrongMethod?.status, 405, "and a GET on a POST route is a 405");
+  assert.equal(fs.readFileSync(screeningFile, "utf8"), before, "neither may touch the answers file");
+});
+
 await test("years with a skill upsert into the map the worker reads", async () => {
   await screening.postSkillYears({ skill: "Azure", years: 8 });
   await screening.postSkillYears({ skill: "m365", years: 15, aliases: ["Microsoft 365", "office 365"] });
@@ -423,20 +442,32 @@ await test("the launchd weekday numbering is read the way launchd means it", () 
  * copy of its regexes.
  */
 const browserDir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-a-home-"));
+// The shared vocabulary is the real file: app.js only passes it on, so a stub
+// of it would test the stub. Everything that needs a DOM is stubbed instead.
+fs.copyFileSync(path.join(REPO, "tools/ui/static/labels.js"), path.join(browserDir, "labels.js"));
 fs.writeFileSync(path.join(browserDir, "app.js"), [
+  'export * from "./labels.js";',
   "export const api = async () => ({});",
   "export const getPolicy = () => null;",
   "export const getSummary = () => null;",
   "export const h = () => ({});",
   "export const isPolicyAvailable = () => false;",
-  "export const localDay = () => '';",
+  "export const loadError = () => ({});",
   "export const pageHeader = () => ({});",
+  "export const parseHash = () => ({ query: new URLSearchParams() });",
+  "export const placeholderRows = () => ({});",
   "export const render = () => {};",
   "export const richMarkdown = () => [];",
+  "export const scoreCell = () => ({});",
   "",
 ].join("\n"));
+// Today is two modules and they import each other, so both are copied.
 fs.copyFileSync(path.join(REPO, "tools/ui/static/home.js"), path.join(browserDir, "home.js"));
+fs.copyFileSync(path.join(REPO, "tools/ui/static/today-lists.js"), path.join(browserDir, "today-lists.js"));
+fs.writeFileSync(path.join(browserDir, "today-workbench.js"), "export const todayWorkDetail = async () => ({});\n");
+fs.copyFileSync(path.join(REPO, "tools/ui/static/quotes.js"), path.join(browserDir, "quotes.js"));
 const home = await import(path.join(browserDir, "home.js"));
+const labels = await import(path.join(browserDir, "labels.js"));
 
 await test("plainReason says what is actually wrong", () => {
   const cases: [string, string][] = [
@@ -473,11 +504,25 @@ await test("a critic theme key reads as words", () => {
   assert.equal(home.themeWords(""), "Unnamed theme");
 });
 
-await test("a duration reads as a person would say it", () => {
-  assert.equal(home.duration(5545), "1h 32m");
-  assert.equal(home.duration(260), "4m 20s");
-  assert.equal(home.duration(9), "9s");
+await test("a duration reads as a person would say it, in the one format", () => {
+  // docs/ui-redesign-2026-09-18.md, section 6: one duration, everywhere.
+  assert.equal(home.duration(5545), "1 h 32 m");
+  assert.equal(home.duration(260), "4 m 20 s");
+  assert.equal(home.duration(9), "9 s");
   assert.equal(home.duration(null), "");
+});
+
+await test("a time reads as one format, whichever screen asks", () => {
+  // Four formats were in use and the same instant read four ways on one
+  // screen. `when()` is now the only one (section 6, Global components).
+  const now = new Date("2026-09-18T09:00:00+10:00");
+  const at = (iso: string) => labels.when(iso, now);
+  assert.equal(at("2026-09-18T08:19:00+10:00"), "08:19", "today is the clock alone");
+  assert.equal(at("2026-09-15T08:19:00+10:00"), "Tue 08:19", "this week is the weekday and the clock");
+  assert.equal(at("2026-02-17T08:19:00+11:00"), "17 Feb", "earlier this year is the day and the month");
+  assert.equal(at("2025-09-17T08:19:00+10:00"), "17 Sep 2025", "anything older carries its year");
+  assert.equal(at(""), "", "nothing is said about nothing");
+  assert.equal(at("not a date"), "not a date", "and a value that is not a date comes back as it arrived");
 });
 
 console.log(`\n${passed} assertions groups passed`);

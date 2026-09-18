@@ -696,5 +696,10 @@ export async function handle(req: ApiRequest, ctx: ApiContext): Promise<ApiResul
   if (pathname === "/api/screening") return { status: 200, body: await getScreening({ profileId }) };
   if (pathname === "/api/screening/answer") return { status: 200, body: await postScreeningAnswer(body, { profileId }) };
   if (pathname === "/api/screening/skill-years") return { status: 200, body: await postSkillYears(body, { profileId }) };
-  return { status: 200, body: await postScreeningRemove(body, { profileId }) };
+  if (pathname === "/api/screening/remove") return { status: 200, body: await postScreeningRemove(body, { profileId }) };
+  // Every route in the table above is answered by name. A new key added to
+  // ROUTES and not wired up here used to fall through to postScreeningRemove,
+  // which would have deleted a screening answer for a request that never
+  // asked for one; it is a 404 instead.
+  return { status: 404, body: { error: `no such endpoint: ${method} ${pathname}` } };
 }

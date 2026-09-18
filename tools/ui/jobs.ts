@@ -1,5 +1,5 @@
 /**
- * tools/ui/jobs.ts — the in-memory job table behind the UI's "Retry now".
+ * tools/ui/jobs.ts - the in-memory job table behind the UI's "Retry now".
  *
  * A retry is `tools/autopilot-submit.ts` for one row: the same gated tool the
  * daily run calls, with the person sitting in front of it (AGENTS.md section 2

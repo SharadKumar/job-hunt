@@ -1,0 +1,92 @@
+/* guardrails.css - the standing rules, the recurring critic themes and the
+   reference patterns (#/guardrails). Tokens, type and every shared primitive
+   come from app.css; nothing here introduces a colour, a radius or a shadow of
+   its own.
+
+   Nothing on this screen is coloured `--you` unless it is a link or an action.
+   The never-named fix line used to be, which made a sentence look like a link
+   that went nowhere (the brief, section 6, Guardrails).
+
+   Local additions (nothing here belongs in app.css):
+     .guard-section   a titled full-width section, three to a screen
+     .theme-sample    the finding a theme is drawn from, as a quotation
+     .ref-what / .ref-pattern / .ref-fix   the three lines of a reference entry */
+
+.guard-section { margin: 0 0 32px; }
+.guard-section:last-child { margin-bottom: 0; }
+
+.guard-lede { margin: 0 0 12px; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+
+/* --- Standing rules ------------------------------------------------------ */
+
+/* A rule is a sentence, and Edit and Remove belong beside its first line
+   rather than centred against a paragraph three lines deep. */
+.rules .list-action, .themes .list-action { align-self: start; padding-top: 1px; }
+
+.rule-text { margin: 0; font-size: 15px; color: var(--ink); max-width: var(--measure); overflow-wrap: anywhere; }
+
+.rule-note { margin: 8px 0 0; font-size: 13px; color: var(--fail); max-width: var(--measure); }
+.rule-note:empty { display: none; }
+
+.rule-editor { margin: 8px 0 0; }
+.rule-editor textarea {
+  width: 100%;
+  max-width: var(--measure);
+  padding: 8px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+.rule-editor textarea:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
+.rule-editor .action-buttons { margin: 8px 0 0; }
+
+/* --- Recurring critic themes --------------------------------------------- */
+
+/* The finding the theme was drawn from, quoted. It used to sit in a bordered
+   box inside the card, which is a card inside a card. */
+.theme-sample {
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--muted);
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+/* --- The reference fold --------------------------------------------------- */
+
+.patterns { list-style: none; margin: 12px 0; padding: 0; }
+.patterns li { padding: 12px 0; border-top: 1px solid var(--rule); }
+.patterns li:first-child { border-top: 0; }
+
+/* Description first, machinery after: a regex is not a heading. */
+.ref-what { margin: 0; font-size: 15px; color: var(--ink); max-width: var(--measure); }
+.ref-pattern { margin: 4px 0 0; }
+.ref-fix { margin: 4px 0 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+
+/* A pattern is quoted as code, never offered as a field: a regex typed into a
+   browser is a way to quietly stop blocking a client's name. */
+.pattern {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.guard-section .disclosure h3 { margin: 24px 0 4px; }
+
+@media (max-width: 719px) {
+  /* app.css takes the action cell full width under 720 px and stretches the
+     buttons in it. Remove sits inside its own confirm wrapper, which is an
+     inline-flex and would otherwise stay at its label's width beside a
+     full-width Edit. */
+  .rules .list-action .confirm, .themes .list-action .confirm { flex: 1 1 auto; }
+}

@@ -1,142 +1,93 @@
 /*
- * runs.js - what the daily run did, one row per day, newest first.
+ * runs.js - what the daily run did: the list (#/runs) and one run (#/runs/<date>).
  *
  * AGENTS.md section 3.9: an unattended run says what it did in the journal,
  * including the full text of anything it sent. This screen is the reading end
  * of that, and only the reading end: it writes nothing and it retries nothing.
  *
- * The list row is the machine's own tally (what the summary's Numbers table
- * says the run sent and left blocked, plus the exit code and the wall time from
- * the launchd log). Opening a row fetches the summary markdown and the letters
- * that went out unattended, so a day nobody opens costs one small request.
+ * What the redesign changed (docs/ui-redesign-2026-09-18.md, sections 4 and 6):
+ * a run used to be an accordion that dumped the summary markdown, so the rows
+ * it sent and the rows it stopped on were prose nobody could click. A run is
+ * now a page: Sent, Stopped grouped by kind, Numbers, and the raw summary and
+ * log folded away underneath. "exit 0" in green and "exit 1" in red are one
+ * verdict pill that carries the word as well as the colour, and a run that is
+ * still going is its own state rather than a failure.
  */
 
-import { api, clear, errorBox, fetchInto, h, pageHeader, panel, richMarkdown } from "./app.js";
-import { RUNNING_COLOUR, soFar } from "./home.js";
+import {
+  clockTime, dayStamp, duration, fetchInto, h, pageHeader, placeholderRows, richMarkdown, when, whenFull,
+} from "./app.js";
+import { soFar } from "./home.js";
 
-/**
- * A run in progress, in the amber the Harness card uses, with a dot rather
- * than an exit pill: there is no exit code yet, and a grey "no log" pill over
- * a log that is being written to this minute is simply false. The dot carries
- * its own box because the stylesheet only shapes `.dot` inside a chip.
- */
-function runningPill(run) {
-  const going = soFar(run.duration_s);
-  return h("span", { class: "run-exit", style: RUNNING_COLOUR },
-    h("span", {
-      class: "dot",
-      "aria-hidden": "true",
-      style: "display:inline-block;width:8px;height:8px;border-radius:8px;background:var(--amber);margin-right:6px;vertical-align:middle;",
-    }),
-    going ? `running, ${going}` : "running");
-}
-
-/** A run that exited nonzero is red, a clean one green, an unknown one grey. */
-function exitPill(run) {
-  if (run.running) return runningPill(run);
-  if (run.exit_code === null || run.exit_code === undefined) {
-    // "no log" when there is none, and the log's own reason when there is one.
-    return h("span", { class: "run-exit grey", text: run.note || (run.has_log ? "no finish line" : "no log") });
-  }
-  const ok = run.exit_code === 0;
-  return h("span", {
-    class: ok ? "run-exit good" : "run-exit bad",
-    text: ok ? "exit 0" : `exit ${run.exit_code}`,
-  });
-}
-
-/** "1 h 13 m", "4 m 12 s", "48 s", or nothing when the log did not say. */
-export function duration(seconds) {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
-  if (seconds < 60) return `${Math.round(seconds)} s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} m ${String(Math.round(seconds % 60)).padStart(2, "0")} s`;
-  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} m`;
-}
+/** A run is a day, so it is named by its day. The clock beside it is the
+ * instant the log's start line carries, and the whole instant is in the row's
+ * title attribute. */
+const runDay = (date) => dayStamp(`${date}T00:00:00`) || String(date);
 
 const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
 
-/** The one line a row shows before it is opened. */
-function runLine(run) {
-  const bits = [];
-  if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
-  if (typeof run.blocked === "number") bits.push(`${run.blocked} blocked`);
-  // A run that is still going has no wall time and no summary yet, and the
-  // pill beside this line already says how long it has been working.
-  if (run.running) return bits.join(", ");
-  const took = duration(run.duration_s);
-  if (took) bits.push(`took ${took}`);
-  if (!run.has_summary) bits.push("no summary written");
-  return bits.join(", ");
-}
-
-/** The letters an unattended run sent, each under the line that names the send. */
-function lettersPanel(letters) {
-  const body = h("div", { class: "letters" });
-  for (const entry of letters) {
-    const block = h("article", { class: "letter" });
-    block.append(h("p", { class: "letter-head", text: entry.title }));
-    if (entry.letter) block.append(h("div", { class: "prose" }, richMarkdown(entry.letter)));
-    else block.append(h("p", { class: "grey small", text: "The journal records the send but not the letter text." }));
-    body.append(block);
-  }
-  return panel(`Sent unattended (${letters.length})`, body);
-}
-
 /**
- * One day. The header is a button so the whole row is one keyboard target, and
- * the detail is fetched the first time it is opened and kept after that.
+ * How the run ended, as one pill. The word is in the text, never the colour
+ * alone, and a run with no exit code says which of the two reasons it has
+ * rather than claiming a verdict it does not hold (section 6, Runs).
  */
+export function verdictPill(run) {
+  if (run.running) return h("span", { class: "pill pill-you", text: "Running" });
+  if (run.exit_code === 0) return h("span", { class: "pill pill-pass", text: "Finished" });
+  if (typeof run.exit_code === "number") {
+    return h("span", { class: "pill pill-fail", text: `Failed, exit ${run.exit_code}` });
+  }
+  return h("span", { class: "pill pill-none", text: run.has_log ? "No finish line" : "No log" });
+}
+
+/** The one meta line a list row shows: what it did, and how long it took. */
+export function runLine(run) {
+  const bits = [];
+  // The row's own title is the day, so the start is a clock and nothing else:
+  // "Mon 14 Sep" over "Mon 06:33" says Monday twice.
+  if (run.started_at) bits.push(clockTime(run.started_at));
+  if (typeof run.sent === "number") bits.push(`${run.sent} sent`);
+  if (typeof run.blocked === "number") bits.push(`${run.blocked} stopped`);
+  if (run.running) {
+    const going = soFar(run.duration_s);
+    if (going) bits.push(going);
+  } else {
+    const took = duration(run.duration_s);
+    if (took) bits.push(took);
+    if (!run.has_summary) bits.push("no summary");
+  }
+  return bits.filter(Boolean).join(", ");
+}
+
+// ---------------------------------------------------------------------------
+// The list
+// ---------------------------------------------------------------------------
+
+/** One day. The whole row is the link, so the date, the tally and the verdict
+ * are one keyboard target rather than three. */
 function runRow(run) {
-  const row = h("article", { class: "run" });
-  const detail = h("div", { class: "run-detail", hidden: true });
-  const head = h("button", { type: "button", class: "run-head", "aria-expanded": "false" },
-    h("span", { class: "run-date", text: run.date }),
-    h("span", { class: "run-line grey small", text: runLine(run) }),
-    exitPill(run),
-    h("span", { class: "run-chevron", "aria-hidden": "true", text: "›" }));
-
-  let loaded = false;
-  head.addEventListener("click", async () => {
-    const open = detail.hidden;
-    detail.hidden = !open;
-    head.setAttribute("aria-expanded", open ? "true" : "false");
-    row.classList.toggle("open", open);
-    if (!open || loaded) return;
-    loaded = true;
-    clear(detail);
-    detail.append(h("p", { class: "empty", text: "Loading the summary." }));
-    let data;
-    try {
-      data = await api(`runs/${encodeURIComponent(run.date)}`);
-    } catch (error) {
-      loaded = false;
-      clear(detail);
-      detail.append(errorBox(error, `Could not load the run for ${run.date}.`, null));
-      return;
-    }
-    clear(detail);
-    const markdown = String(data.markdown || "").trim();
-    if (markdown) detail.append(panel("Summary", h("div", { class: "prose" }, richMarkdown(markdown))));
-    else detail.append(h("p", { class: "empty", text: "No summary for this day. The launchd log is all this run left." }));
-    const letters = data.letters_sent || [];
-    if (letters.length) detail.append(lettersPanel(letters));
-    if (run.summary_path) detail.append(h("p", { class: "grey small", text: run.summary_path }));
-  });
-
-  row.append(head, detail);
+  const row = h("a", { class: "list-row run-row", href: `#/runs/${encodeURIComponent(run.date)}` });
+  const main = h("div", { class: "list-main" });
+  main.append(h("span", { class: "list-title", text: runDay(run.date) }));
+  main.append(h("span", { class: "list-pills" }, verdictPill(run)));
+  main.append(h("p", {
+    class: "list-meta",
+    title: run.started_at ? whenFull(run.started_at) : null,
+    text: runLine(run),
+  }));
+  row.append(main);
   return row;
 }
 
-export async function viewRuns(view) {
-  const count = h("p", { class: "page-count", text: "Loading the runs." });
+async function viewRunList(view) {
+  const count = h("p", { class: "page-count" });
   view.append(pageHeader({ title: "Runs", lede: count }));
   const host = h("div", {});
-  host.append(h("p", { class: "empty", text: "Loading the runs." }));
+  host.append(placeholderRows(3));
   view.append(host);
 
   const data = await fetchInto(host, "runs?limit=30", "Could not load the runs.");
-  if (!data) { count.textContent = ""; return; }
+  if (!data) return;
 
   const runs = data.runs || [];
   const total = data.total ?? runs.length;
@@ -144,10 +95,195 @@ export async function viewRuns(view) {
     ? `${total > runs.length ? `Last ${runs.length} of ${total} runs` : plural(runs.length, "run")}, newest first.`
     : "";
   if (!runs.length) {
-    host.append(h("p", { class: "empty", text: "No runs yet. The first daily run writes one at 07:00." }));
+    host.append(h("p", { class: "empty", text: "No runs yet. Start one with npm run daily." }));
     return;
   }
-  const list = h("div", { class: "runs" });
+  const list = h("div", { class: "list" });
   for (const run of runs) list.append(runRow(run));
   host.append(list);
+}
+
+// ---------------------------------------------------------------------------
+// One run
+// ---------------------------------------------------------------------------
+
+/** A section heading with the count of the list under it. */
+const sectionHead = (text, tally) =>
+  h("div", { class: "section-head" }, h("h2", {}, text), tally === null || tally === undefined ? null : h("span", { class: "tally", text: String(tally) }));
+
+/**
+ * A row this run touched. It links to the application when the run named one,
+ * and stays plain text when it did not: a link to a row that is not this one
+ * would be worse than no link. Not every line in a run's own record is about a
+ * row at all (a channel that needs signing in is about the machine), and one
+ * with no title is its reason and nothing else rather than a made up name.
+ *
+ * Order: the title, the facts under it, then what the run said, then the way
+ * out. The longest string is last, because a "next" clause two lines long
+ * above a six word reason buries the reason.
+ */
+function rowFor(entry, extra) {
+  const row = h("div", { class: "list-row" });
+  const main = h("div", { class: "list-main" });
+  const title = entry.title || entry.id || "";
+  if (title) {
+    main.append(entry.id
+      ? h("a", { class: "list-title", href: `#/row/${encodeURIComponent(entry.id)}`, text: title })
+      : h("span", { class: "list-title", text: title }));
+  }
+  const meta = [entry.company, entry.location, entry.at].filter(Boolean).join(", ");
+  if (meta) main.append(h("p", { class: "list-meta", text: meta }));
+  if (entry.reason) main.append(h("p", { class: "list-reason", text: entry.reason }));
+  if (extra) main.append(h("p", { class: "list-meta", text: extra }));
+  row.append(main);
+  return row;
+}
+
+function sentSection(sent, fromAudit) {
+  const box = h("section", { class: "run-section" });
+  box.append(sectionHead("Sent", sent.length));
+  if (!sent.length) {
+    box.append(h("p", { class: "empty", text: "This run sent nothing. Autopilot sends only what its gates pass." }));
+    return box;
+  }
+  const list = h("div", { class: "list" });
+  for (const entry of sent) list.append(rowFor(entry, fromAudit ? null : entry.note));
+  box.append(list);
+  return box;
+}
+
+function stoppedSection(groups) {
+  const total = groups.reduce((n, group) => n + group.rows.length, 0);
+  const box = h("section", { class: "run-section" });
+  box.append(sectionHead("Stopped", total));
+  if (!total) {
+    box.append(h("p", { class: "empty", text: "This run stopped on nothing." }));
+    return box;
+  }
+  for (const group of groups) {
+    const section = h("section", {});
+    section.append(h("h3", { class: "group-heading" },
+      h("span", {}, group.label, h("span", { class: "tally", text: ` ${group.rows.length}` }))));
+    const list = h("div", { class: "list" });
+    for (const entry of group.rows) list.append(rowFor(entry, entry.next ? `next: ${entry.next}` : null));
+    section.append(list);
+    box.append(section);
+  }
+  return box;
+}
+
+/** The run's own arithmetic, in the order it wrote it. Never re-counted from
+ * the pipeline: that would answer what is true now, not what this run did. */
+function numbersSection(numbers) {
+  if (!numbers.length) return null;
+  const box = h("section", { class: "run-section" });
+  box.append(sectionHead("Numbers", null));
+  const grid = h("div", { class: "run-numbers" });
+  for (const entry of numbers) {
+    grid.append(h("span", { class: "run-number-key", text: entry.label }));
+    grid.append(h("span", { class: "run-number-value", text: entry.value }));
+  }
+  box.append(grid);
+  return box;
+}
+
+/** A fold, with the thing and its size named on the summary line. */
+function fold(label, body, open) {
+  const box = h("details", { class: "disclosure run-fold", open: open === true });
+  box.append(h("summary", { text: label }));
+  box.append(body);
+  return box;
+}
+
+/** The letters an unattended run sent, each under the line that names the send. */
+function lettersFold(letters) {
+  const body = h("div", { class: "run-letters" });
+  for (const entry of letters) {
+    const block = h("article", { class: "run-letter" });
+    block.append(h("p", { class: "run-letter-head", text: entry.title }));
+    if (entry.letter) block.append(h("div", { class: "prose" }, richMarkdown(entry.letter)));
+    else block.append(h("p", { class: "grey small", text: "The journal records the send but not the letter text." }));
+    body.append(block);
+  }
+  return fold(`Letters sent unattended, ${letters.length}`, body);
+}
+
+/** What the page says under the title: the verdict, in a sentence. */
+function runLede(run) {
+  if (run.running) {
+    const going = soFar(run.duration_s);
+    return `Still running${run.started_at ? `, started ${when(run.started_at)}` : ""}${going ? `, ${going}` : ""}.`;
+  }
+  const took = duration(run.duration_s);
+  const verdict = run.exit_code === 0
+    ? "Finished cleanly"
+    : typeof run.exit_code === "number"
+      ? `Failed, exit ${run.exit_code}`
+      : run.has_log ? "Wrote no finish line, so it was stopped before it could" : "Left no log";
+  return `${verdict}${took ? ` in ${took}` : ""}${run.started_at ? `, started ${when(run.started_at)}` : ""}.`;
+}
+
+async function viewRunDetail(view, date) {
+  const head = pageHeader({
+    title: `Run on ${runDay(date)}`,
+    back: h("a", { href: "#/runs", text: "Runs" }),
+  });
+  view.append(head);
+  const host = h("div", {});
+  host.append(placeholderRows(3));
+  view.append(host);
+
+  const data = await fetchInto(host, `runs/${encodeURIComponent(date)}`, `Could not load the run for ${runDay(date)}.`);
+  if (!data) return;
+
+  const run = data.run || { date, running: false, exit_code: null, has_log: false, has_summary: false };
+  head.append(h("div", { class: "page-aside" }, verdictPill(run)));
+  head.append(h("p", { class: "lede", text: runLede(run) }));
+
+  if (!run.has_summary && !run.has_log) {
+    host.append(h("p", { class: "empty", text: "Nothing was written for this day. A run writes its summary when it finishes." }));
+    return;
+  }
+  if (run.running) {
+    host.append(h("p", {
+      class: "empty",
+      text: "This run is still working, so what follows is only what it has written so far.",
+    }));
+  }
+  if (data.from_audit) {
+    host.append(h("p", {
+      class: "empty",
+      text: "No summary was written for this day, so what follows is read from the audit log.",
+    }));
+  }
+
+  host.append(sentSection(data.sent || [], data.from_audit === true));
+  host.append(stoppedSection(data.stopped || []));
+  const numbers = numbersSection(data.numbers || []);
+  if (numbers) host.append(numbers);
+
+  const folds = h("section", { class: "run-section" });
+  const letters = data.letters_sent || [];
+  if (letters.length) folds.append(lettersFold(letters));
+  if (data.markdown) {
+    folds.append(fold("Raw summary", h("div", { class: "prose" }, richMarkdown(data.markdown))));
+  }
+  if (data.log) {
+    const body = h("div", {});
+    if (data.log_truncated) {
+      body.append(h("p", { class: "grey small", text: "The middle of this log is not read: only the two ends are." }));
+    }
+    body.append(h("pre", { class: "run-log", text: data.log }));
+    if (data.log_path) body.append(h("p", { class: "grey small", text: data.log_path }));
+    folds.append(fold("Raw log", body));
+  }
+  if (data.summary_path || run.summary_path) {
+    folds.append(h("p", { class: "grey small", text: data.summary_path || run.summary_path }));
+  }
+  if (folds.childNodes.length) host.append(folds);
+}
+
+export async function viewRuns(view, id) {
+  if (id) await viewRunDetail(view, id);
+  else await viewRunList(view);
 }

@@ -7,9 +7,16 @@
     <meta name="referrer" content="no-referrer" />
     <title>🚀 Job Hunt</title>
     <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="screens-a.css" />
-    <link rel="stylesheet" href="screens-b.css" />
-    <link rel="stylesheet" href="screens-c.css" />
+    <!-- One stylesheet per screen, loaded in nav order. app.css owns the
+         tokens, the type and every shared primitive; nothing below repeats
+         a selector app.css already defines. -->
+    <link rel="stylesheet" href="today.css" />
+    <link rel="stylesheet" href="pipeline.css" />
+    <link rel="stylesheet" href="row.css" />
+    <link rel="stylesheet" href="resumes.css" />
+    <link rel="stylesheet" href="guardrails.css" />
+    <link rel="stylesheet" href="runs.css" />
+    <link rel="stylesheet" href="settings.css" />
     <!-- The favicon is the wordmark's rocket, drawn inline: a data URL, so the
          tab icon costs no request and nothing is fetched off this machine. The
          svg namespace is percent-encoded because no absolute http URL, encoded
@@ -24,12 +31,16 @@
     -->
     <header class="top">
       <div class="wrap top-inner">
-        <a class="brand" href="#/home" aria-label="Job Hunt"><span class="rocket" aria-hidden="true">🚀</span> Job Hunt</a>
-        <nav class="nav" aria-label="Views">
-          <a href="#/home" data-nav="home">Home</a>
-          <a href="#/applications" data-nav="applications">Applications</a>
+        <a class="brand" href="#/today" aria-label="Job Hunt"><span class="rocket" aria-hidden="true">🚀</span> Job Hunt</a>
+        <!-- Under 720 px the five links fold behind this button; the autopilot
+             state and the cog stay on the bar, because the first is the answer
+             to the morning's question and the second is how a token is pasted. -->
+        <button type="button" class="menu-toggle btn" id="menu-toggle" aria-expanded="false" aria-controls="nav">Menu</button>
+        <nav class="nav closed" id="nav" aria-label="Views">
+          <a href="#/today" data-nav="today">Today</a>
+          <a href="#/pipeline" data-nav="pipeline">Pipeline</a>
           <a href="#/resumes" data-nav="resumes">Resumes</a>
-          <a href="#/rules" data-nav="rules">Rules</a>
+          <a href="#/guardrails" data-nav="guardrails">Guardrails</a>
           <a href="#/runs" data-nav="runs">Runs</a>
           <!-- The autopilot switch is drawn by app.js once GET /api/policy has
                answered, so the header never claims a lane it has not read. -->
@@ -44,8 +55,20 @@
       </div>
     </header>
 
+    <div class="shell-status" id="shell-status" aria-live="polite">
+      <span class="shell-date">Today</span>
+      <span class="shell-state">Reading local status</span>
+    </div>
+
     <main id="view" class="wrap view" tabindex="-1">
-      <p class="empty">Loading.</p>
+      <!-- The shape of what is coming, until the first render replaces it. No
+           spinner and no "Loading." sentence: both say less than the shape
+           (docs/ui-redesign-2026-09-18.md, section 7). -->
+      <div class="placeholder" aria-hidden="true">
+        <div class="placeholder-row"><span></span><span></span></div>
+        <div class="placeholder-row"><span></span><span></span></div>
+        <div class="placeholder-row"><span></span><span></span></div>
+      </div>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

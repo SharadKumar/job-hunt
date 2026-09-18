@@ -41,7 +41,8 @@ import { fileURLToPath } from "node:url";
 import YAML, { isScalar, isSeq } from "yaml";
 
 import { ApiError, type ApiContext, type ApiRequest, type ApiResult } from "./api.ts";
-import { log, type AuditEventType } from "../audit.ts";
+import { log, query as auditQuery, type AuditEventType } from "../audit.ts";
+import { list as listOpportunities } from "../pipeline.ts";
 import { writeAtomic } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath, repoRoot } from "../repo-root.ts";
@@ -141,11 +142,58 @@ export type RunSummary = {
   running: boolean;
   /** Why there is no exit code, when the reason is worth saying. */
   note: string | null;
+  /** The instant the log's own start line carries, so a screen can say when(). */
+  started_at: string | null;
+};
+
+/** One application the run lodged, as the summary recorded it. */
+export type RunSent = {
+  /** The pipeline row, when it can be named. The summary prints no id, so the
+   * store is what puts one here; a row that has since been deleted has none. */
+  id: string | null;
+  title: string;
+  company: string | null;
+  location: string | null;
+  /** The clock the summary printed beside the send, "08:24". */
+  at: string | null;
+  /** What else the bullet said: the lane, the CV file, the critic's warns. */
+  note: string | null;
+};
+
+/** One row the run stopped on, and what it said about it. */
+export type RunStoppedRow = {
+  id: string | null;
+  title: string | null;
+  company: string | null;
+  reason: string;
+  /** The "Next:" clause of the escalation, which is the way out. */
+  next: string | null;
+};
+
+/** The stopped rows of one kind, in the person's words. */
+export type RunStoppedGroup = {
+  kind: string;
+  label: string;
+  rows: RunStoppedRow[];
 };
 
 export type RunDetail = {
   date: string;
+  /** The list row for this day, so a detail page can draw its verdict without
+   * fetching the whole index behind it. */
+  run: RunSummary;
+  sent: RunSent[];
+  stopped: RunStoppedGroup[];
+  /** The Numbers table in the order the run wrote it. */
+  numbers: { label: string; value: string }[];
+  /** True when nothing above came from a summary, so it came from the audit log. */
+  from_audit: boolean;
+  /** The raw text, kept: the detail page folds both away under a disclosure. */
   markdown: string | null;
+  log: string | null;
+  /** The middle of a long log is never read, so the page may not claim it has it. */
+  log_truncated: boolean;
+  log_path: string | null;
   letters_sent: { title: string; letter: string }[];
 };
 
@@ -238,25 +286,28 @@ export function parseRunLog(
   head: string,
   tail: string,
   opts: { mtime_ms?: number; now?: number } = {},
-): { exit_code: number | null; duration_s: number | null; running: boolean; note: string | null } {
+): { exit_code: number | null; duration_s: number | null; running: boolean; note: string | null; started_at: string | null } {
   const started = /===\s*(\S+)\s+starting daily run/.exec(head);
   const finishes = [...tail.matchAll(/===\s*(\S+)\s+finished daily run \(exit (-?\d+)\)/g)];
   const last = finishes.length ? finishes[finishes.length - 1] : null;
   const from = started ? new Date(started[1]).getTime() : Number.NaN;
+  // The stamp as an instant, so every screen can put it through one date
+  // helper rather than print the log's own string.
+  const started_at = Number.isFinite(from) ? new Date(from).toISOString() : null;
 
   if (last) {
     const to = new Date(last[1]).getTime();
     const measured = Number.isFinite(from) && Number.isFinite(to) && to >= from ? Math.round((to - from) / 1000) : null;
-    return { exit_code: Number(last[2]), duration_s: measured, running: false, note: null };
+    return { exit_code: Number(last[2]), duration_s: measured, running: false, note: null, started_at };
   }
 
   const now = opts.now ?? Date.now();
   const touched = opts.mtime_ms ?? now;
   if (started && now - touched <= RUN_LIVE_MS) {
     const soFar = Number.isFinite(from) ? Math.max(0, Math.round((now - from) / 1000)) : null;
-    return { exit_code: null, duration_s: soFar, running: true, note: null };
+    return { exit_code: null, duration_s: soFar, running: true, note: null, started_at };
   }
-  return { exit_code: null, duration_s: null, running: false, note: "no finish line" };
+  return { exit_code: null, duration_s: null, running: false, note: "no finish line", started_at };
 }
 
 function parseLimit(value: string | number | null | undefined, fallback: number): number {
@@ -266,35 +317,32 @@ function parseLimit(value: string | number | null | undefined, fallback: number)
   return Math.min(Math.floor(n), MAX_RUN_LIMIT);
 }
 
-export async function getRuns(
-  query: { limit?: string | number | null } = {},
-  ctx: ApiContext = {},
-): Promise<{ runs: RunSummary[]; total: number }> {
-  const limit = parseLimit(query.limit, DEFAULT_RUN_LIMIT);
-  const summaryDir = summaryDirOf(ctx);
-  const launchdDir = launchdDirOf(ctx);
-
-  const dates = new Set<string>();
-  for (const name of await listNames(summaryDir)) {
-    const hit = /^(\d{4}-\d{2}-\d{2})\.md$/.exec(name);
-    if (hit) dates.add(hit[1]);
-  }
-  for (const name of await listNames(launchdDir)) {
-    const hit = /^(\d{4}-\d{2}-\d{2})\.log$/.exec(name);
-    if (hit) dates.add(hit[1]);
-  }
-
-  const ordered = [...dates].sort().reverse();
-  const runs: RunSummary[] = [];
-  for (const date of ordered.slice(0, limit)) {
-    const summaryFile = path.join(summaryDir, `${date}.md`);
-    const markdown = await readTextIfExists(summaryFile);
-    const tally = markdown ? runTally(markdown) : { sent: null, blocked: null };
-    const ends = await readEnds(path.join(launchdDir, `${date}.log`));
-    const fromLog = ends
-      ? parseRunLog(ends.head, ends.tail, { mtime_ms: ends.mtime_ms })
-      : { exit_code: null, duration_s: null, running: false, note: null };
-    runs.push({
+/**
+ * One day's list row, plus the two files it was read from. `getRun` wants the
+ * same verdict the list shows and the same two texts, so the read happens once
+ * here rather than twice in two shapes that could disagree.
+ */
+async function readRun(date: string, ctx: ApiContext): Promise<{
+  run: RunSummary;
+  markdown: string | null;
+  log: string | null;
+  log_truncated: boolean;
+  log_path: string | null;
+}> {
+  const summaryFile = path.join(summaryDirOf(ctx), `${date}.md`);
+  const logFile = path.join(launchdDirOf(ctx), `${date}.log`);
+  const markdown = await readTextIfExists(summaryFile);
+  const tally = markdown ? runTally(markdown) : { sent: null, blocked: null };
+  const ends = await readEnds(logFile);
+  const fromLog = ends
+    ? parseRunLog(ends.head, ends.tail, { mtime_ms: ends.mtime_ms })
+    : { exit_code: null, duration_s: null, running: false, note: null, started_at: null };
+  // Head and tail are the same bytes when the file is smaller than one edge,
+  // so joining them blindly would print a short log twice.
+  const truncated = ends !== null && ends.head !== ends.tail;
+  const log = ends === null ? null : truncated ? `${ends.head}\n\n[the middle of this log is not read]\n\n${ends.tail}` : ends.head;
+  return {
+    run: {
       date,
       sent: tally.sent,
       blocked: tally.blocked,
@@ -305,8 +353,34 @@ export async function getRuns(
       has_log: ends !== null,
       running: fromLog.running,
       note: fromLog.note,
-    });
+      started_at: fromLog.started_at,
+    },
+    markdown,
+    log,
+    log_truncated: truncated,
+    log_path: ends === null ? null : relativeToRepo(logFile),
+  };
+}
+
+export async function getRuns(
+  query: { limit?: string | number | null } = {},
+  ctx: ApiContext = {},
+): Promise<{ runs: RunSummary[]; total: number }> {
+  const limit = parseLimit(query.limit, DEFAULT_RUN_LIMIT);
+
+  const dates = new Set<string>();
+  for (const name of await listNames(summaryDirOf(ctx))) {
+    const hit = /^(\d{4}-\d{2}-\d{2})\.md$/.exec(name);
+    if (hit) dates.add(hit[1]);
   }
+  for (const name of await listNames(launchdDirOf(ctx))) {
+    const hit = /^(\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+    if (hit) dates.add(hit[1]);
+  }
+
+  const ordered = [...dates].sort().reverse();
+  const runs: RunSummary[] = [];
+  for (const date of ordered.slice(0, limit)) runs.push((await readRun(date, ctx)).run);
   return { runs, total: ordered.length };
 }
 
@@ -371,11 +445,249 @@ export function parseSentUnattended(journal: string): { title: string; letter: s
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// The summary, read as structure rather than as a wall of markdown
+// ---------------------------------------------------------------------------
+
+/*
+ * The old detail was the summary file printed verbatim behind an accordion, so
+ * the person read the run's prose to find out which rows it sent and which it
+ * stopped on, and neither was a link. What follows turns the two sections
+ * tools/daily-summary.ts writes into rows the page can link, while keeping the
+ * markdown itself for the disclosure at the bottom: the run's own words stay
+ * the record, and this is only an index into them.
+ */
+
+/** The lines under a `## <name>` heading, up to the next heading of that level. */
+function sectionBody(markdown: string, name: RegExp): string[] {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const at = lines.findIndex((line) => headingLevel(line) > 0 && name.test(plainTitle(line.replace(/^#{1,6}\s+/, ""))));
+  if (at < 0) return [];
+  const level = headingLevel(lines[at]);
+  const body: string[] = [];
+  for (const line of lines.slice(at + 1)) {
+    const next = headingLevel(line);
+    if (next > 0 && next <= level) break;
+    body.push(line);
+  }
+  return body;
+}
+
+/** Top-level bullets only. An indented one belongs to the bullet above it. */
+const topBullets = (body: string[]): string[] =>
+  body.map((line) => /^[-*+]\s+(\S.*)$/.exec(line)?.[1] ?? null).filter((line): line is string => line !== null);
+
+/**
+ * One "Sent today" bullet, which daily-summary.ts writes as
+ * `- 08:24 Title at Company (Location). autopilot, CV.docx, critic warns 0.`
+ *
+ * The title and the company are separated by " at ", and nothing in the line
+ * says which " at " it is when the title contains one of its own. The first is
+ * taken, because the format puts the title first and a job title carrying
+ * " at " is rarer than a company name that does.
+ */
+export function parseSentLine(line: string): RunSent | null {
+  const stamped = /^(\d{1,2}:\d{2})\s+(.*)$/.exec(line.trim());
+  const at = stamped ? stamped[1] : null;
+  const rest = (stamped ? stamped[2] : line).trim();
+  if (!rest) return null;
+  // The who clause ends at the first sentence stop; everything after it is the
+  // lane, the CV file and the critic's tally.
+  const stop = rest.indexOf(". ");
+  const who = (stop === -1 ? rest : rest.slice(0, stop)).replace(/\.$/, "").trim();
+  const note = stop === -1 ? null : rest.slice(stop + 2).trim() || null;
+  // The location is the last parenthesis on the line and may hold one of its
+  // own ("Sydney NSW (Hybrid)"), so the inner group is greedy to the last
+  // bracket rather than stopping at the first.
+  const named = /^(.*?)\s+at\s+(.*?)(?:\s*\((.*)\))?$/.exec(who);
+  if (!named) return { id: null, title: who, company: null, location: null, at, note };
+  return {
+    id: null,
+    title: named[1].trim(),
+    company: named[2].trim() || null,
+    location: named[3]?.trim() || null,
+    at,
+    note,
+  };
+}
+
+export function parseSentToday(markdown: string): RunSent[] {
+  return topBullets(sectionBody(markdown, /^sent today\b/i))
+    .map((line) => parseSentLine(plainTitle(`- ${line}`)))
+    .filter((row): row is RunSent => row !== null && Boolean(row.title));
+}
+
+/**
+ * One "Escalations (your action)" bullet, written as
+ * `- Title at Company [id]: reason. Next: action.`, or as a bare
+ * `- reason. Next: action.` for an escalation about no row in particular.
+ */
+export function parseEscalationLine(line: string): RunStoppedRow | null {
+  const text = line.trim();
+  if (!text) return null;
+  const whoAt = /^(.*?)\s+at\s+(.*?)(?:\s*\[([^\]]+)\])?:\s+(.*)$/.exec(text);
+  const body = whoAt ? whoAt[4] : text;
+  const cut = /\s+Next:\s+/.exec(body);
+  const reason = (cut ? body.slice(0, cut.index) : body).replace(/\.$/, "").trim();
+  const next = cut ? body.slice(cut.index + cut[0].length).replace(/\.$/, "").trim() || null : null;
+  if (!reason) return null;
+  return {
+    id: whoAt ? (whoAt[3]?.trim() || null) : null,
+    title: whoAt ? whoAt[1].trim() : null,
+    company: whoAt ? (whoAt[2].trim() || null) : null,
+    reason,
+    next,
+  };
+}
+
+/**
+ * What kind of stop this is, in the person's words. The summary prints the
+ * reason but not the kind, so the reason is read the same way the row API
+ * reads it, and the labels are the ones the Needs you groups already use.
+ */
+const STOP_KINDS: { kind: string; label: string; test: RegExp }[] = [
+  { kind: "question", label: "Waiting on an answer", test: /screening question|unanswered question|unknown question/i },
+  { kind: "letter", label: "Waiting on a redraft", test: /letter.?critic|letter block|redraft/i },
+  { kind: "portal", label: "A portal you open", test: /external ats|company website|not a quick apply|not easy apply|portal/i },
+  { kind: "duplicate", label: "A duplicate to decide", test: /duplicate|already submitted/i },
+  { kind: "approval", label: "Waiting on your approval", test: /approval|awaiting_approval|approve/i },
+  { kind: "gate", label: "Outside the autopilot lane", test: /gate|red.?flag|baseline|discipline|not on autopilot|not in autopilot/i },
+  { kind: "cap", label: "The daily cap", test: /daily cap|max_per_day/i },
+  { kind: "kill_switch", label: "The kill switch", test: /kill switch/i },
+  { kind: "channel", label: "A channel that needs signing in", test: /sign in|signed in|login|session expired|channel/i },
+  { kind: "sending", label: "Left mid send", test: /submission_pending|mid.?send|adapter/i },
+];
+
+const OTHER_STOP = { kind: "other", label: "Something else" };
+
+export function stopKind(reason: string): { kind: string; label: string } {
+  const hit = STOP_KINDS.find((entry) => entry.test.test(reason));
+  return hit ? { kind: hit.kind, label: hit.label } : OTHER_STOP;
+}
+
+/** The stopped rows grouped by kind, in the order the kinds are listed above. */
+export function groupStopped(rows: RunStoppedRow[]): RunStoppedGroup[] {
+  const order = [...STOP_KINDS.map((entry) => entry.kind), OTHER_STOP.kind];
+  const groups = new Map<string, RunStoppedGroup>();
+  for (const row of rows) {
+    const { kind, label } = stopKind(`${row.reason} ${row.next ?? ""}`);
+    if (!groups.has(kind)) groups.set(kind, { kind, label, rows: [] });
+    groups.get(kind)!.rows.push(row);
+  }
+  return order.filter((kind) => groups.has(kind)).map((kind) => groups.get(kind)!);
+}
+
+export function parseEscalations(markdown: string): RunStoppedRow[] {
+  return topBullets(sectionBody(markdown, /^escalations\b/i))
+    .map((line) => parseEscalationLine(plainTitle(`- ${line}`)))
+    .filter((row): row is RunStoppedRow => row !== null)
+    // "Nothing needs you." is the empty state of that section, not a stop.
+    .filter((row) => !/^nothing needs you$/i.test(row.reason));
+}
+
+/** The Numbers table in the order the run wrote it, for the detail page. */
+export function runNumbers(markdown: string): { label: string; value: string }[] {
+  return Object.entries(parseNumbersTable(markdown)).map(([label, value]) => ({ label, value }));
+}
+
+/**
+ * The same two lists off the audit log, for a day whose summary was never
+ * written (the run died, or the person is reading today before 07:00 finishes).
+ * The log carries the row id and the event, never the advert's title, so the
+ * pipeline is asked for the words; a row that has since been deleted keeps its
+ * id and says nothing more.
+ */
+async function fromAuditLog(date: string): Promise<{ sent: RunSent[]; stopped: RunStoppedRow[] }> {
+  const events = await auditQuery({ sinceISO: `${date}T00:00:00.000Z` })
+    .catch(() => [] as Awaited<ReturnType<typeof auditQuery>>);
+  const onTheDay = events.filter((event) => String(event.ts ?? "").slice(0, 10) === date);
+  if (!onTheDay.length) return { sent: [], stopped: [] };
+
+  const rows = await listOpportunities({}).catch(() => []);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const named = (id: string | null) => (id ? byId.get(id) ?? null : null);
+
+  const sent: RunSent[] = [];
+  const stopped: RunStoppedRow[] = [];
+  for (const event of onTheDay) {
+    const row = named(event.role_id ?? null);
+    if (event.event_type === "submitted") {
+      sent.push({
+        id: event.role_id ?? null,
+        title: row?.title ?? event.role_id ?? "A row this log no longer names",
+        company: row?.company ?? null,
+        location: row?.location ?? null,
+        at: null,
+        note: event.actor ? `${event.actor}, from the audit log` : "from the audit log",
+      });
+      continue;
+    }
+    if (!STOPPING_EVENTS.has(event.event_type)) continue;
+    stopped.push({
+      id: event.role_id ?? null,
+      title: row?.title ?? null,
+      company: row?.company ?? null,
+      reason: String(event.details?.reason ?? event.event_type).replace(/_/g, " "),
+      next: null,
+    });
+  }
+  return { sent, stopped };
+}
+
+/** The audit events that mean the run stopped on something. */
+const STOPPING_EVENTS = new Set([
+  "manual_queued", "screening_q_paused", "validation_gate_failed", "daily_cap_hit",
+  "policy_kill_switch_blocked", "submission_failed", "channel_login_expired", "channel_search_failed",
+  "voice_check_failed", "slop_check_failed", "lint_failed", "duplicate_detected",
+]);
+
+/**
+ * Put a pipeline id on a sent row. The summary prints the title and the
+ * employer but no id, so the store is matched on both, case folded. A row that
+ * no longer exists simply stays unlinked: inventing an id would send the person
+ * to a page that is not about their application.
+ */
+async function linkSent(sent: RunSent[]): Promise<RunSent[]> {
+  if (!sent.length) return sent;
+  const rows = await listOpportunities({}).catch(() => []);
+  if (!rows.length) return sent;
+  const key = (title: string, company: string | null) =>
+    `${title}::${company ?? ""}`.toLowerCase().replace(/\s+/g, " ").trim();
+  const byPair = new Map<string, string>();
+  const byTitle = new Map<string, string>();
+  for (const row of rows) {
+    byPair.set(key(row.title, row.company ?? null), row.id);
+    if (!byTitle.has(key(row.title, null))) byTitle.set(key(row.title, null), row.id);
+  }
+  return sent.map((entry) => ({
+    ...entry,
+    id: entry.id ?? byPair.get(key(entry.title, entry.company)) ?? byTitle.get(key(entry.title, null)) ?? null,
+  }));
+}
+
 export async function getRun(date: string, ctx: ApiContext = {}): Promise<RunDetail> {
   if (!DATE_RE.test(date)) throw new ApiError(400, `date must be YYYY-MM-DD, got '${date}'`);
-  const markdown = await readTextIfExists(path.join(summaryDirOf(ctx), `${date}.md`));
+  const { run, markdown, log, log_truncated, log_path } = await readRun(date, ctx);
   const journal = await readTextIfExists(path.join(journalRootOf(ctx), `${date}.md`));
-  return { date, markdown, letters_sent: journal ? parseSentUnattended(journal) : [] };
+
+  const fromSummary = markdown !== null;
+  const raw = fromSummary
+    ? { sent: parseSentToday(markdown), stopped: parseEscalations(markdown) }
+    : await fromAuditLog(date);
+
+  return {
+    date,
+    run,
+    sent: await linkSent(raw.sent),
+    stopped: groupStopped(raw.stopped),
+    numbers: markdown ? runNumbers(markdown) : [],
+    from_audit: !fromSummary,
+    markdown,
+    log,
+    log_truncated,
+    log_path,
+    letters_sent: journal ? parseSentUnattended(journal) : [],
+  };
 }
 
 // ---------------------------------------------------------------------------
