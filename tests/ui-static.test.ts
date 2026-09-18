@@ -1662,11 +1662,12 @@ test("the Resumes screen renders nothing, and approves only through the tool", (
   assert.ok(!resumesJs.includes("Rendering runs through /resume-review with the person present."),
     "the grey footer paragraph under every card must be gone");
   assert.ok(!/text:\s*"Render\b/.test(resumesJs), "resumes.js must not offer a Render button");
-  // PDF is the primary, DOCX and Markdown the secondaries beside it.
-  assert.match(resumesJs, /fileButton\("Open PDF", files\.pdf, true, note\)/, "Open PDF is the primary file button");
-  assert.match(resumesJs, /fileButton\("DOCX", files\.docx, false, note\)/, "DOCX is secondary");
-  assert.match(resumesJs, /fileButton\("Markdown", files\.md, false, note\)/, "and so is Markdown");
-  assert.match(resumesJs, /class: primary \? "btn btn-primary" : "btn"/, "and the weight is the shared button style");
+  // The resume is visible in the third layer. File formats are quiet links
+  // below it rather than three actions competing with the preview tabs.
+  assert.match(resumesJs, /fileLink\("PDF", files\.pdf, note\)/, "PDF remains available below the inline preview");
+  assert.match(resumesJs, /fileLink\("DOCX", files\.docx, note\)/, "DOCX remains available");
+  assert.match(resumesJs, /fileLink\("Markdown", files\.md, note\)/, "and so does Markdown");
+  assert.match(resumesJs, /class: "resume-file-link"/, "file formats are links, not primary buttons");
   assert.match(resumesJs, /`Critic \$\{said\}\$\{round\}`/, "the card must carry a critic line");
   assert.ok(resumesJs.includes("positionings"), "the count line must say how many positionings there are");
   assert.ok(home.includes("stamp"), "the Home resumes card must carry the approval stamp");
@@ -1860,16 +1861,26 @@ test("Resumes uses a three-level selection workbench", () => {
   const resumesCss = sheet["resumes.css"].replace(/\/\*[\s\S]*?\*\//g, "");
   assert.match(rules, /\.stamp\.approved \{ color: var\(--pass\)/, "an approved stamp takes the pass colour");
   assert.match(rules, /\.stamp\.missing \{ color: var\(--fail\)/, "a missing render the fail colour");
-  assert.match(resumesCss, /\.resume-workbench \{[\s\S]*?grid-template-columns: minmax\(220px, 25%\) minmax\(340px, 1fr\) minmax\(280px, 31%\);/,
+  assert.match(resumesCss, /\.resume-workbench \{[\s\S]*?grid-template-columns: minmax\(220px, 25%\) minmax\(340px, 1fr\) minmax\(320px, 37%\);/,
     "desktop Resumes has positioning, selected baseline and quality evidence columns");
   assert.match(resumesJs, /class: "resume-browser"/, "the first level is the positioning browser");
   assert.match(resumesJs, /class: "resume-overview"/, "the second level is the selected baseline");
-  assert.match(resumesJs, /class: "resume-quality"/, "the third level is the render evidence");
+  assert.match(resumesJs, /class: "resume-inspector"/, "the third level is the resume inspector");
+  assert.match(resumesJs, /\{ key: "preview", label: "Resume" \}, \{ key: "quality", label: "Quality" \}/,
+    "the inspector switches between the rendered resume and quality evidence");
+  assert.match(resumesJs, /image\.src = await artefactUrl\(page\.src\)/,
+    "the selected rendered page is fetched with the authenticated artefact path and shown inline");
+  assert.match(resumesJs, /q\.set\("page", String\(page\)\)/,
+    "the selected rendered page is preserved in the address");
   assert.match(resumesJs, /q\.set\("selected", id\)/, "selection is preserved in the address");
   assert.match(resumesCss, /\.resume-browser-item\.selected::before[\s\S]*?background: var\(--you\);/,
     "the selected positioning carries the same person-colour rail as Pipeline");
   assert.match(resumesCss, /\.resume-overview \{ grid-row: 1;/,
     "on a phone the selected baseline comes before the long positioning list");
+  assert.match(resumesCss, /\.resume-inspector \{ grid-row: 2;/,
+    "and the inline resume remains the third level before that list");
+  assert.match(resumesCss, /\.resume-workbench \{ grid-template-columns: minmax\(0, 1fr\);/,
+    "the desktop tracks collapse to the full phone width");
   // Section 6: four tall thin bars become one horizontal row of short ones,
   // the percentage in ink, and a page under the floor is warned about.
   assert.match(resumesCss, /\.fills \{[\s\S]*?display: flex;/, "the page fills sit in one horizontal row");
