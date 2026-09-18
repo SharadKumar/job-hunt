@@ -48,11 +48,13 @@ Comparison history:
 - Naming and spacing pass: passed. The sidebar and canonical route read Schedules, with Guardrails kept as the last named section; an old `#/runs/<date>` deep link preserves the date and active tab while redirecting to `#/schedules/<date>`. The resume tabs read Resumes and Evidence questions, the list heading reads Versions, and the selected pane starts directly with its title and approval state.
 - Today viewport pass: passed. Needs you and Sent overnight are peer tabs on the title row, with the brief retained above one active workspace. Both tabs use the same two-pane pattern: a selectable list on the left and the selected application's workflow and package on the right. At 1300 by 1204 the page height and viewport height both measured 1204 pixels, the page header began at 80 pixels like Resumes and Schedules, and the panes scroll internally.
 - Today responsive pass: passed. At 390 by 844 the title tabs wrap cleanly under the greeting, the selected application remains before the queue, Sent overnight remains a scan-friendly list, and document width equals viewport width with no horizontal overflow.
+- Pipeline workspace alignment: passed. The six counted segments now sit in the title row, the application browser and selected workflow fill the remaining viewport, and each pane scrolls independently. At 2056 by 1147 the document and viewport heights both measured 1147 pixels, the title began at 80 pixels, and all six tabs remained visible.
+- Guardrails workspace alignment: passed. Rules, Themes and Reference are title-row tabs. Each tab uses a browser on the left and one selected item on the right; rule actions stay with the selected rule, theme promotion stays with the selected theme, and Reference remains read only. All three tabs measured one viewport high with no console errors.
 - Final responsive pass: passed. Resumes and Schedules both measured 390 pixels wide at a 390 by 844 viewport, placed the selected pane before the long list, and introduced no horizontal overflow.
 
 Intentional refinements from the reference:
 
-- Pipeline keeps its six real segments and compact filters above the workbench because they are live product controls absent from the reference mock.
+- Pipeline keeps its six real segments as counted title-row tabs and its compact filters inside the application browser.
 - The status bar, segment counts and application rows come from live local state.
 - Gate results are quoted from recorded files. Missing gates say not run.
 - The answer control saves only. Review remains a separate deliberate action.

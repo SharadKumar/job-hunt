@@ -177,7 +177,8 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 ### Pipeline (`#/pipeline/<segment>?channel=&min=&sort=`)
 
 - Segments: needs (manual_action_needed), queue (shortlisted, drafted, awaiting_approval, approved, submission_pending), parked, sent (submitted), replies (responded, interview, offered, won), closed (rejected, withdrawn). Default segment is needs.
-- Segment tabs carry counts from `GET /api/summary`. The list header count equals the tab count; a limit is shown as "showing 30 of 90, show all".
+- Segment tabs sit in the page title row and carry counts from `GET /api/summary`. The list header count equals the tab count; a limit is shown as "showing 30 of 90, show all".
+- The desktop page is one viewport high. The application browser and selected workflow share the remaining space and scroll independently.
 - Needs you groups rows by action kind with a heading per group. Queue shows the lane pill (Autopilot or You) and the machine status pill. Closed offers Reopen (to discovered).
 - Row: title (link), employer, location, pills only for lane, saved by you and apply method. Score in ink, tabular, right aligned. Reason in full, wrapping. One action button, secondary style, primary style only for needs-you actions.
 - Filters are chips and an input, all reflected in the hash query and restored from it.
@@ -201,11 +202,12 @@ The default for this brief would be a KPI tile row, a kanban, a blue accent, Int
 - Baseline cards keep their content; page-fill bars become a single row of four small bars with the percentage in ink; gates line reads "6 pass, 2 warn"; the critic line links to the findings.
 - Evidence questions: the ledger as a list with the four fixed answers as buttons; the pending count links from Today.
 
-### Guardrails (`#/guardrails`, was Rules)
+### Guardrails (`#/guardrails`, `#/guardrails/themes`, `#/guardrails/reference`)
 
-- Standing rules first, plain language, Edit and Remove.
-- Recurring critic themes second, with Promote to standing rule.
-- Never-named patterns and editorial bans in a collapsed reference section, described in words with the pattern in a code span, and a line saying which file to edit.
+- Rules, Themes and Reference are peer tabs in the page title row.
+- Every tab uses the same master-detail workspace: a compact selection browser on the left and one selected item on the right.
+- A selected standing rule owns Edit and Remove. A selected critic theme owns Promote to standing rule.
+- Never-named patterns and editorial bans are read-only reference items, described in words with the machine condition in a code span and the source file named below it.
 
 ### Schedules (`#/schedules`, `#/schedules/<date>`)
 

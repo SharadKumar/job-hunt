@@ -1,38 +1,126 @@
-/* guardrails.css - the standing rules, the recurring critic themes and the
-   reference patterns (#/guardrails). Tokens, type and every shared primitive
-   come from app.css; nothing here introduces a colour, a radius or a shadow of
-   its own.
+/* guardrails.css - the Guardrails three-level workspace.
+   The persistent app sidebar is level one. The compact rules, themes or
+   reference browser is level two. One selected item is level three. */
 
-   Nothing on this screen is coloured `--you` unless it is a link or an action.
-   The never-named fix line used to be, which made a sentence look like a link
-   that went nowhere (the brief, section 6, Guardrails).
+.view[data-route="guardrails"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
 
-   Local additions (nothing here belongs in app.css):
-     .guard-section   a titled full-width section, three to a screen
-     .theme-sample    the finding a theme is drawn from, as a quotation
-     .ref-what / .ref-pattern / .ref-fix   the three lines of a reference entry */
+.view[data-route="guardrails"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
 
-.guard-section { margin: 0 0 32px; }
-.guard-section:last-child { margin-bottom: 0; }
+.guard-stage { flex: 1 1 auto; min-height: 0; }
 
-.guard-lede { margin: 0 0 12px; font-size: 13px; color: var(--muted); max-width: var(--measure); }
+.guard-workbench {
+  display: grid;
+  grid-template-columns: minmax(280px, 30%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
 
-/* --- Standing rules ------------------------------------------------------ */
+.guard-browser {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--wash);
+  border-right: 1px solid var(--rule);
+}
 
-/* A rule is a sentence, and Edit and Remove belong beside its first line
-   rather than centred against a paragraph three lines deep. */
-.rules .list-action, .themes .list-action { align-self: start; padding-top: 1px; }
+.guard-browser-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px;
+}
+.guard-browser-head .eyebrow { margin-bottom: 4px; }
+.guard-browser-head h2 { margin: 0; }
+.guard-browser-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 
-.rule-text { margin: 0; font-size: 15px; color: var(--ink); max-width: var(--measure); overflow-wrap: anywhere; }
+.guard-browser-list { display: block; border-top: 1px solid var(--rule); }
 
-.rule-note { margin: 8px 0 0; font-size: 13px; color: var(--fail); max-width: var(--measure); }
+.guard-browser-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--rule);
+  color: inherit;
+  text-decoration: none;
+}
+.guard-browser-item:hover { background: var(--paper); text-decoration: none; }
+.guard-browser-item.selected { background: var(--paper); }
+.guard-browser-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+
+.guard-browser-copy { min-width: 0; display: flex; flex-direction: column; }
+.guard-browser-kicker { margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+.guard-browser-item strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.guard-browser-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.guard-browser-number { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.guard-selected { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.guard-selected > .empty { margin: 32px; }
+.guard-selected-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+  padding: 24px 32px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.guard-selected-head .eyebrow { margin-bottom: 4px; }
+.guard-selected-head h2 { margin: 0; font-size: 27px; }
+.guard-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.guard-selected-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 24px 32px 32px; }
+.guard-selected-lede { margin: 0 0 24px; color: var(--muted); font-size: 13px; max-width: var(--measure); }
+.guard-rule-text { margin: 0; color: var(--ink); font-family: var(--serif); font-size: 21px; line-height: 1.55; max-width: var(--measure); overflow-wrap: anywhere; }
+.guard-source { margin: 32px 0 0; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 13px; max-width: var(--measure); }
+.guard-detail-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
+.guard-detail-section .eyebrow { margin-bottom: 8px; }
+
+.rule-note { margin: 12px 0 0; color: var(--fail); font-size: 13px; max-width: var(--measure); }
 .rule-note:empty { display: none; }
-
-.rule-editor { margin: 8px 0 0; }
+.rule-editor { margin: 0; }
 .rule-editor textarea {
   width: 100%;
   max-width: var(--measure);
-  padding: 8px 12px;
+  padding: 12px;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--paper);
@@ -44,49 +132,43 @@
 .rule-editor textarea:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
 .rule-editor .action-buttons { margin: 8px 0 0; }
 
-/* --- Recurring critic themes --------------------------------------------- */
-
-/* The finding the theme was drawn from, quoted. It used to sit in a bordered
-   box inside the card, which is a card inside a card. */
 .theme-sample {
-  margin: 8px 0 0;
-  padding: 0 0 0 12px;
-  border-left: 1px solid var(--rule);
-  font-size: 13px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  border-left: 2px solid var(--rule);
   color: var(--muted);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.55;
   max-width: var(--measure);
   overflow-wrap: anywhere;
 }
 
-/* --- The reference fold --------------------------------------------------- */
-
-.patterns { list-style: none; margin: 12px 0; padding: 0; }
-.patterns li { padding: 12px 0; border-top: 1px solid var(--rule); }
-.patterns li:first-child { border-top: 0; }
-
-/* Description first, machinery after: a regex is not a heading. */
-.ref-what { margin: 0; font-size: 15px; color: var(--ink); max-width: var(--measure); }
-.ref-pattern { margin: 4px 0 0; }
-.ref-fix { margin: 4px 0 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
-
-/* A pattern is quoted as code, never offered as a field: a regex typed into a
-   browser is a way to quietly stop blocking a client's name. */
 .pattern {
   display: inline-block;
-  padding: 0 8px;
+  max-width: var(--measure);
+  padding: 8px 12px;
   border-radius: 4px;
   background: var(--wash);
   color: var(--ink);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-
-.guard-section .disclosure h3 { margin: 24px 0 4px; }
+.ref-fix { margin: 0; color: var(--muted); font-size: 15px; max-width: var(--measure); }
 
 @media (max-width: 719px) {
-  /* app.css takes the action cell full width under 720 px and stretches the
-     buttons in it. Remove sits inside its own confirm wrapper, which is an
-     inline-flex and would otherwise stay at its label's width beside a
-     full-width Edit. */
-  .rules .list-action .confirm, .themes .list-action .confirm { flex: 1 1 auto; }
+  .view[data-route="guardrails"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="guardrails"] > .page-header { margin: 32px 0 24px; }
+  .guard-tabs { overflow-x: auto; }
+  .guard-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .guard-selected { grid-row: 1; overflow: visible; }
+  .guard-selected-head { grid-template-columns: minmax(0, 1fr); padding-right: 16px; padding-left: 16px; }
+  .guard-head-actions { justify-content: flex-start; }
+  .guard-selected-body { overflow: visible; padding-right: 16px; padding-left: 16px; }
+  .guard-browser { grid-row: 2; overflow: visible; border-top: 1px solid var(--rule); border-right: 0; }
+  .guard-browser-item { padding-right: 16px; padding-left: 16px; }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .guard-workbench { grid-template-columns: minmax(260px, 34%) minmax(0, 1fr); }
 }

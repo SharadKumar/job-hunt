@@ -23,10 +23,30 @@
 
 /* --- Split application workbench ---------------------------------------- */
 
+.view[data-route="pipeline"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="pipeline"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
+
+.pipeline-tabs { max-width: min(960px, 68vw); overflow-x: auto; scrollbar-width: none; }
+.pipeline-tabs::-webkit-scrollbar { display: none; }
+.pipeline-tabs .tally { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 .pipeline-workbench {
   display: grid;
-  grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
-  min-height: 680px;
+  grid-template-columns: minmax(320px, 34%) minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--paper);
@@ -34,7 +54,11 @@
 }
 
 .pipeline-browser {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--wash);
   border-right: 1px solid var(--rule);
 }
@@ -43,12 +67,12 @@
 .pipeline-browser-head .eyebrow { margin-bottom: 4px; }
 .pipeline-browser-head h2 { margin: 0; }
 .pipeline-browser .chips-slot { padding: 0 24px; }
-.pipeline-detail-slot { min-width: 0; }
-.pipeline-detail-slot > .today-detail { min-height: 100%; }
+.pipeline-detail-slot { min-width: 0; min-height: 0; overflow: hidden; }
+.pipeline-detail-slot > .today-detail { height: 100%; min-height: 0; }
 
 /* Pipeline rows are selection targets, not small forms. The selected
    application owns the controls in the right pane. */
-.pipeline-list { border-top: 1px solid var(--rule); }
+.pipeline-list { flex: 1 1 auto; min-height: 0; overflow: auto; border-top: 1px solid var(--rule); }
 .pipeline-list .pipeline-item {
   position: relative;
   display: grid;
@@ -120,7 +144,13 @@
 .mark-sent .field { max-width: 420px; }
 
 @media (max-width: 959px) {
+  .view[data-route="pipeline"] { display: block; height: auto; padding-top: calc(var(--shell-h) + 16px); padding-bottom: 32px; overflow: visible; }
+  .view[data-route="pipeline"] > .page-header { grid-template-columns: minmax(0, 1fr); margin: 0 0 16px; }
+  .view[data-route="pipeline"] > .page-header .page-aside { width: 100%; min-width: 0; justify-self: stretch; margin-top: 12px; }
+  .pipeline-tabs { width: 100%; max-width: 100%; }
+  .pipeline-tabs a { flex: 0 0 auto; white-space: nowrap; }
   .pipeline-workbench { grid-template-columns: minmax(0, 1fr); }
+  .pipeline-browser, .pipeline-list, .pipeline-detail-slot { overflow: visible; }
   .pipeline-browser { border-right: 0; border-bottom: 1px solid var(--rule); }
 }
 

@@ -1047,7 +1047,7 @@ test("the segment strip and the list header carry the same count", () => {
     "and offers the rest through the address, not through module state");
   assert.match(applications, /capped: typeof data\.total === "number" && data\.total > rows\.length/,
     "the cap is the server's own total against what it sent");
-  assert.match(applications, /class: "segments"/, "the strip is the shared segments primitive");
+  assert.match(applications, /class: "tabs pipeline-tabs"/, "the segments use the same title-row tab primitive as the other workspaces");
   assert.match(applications, /tab\.setAttribute\("aria-current", "page"\)/, "with the current segment marked for a screen reader");
 });
 
@@ -1592,6 +1592,12 @@ test("the pipeline is a compact application browser beside the selected workflow
     "and nothing about it is truncated");
   assert.match(applications, /class: "pipeline-workbench"/, "the application browser and selected workflow share one workbench");
   assert.match(applications, /todayWorkDetail\(selected/, "the detail pane reuses the workflow context from Today");
+  assert.match(applications, /pageHeader\(\{ title: "Pipeline", lede: count, aside: strip \}\)/,
+    "the segments sit in Pipeline's title row like the tabs on Resumes");
+  assert.match(sheet["pipeline.css"], /\.view\[data-route="pipeline"\] \{[\s\S]*?height: 100vh;[\s\S]*?overflow: hidden;/,
+    "Pipeline must keep its workspace inside the desktop viewport");
+  assert.match(sheet["pipeline.css"], /\.pipeline-list \{[^}]*overflow: auto;/,
+    "the application browser must scroll inside its pane");
   assert.match(sheet["pipeline.css"], /\.chip-group \{ display: flex;/, "the channel chips wrap as one group");
   assert.match(css, /\.pill \{/, "and app.css must own the pill");
 });
@@ -1767,52 +1773,47 @@ test("the Resumes screen has two tabs and the keyword view is the second", () =>
 
 test("the Guardrails screen promotes a theme, edits a rule and shows the patterns read only", () => {
   assert.match(rulesJs, /export async function viewRules\s*\(/, "rules.js must export the view");
-  assert.match(rulesJs, /pageHeader\(\{ title: "Guardrails", lede: count \}\)/, "the screen is titled Guardrails");
-  for (const title of ["Recurring critic themes", "Standing rules", "Never named", "Editorial bans"]) {
+  assert.match(rulesJs, /pageHeader\(\{ title: "Guardrails", lede: count, aside: tabStrip\(active\) \}\)/,
+    "Guardrails must put its views in the title row");
+  for (const title of ["Rules", "Themes", "Reference", "Standing rules", "Critic themes", "Reference checks", "Never named", "Editorial ban"]) {
     assert.ok(rulesJs.includes(title), `the Guardrails screen is missing: ${title}`);
   }
-  // Section 4: the rules in force come first, then what the critic keeps
-  // saying, then the machine-readable reference, collapsed.
-  const order = ["standingSection(rules)", "themesSection(digest)", "referenceSection(rules)"];
-  let at = -1;
-  for (const call of order) {
-    const found = rulesJs.indexOf(`${call}`, rulesJs.indexOf("host.append(standingSection"));
-    assert.ok(found > at, `the sections are out of order at ${call}`);
-    at = found;
-  }
+  assert.match(rulesJs, /class: "guard-workbench"/, "Guardrails must use one browser beside one selected item");
+  assert.match(rulesJs, /class: selected \? "guard-browser-item selected" : "guard-browser-item"/,
+    "the selected guardrail must be visible in the browser pane");
+  assert.match(rulesJs, /q\.set\("selected", key\)/, "the selected guardrail must live in the address");
+  assert.match(sheet["guardrails.css"], /\.view\[data-route="guardrails"\] \{[\s\S]*?height: 100vh;[\s\S]*?overflow: hidden;/,
+    "Guardrails must keep its desktop workspace inside the viewport");
+  assert.match(sheet["guardrails.css"], /\.guard-browser \{[\s\S]*?overflow: auto;/,
+    "the Guardrails browser must scroll inside its pane");
+  assert.match(sheet["guardrails.css"], /\.guard-selected-body \{[^}]*overflow: auto;/,
+    "the selected guardrail must scroll inside its pane");
   // A theme key is machinery. `standing-rule-4:other` is not a heading.
   assert.match(rulesJs, /export function themeTitle\s*\(/, "a theme key must reach the page as words");
   assert.match(rulesJs, /`Standing rule \$\{numbered\[1\]\}`/, "standing-rule-4 must read as Standing rule 4");
   assert.match(rulesJs, /inflate: "inflation"/, "a verb class must read as its noun");
-  assert.match(rulesJs, /\(theme\.count \?\? 0\) >= 2/, "only a theme said twice is expanded");
-  assert.match(rulesJs, /text: `\$\{plural\(singles\.length, "single finding"\)\}`/,
-    "singletons sit behind a disclosure that counts them");
+  assert.match(rulesJs, /\(theme\.count \?\? 0\) >= 2 \? "Recurring" : "Single finding"/,
+    "the theme browser must distinguish recurring themes from single findings");
   assert.match(rulesJs, /text: "Promote to standing rule"/, "a theme must offer promotion");
   assert.match(rulesJs, /guarded\(promote, "Promote"/, "promotion must arm before it writes");
   assert.match(rulesJs, /api\("rules\/standing", \{ method: "POST", body: \{ text, source_theme: theme\.key \} \}\)/,
     "promotion must post the rule text and the theme it came from");
   assert.match(rulesJs, /class: "theme-sample", text: theme\.sample/, "the sample finding is a quotation, not a nested box");
-  assert.match(rulesJs, /class: "list-score", text: String\(theme\.count \?\? 0\)/,
+  assert.match(rulesJs, /class: "guard-browser-number", text: String\(count\)/,
     "the count is a number in ink on the right, never a green pill");
   assert.match(rulesJs, /api\(`rules\/standing\/\$\{index\}`/, "a rule must be editable in place");
   assert.match(rulesJs, /api\(`rules\/standing\/\$\{index\}\/remove`/, "a rule must be removable");
   assert.match(rulesJs, /confirmButton\("Remove", "Confirm remove"/, "removal must confirm on itself before it writes");
   assert.match(rulesJs, /\{ class: "btn btn-danger" \}/, "removal is the destructive control");
-  assert.match(rulesJs, /class: "list-row rule-row"/, "a standing rule is a full-width row");
-  assert.match(sheet["guardrails.css"], /\.rules \.list-action, \.themes \.list-action \{ align-self: start;/,
-    "and Edit and Remove sit on its first line, not centred against the paragraph");
+  assert.match(rulesJs, /class: "guard-head-actions"/, "Edit and Remove belong in the selected rule header");
   // The patterns are read only on purpose: a regex typed into a browser is a
   // way to quietly stop blocking a client's name. Description first, the
   // pattern after it, the fix muted, and nothing coloured like a link.
-  assert.ok(rulesJs.includes("text: `Edit these in ${rules.path}, not here.`"),
-    "the never-named fold must name the file to edit");
-  assert.ok(rulesJs.includes("text: `Edit these in ${bans.path}, not here.`"),
-    "and so must the editorial bans");
-  assert.match(rulesJs, /class: "ref-what"[\s\S]*?class: "ref-pattern"[\s\S]*?class: "ref-fix"/,
-    "a reference entry reads description, pattern, fix, in that order");
+  assert.match(rulesJs, /text: `Edit this in \$\{entry\.path\}, not here\.`/,
+    "the selected reference must name the file to edit");
+  assert.match(rulesJs, /class: "pattern"[\s\S]*?class: "ref-fix"/,
+    "a reference detail reads the machine condition before the correction");
   assert.match(sheet["guardrails.css"], /\.ref-fix \{[^}]*color: var\(--muted\)/, "the fix line is muted");
-  assert.ok(!/var\(--you\)/.test(sheet["guardrails.css"].replace(/focus-visible[^}]*\}/g, "")),
-    "nothing on Guardrails is coloured like a link unless it is one");
   assert.ok(!/api\("rules\/never-named/.test(rulesJs), "nothing may post a never-named pattern");
 });
 
