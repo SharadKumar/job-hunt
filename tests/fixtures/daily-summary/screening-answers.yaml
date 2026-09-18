@@ -1,0 +1,21 @@
+# Fixture: two genuinely unanswered questions, one of them recorded twice, plus
+# an answered one on a row that is no longer live. The __*_ID__ placeholders are
+# substituted by the test with the ids the seeded pipeline actually minted.
+unknown_questions:
+  - opportunity_id: __MANUAL_ID__
+    company: Acme Federal
+    title: Solution Architect
+    question: Do you hold a current NV1 clearance?
+  - opportunity_id: __MANUAL_ID__
+    company: Acme Federal
+    title: Solution Architect
+    question: Do you hold a current NV1 clearance?
+  - opportunity_id: __APPROVAL_ID__
+    company: Borden Rail
+    title: Delivery Lead
+    question: What is your notice period?
+  - opportunity_id: __SUBMITTED_ID__
+    company: Gone Pty
+    title: Principal Consultant
+    question: Are you willing to relocate?
+    answer: "No."

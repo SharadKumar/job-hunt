@@ -29,19 +29,40 @@ type CliArgs = {
   source: string;
   out: string;
   dryRun: boolean;
+  /** Where the default source came from, reported so a silent fallback is visible. */
+  meta: string;
 };
 
 function expandHome(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
 }
 
-async function loadDefaultSource(): Promise<string> {
+const FALLBACK_SOURCE = "~/Documents/Resume/master-cv.docx";
+
+/**
+ * meta.yaml decides which .docx becomes cv-source.md, and cv-source.md is the
+ * only evidence base for every CV and letter. The old `catch {}` meant a
+ * meta.yaml with a YAML error fell back to the hard-coded path, so the harness
+ * would quietly re-parse a stale or entirely different document. Missing is a
+ * documented default; malformed is a stop.
+ */
+async function loadDefaultSource(): Promise<{ source: string; meta: string }> {
+  const metaPath = repoPath("state/profile/cv/meta.yaml");
+  let raw: string;
   try {
-    const raw = await fs.readFile(repoPath("state/profile/cv/meta.yaml"), "utf8");
-    const m = YAML.parse(raw) as { source_file?: string };
-    if (m.source_file) return expandHome(m.source_file);
-  } catch {}
-  return expandHome("~/Documents/Resume/master-cv.docx");
+    raw = await fs.readFile(metaPath, "utf8");
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") throw new Error(`cannot read ${metaPath}: ${error?.message ?? error}`);
+    return { source: expandHome(FALLBACK_SOURCE), meta: "missing, using default" };
+  }
+  let parsed: { source_file?: string } | null;
+  try {
+    parsed = YAML.parse(raw) as { source_file?: string } | null;
+  } catch (error: any) {
+    throw new Error(`${metaPath} is not valid YAML (${error?.message ?? error}). Repair it; falling back to ${FALLBACK_SOURCE} would parse the wrong CV.`);
+  }
+  if (parsed?.source_file) return { source: expandHome(parsed.source_file), meta: metaPath };
+  return { source: expandHome(FALLBACK_SOURCE), meta: "no source_file, using default" };
 }
 
 async function parseArgs(argv: string[]): Promise<CliArgs> {
@@ -53,8 +74,9 @@ async function parseArgs(argv: string[]): Promise<CliArgs> {
     else if (argv[i] === "--out") out = argv[++i];
     else if (argv[i] === "--dry-run") dryRun = true;
   }
-  if (!source) source = await loadDefaultSource();
-  return { source, out, dryRun };
+  if (source) return { source, out, dryRun, meta: "not read (--source given)" };
+  const resolved = await loadDefaultSource();
+  return { source: resolved.source, out, dryRun, meta: resolved.meta };
 }
 
 async function docxToMarkdown(file: string): Promise<string> {
@@ -102,7 +124,7 @@ function tidy(md: string): string {
 }
 
 async function main() {
-  const { source, out, dryRun } = await parseArgs(process.argv.slice(2));
+  const { source, out, dryRun, meta: metaSource } = await parseArgs(process.argv.slice(2));
 
   const stat = await fs.stat(source).catch(() => null);
   if (!stat) {
@@ -113,7 +135,7 @@ async function main() {
   const md = tidy(await docxToMarkdown(source));
 
   if (dryRun) {
-    console.log(JSON.stringify({ source, out, bytes: md.length, dry_run: true }, null, 2));
+    console.log(JSON.stringify({ source, meta: metaSource, out, bytes: md.length, dry_run: true }, null, 2));
     return;
   }
 
@@ -129,13 +151,20 @@ async function main() {
       ? "~" + source.slice(os.homedir().length)
       : source;
     await fs.writeFile(metaPath, YAML.stringify(meta), "utf8");
-  } catch {
-    // meta.yaml missing — non-fatal, but log it
-    console.warn(`note: could not update ${metaPath} (file may be missing)`);
+  } catch (error: any) {
+    // Missing meta.yaml is the documented first-run case. Anything else (a YAML
+    // error, an unwritable file) means the recorded source_file no longer
+    // matches what was parsed, so say so loudly rather than printing a clean report.
+    if (error?.code !== "ENOENT") {
+      console.error(`markdownify-cv: parsed ${source} but could not update ${metaPath}: ${error?.message ?? error}`);
+      process.exit(1);
+    }
+    console.warn(`note: ${metaPath} is missing, so parsed_at / source_file were not recorded`);
   }
 
   console.log(JSON.stringify({
     source,
+    meta: metaSource,
     out,
     bytes: md.length,
     parsed_at: new Date().toISOString(),

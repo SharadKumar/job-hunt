@@ -18,7 +18,7 @@
  */
 
 import { promises as fs } from "node:fs";
-import { load, save, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import { load, patchMany, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
 import { scoreRole } from "./score.ts";
 import type { Classification } from "./classify-jd.ts";
 import YAML from "yaml";
@@ -30,20 +30,61 @@ export function classificationSource(classification: Classification | undefined)
   return classification?._classifier ?? "none";
 }
 
-export function opportunityWithScoreResult(opportunity: Opportunity, result: ScoreRoleResult, shortlistMin: number): Opportunity {
-  const source = classificationSource(result.classification);
-  const canPromote = source === "agent";
+/**
+ * The only statuses a rescore may move a row out of. Everything downstream of
+ * `shortlisted` (drafted, awaiting_approval, approved, submitted and the rest)
+ * is the product of work a human or an adapter has already done, and rewinding
+ * it to `discovered` is both wrong and an invalid transition.
+ */
+export const RESCORE_MUTABLE_STATUSES: PipelineStatus[] = ["discovered", "shortlisted", "parked"];
+
+export type RescoreOutcome = "promoted" | "demoted" | "unchanged" | "left_parked" | "skipped_protected";
+
+export type RescoreDecision = {
+  status: PipelineStatus;
+  parkedReason?: string;
+  outcome: RescoreOutcome;
+};
+
+/**
+ * Decide where a rescored row belongs. Pure: the caller performs the move via
+ * `setStatus` so the transition table, history and audit log all apply.
+ *
+ * - `parked` with a recorded `parkedReason` is a logistics hold the user has
+ *   ruled on. The rescore refreshes its score and classification but never
+ *   lifts it back into the queue on its own (2026-09-17: a re-promotion out of
+ *   parked put an already-judged role back in the apply queue).
+ * - Any status outside `RESCORE_MUTABLE_STATUSES` is protected: scores may be
+ *   refreshed under `--all`, the status is never touched.
+ * - Regex/absent classification never promotes.
+ */
+export function rescoreStatusDecision(
+  opportunity: Opportunity,
+  result: Pick<ScoreRoleResult, "score" | "red_flag_blocker" | "parked_reason" | "classification">,
+  shortlistMin: number,
+): RescoreDecision {
+  const current = opportunity.status;
+  const keep = (outcome: RescoreOutcome): RescoreDecision => ({ status: current, parkedReason: opportunity.parkedReason, outcome });
+
+  if (current === "parked" && opportunity.parkedReason) return keep("left_parked");
+  if (!RESCORE_MUTABLE_STATUSES.includes(current)) return keep("skipped_protected");
+  if (classificationSource(result.classification) !== "agent") return keep("unchanged");
+
   // A user-saved SEEK job is an order to apply (user, 2026-09-15): it always
   // sits in the queue whatever the score, band or location. The submission
   // gate still enforces the hard employment blocks at send time.
-  const nextStatus: PipelineStatus = canPromote
-    ? (opportunity.userSaved
-        ? "shortlisted"
-        : result.red_flag_blocker || result.score < shortlistMin
-          ? "discovered"
-          : result.parked_reason ? "parked" : "shortlisted")
-    : opportunity.status;
-  const parkedReason = nextStatus === "parked" ? result.parked_reason : undefined;
+  const target: PipelineStatus = opportunity.userSaved
+    ? "shortlisted"
+    : result.red_flag_blocker || result.score < shortlistMin
+      ? "discovered"
+      : result.parked_reason ? "parked" : "shortlisted";
+  const parkedReason = target === "parked" ? result.parked_reason : undefined;
+  if (target === current) return { status: current, parkedReason, outcome: "unchanged" };
+  return { status: target, parkedReason, outcome: target === "shortlisted" ? "promoted" : "demoted" };
+}
+
+export function opportunityWithScoreResult(opportunity: Opportunity, result: ScoreRoleResult, shortlistMin: number): Opportunity {
+  const decision = rescoreStatusDecision(opportunity, result, shortlistMin);
   return {
     ...opportunity,
     workArrangement: (!opportunity.workArrangement || opportunity.workArrangement === "unknown")
@@ -61,10 +102,76 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
     scoreReasons: result.reasons,
     red_flag_blocker: result.red_flag_blocker,
     classification: result.classification,
-    classificationSource: source,
-    status: nextStatus,
-    parkedReason,
+    classificationSource: classificationSource(result.classification),
+    status: decision.status,
+    parkedReason: decision.parkedReason,
   };
+}
+
+/** Fields a rescore is allowed to write. Status is not one of them: it moves through `setStatus`. */
+const RESCORE_FIELDS = [
+  "workArrangement", "dayRate", "score", "scoreReasons", "red_flag_blocker",
+  "classification", "classificationSource", "resumeId", "parkedReason",
+] as const;
+
+export function rescoreFieldPatch(before: Opportunity, after: Opportunity): Partial<Opportunity> {
+  const fields: Record<string, unknown> = {};
+  for (const key of RESCORE_FIELDS) {
+    if (JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null)) fields[key] = after[key];
+  }
+  return fields as Partial<Opportunity>;
+}
+
+export type RescoreCounts = { promoted: number; demoted: number; left_parked: number; skipped_protected: number };
+
+/**
+ * Apply a batch of rescore results to the pipeline. Deterministic field
+ * updates land in one `patchMany` transaction; each status move goes through
+ * `setStatus`, so the transition table, the row's history and the audit log
+ * all see it. The former whole-array `save()` wrote none of that, and could
+ * rewind a drafted or awaiting_approval row to `discovered`.
+ */
+export async function applyRescore(
+  entries: { before: Opportunity; result: ScoreRoleResult }[],
+  shortlistMin: number,
+  opts: { dryRun?: boolean } = {},
+): Promise<RescoreCounts> {
+  const counts: RescoreCounts = { promoted: 0, demoted: 0, left_parked: 0, skipped_protected: 0 };
+  const decided = entries.map(({ before, result }) => ({
+    before,
+    after: opportunityWithScoreResult(before, result, shortlistMin),
+    decision: rescoreStatusDecision(before, result, shortlistMin),
+  }));
+  for (const { decision } of decided) {
+    if (decision.outcome === "left_parked" || decision.outcome === "skipped_protected") counts[decision.outcome]++;
+  }
+  if (opts.dryRun || !decided.length) {
+    // Nothing is written, so report the intent.
+    for (const { decision } of decided) {
+      if (decision.outcome === "promoted" || decision.outcome === "demoted") counts[decision.outcome]++;
+    }
+    return counts;
+  }
+
+  const patches = decided
+    .map(({ before, after }) => ({ id: before.id, fields: rescoreFieldPatch(before, after) }))
+    .filter((entry) => Object.keys(entry.fields).length > 0);
+  if (patches.length) await patchMany(patches, "rescore");
+
+  for (const { before, decision } of decided) {
+    if (decision.status === before.status) continue;
+    const reason = `rescore: ${before.status} → ${decision.status}`
+      + (decision.parkedReason ? ` (${decision.parkedReason})` : "");
+    try {
+      await setStatus(before.id, decision.status, reason, { actor: "rescore" });
+      if (decision.outcome === "promoted" || decision.outcome === "demoted") counts[decision.outcome]++;
+    } catch (e) {
+      // The transition table is the authority: a move it refuses leaves the
+      // row where it is rather than being forced through.
+      console.error(`[rescore] status move refused for ${before.id}: ${(e as Error).message}`);
+    }
+  }
+  return counts;
 }
 
 export function selectOpportunitiesForRescore(
@@ -127,7 +234,7 @@ async function main() {
 
   const before: Record<string, number> = Object.fromEntries(opportunities.map((r) => [r.id, r.score ?? 0]));
   const changes: { opportunity: Opportunity; oldScore: number; newScore: number; newClass: any }[] = [];
-  const upsertQueue: Opportunity[] = [];
+  const writeQueue: { before: Opportunity; result: ScoreRoleResult }[] = [];
 
   // Concurrency-limited fan-out: classify+score in parallel batches.
   // Haiku tolerates 10-20 concurrent requests comfortably; the bottleneck
@@ -148,12 +255,8 @@ async function main() {
           description: r.description ?? "", url: r.url, workArrangement: r.workArrangement,
           postedAt: r.postedAt, location: r.location, dayRate: r.dayRate,
         }, classifications[r.id] ?? r.classification);
-        const newScore = result.score;
-        changes.push({ opportunity: r, oldScore: before[r.id], newScore, newClass: result.classification });
-        if (!dryRun) {
-          // Queue upserts so we serialise file writes (opportunities.json is shared mutable state).
-          upsertQueue.push(opportunityWithScoreResult(r, result, shortlistMin));
-        }
+        changes.push({ opportunity: r, oldScore: before[r.id], newScore: result.score, newClass: result.classification });
+        writeQueue.push({ before: r, result });
       } catch (e) {
         console.error(`[rescore] failed ${r.id}: ${(e as Error).message}`);
       }
@@ -164,18 +267,16 @@ async function main() {
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
-  // Apply every deterministic score update with one atomic pipeline write.
-  // The former serial-upsert loop reloaded and rewrote the whole pipeline once
-  // per role (O(n²) I/O), which made large SEEK refreshes appear hung.
-  if (!dryRun && upsertQueue.length) {
-    const updates = new Map(upsertQueue.map((role) => [role.id, role]));
-    await save(roles.map((role) => updates.get(role.id) ?? role));
-  }
+  const counts = await applyRescore(writeQueue, shortlistMin, { dryRun });
 
   // Summary
   const big = changes.filter((c) => Math.abs(c.newScore - c.oldScore) >= 20).sort((a, b) => Math.abs(b.newScore - b.oldScore) - Math.abs(a.newScore - a.oldScore));
   console.log(JSON.stringify({
     rescored: changes.length,
+    promoted: counts.promoted,
+    demoted: counts.demoted,
+    left_parked: counts.left_parked,
+    skipped_protected: counts.skipped_protected,
     biggest_changes: big.slice(0, 20).map((c) => ({
       id: c.opportunity.id,
       company: c.opportunity.company,

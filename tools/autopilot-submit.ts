@@ -37,14 +37,18 @@
  * 2 on a usage or environment error.
  */
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { load as loadPipeline, save as savePipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import YAML from "yaml";
+import { load as loadPipeline, patch as patchPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import { normaliseQuestion } from "./channels/seek-submit.ts";
 import { evaluateSubmission, type GateDecision } from "./submission-gate.ts";
 import { critiqueLetter, readCurrentVerdict, sha256Text, type CriticResult } from "./letter-critic.ts";
 import { log as auditLog } from "./audit.ts";
+import { reencodeScreenshots } from "./archive-compact.ts";
 import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
 
@@ -73,10 +77,6 @@ function parseArgs(argv: string[]): Record<string, string> {
   return a;
 }
 
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
-
 function seekJobId(url: string): string | null {
   return url.match(/\/job\/(\d+)/)?.[1] ?? null;
 }
@@ -85,11 +85,16 @@ function seekJobId(url: string): string | null {
 async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): Promise<{ docx: string; source: string }> {
   const metaPath = path.join(archiveDir, "metadata.json");
   if (await exists(metaPath)) {
-    const meta = JSON.parse(await fs.readFile(metaPath, "utf8")) as { resume?: { docx?: string } };
-    const docx = meta.resume?.docx;
-    if (docx) {
-      const abs = path.isAbsolute(docx) ? docx : repoPath(docx);
-      if (await exists(abs)) return { docx: abs, source: "metadata.json" };
+    const meta = JSON.parse(await fs.readFile(metaPath, "utf8")) as { resume?: { docx?: string; ref?: string; mode?: string } };
+    // A baseline package carries a reference to the approved baseline docx
+    // rather than a copy of it (see prepare-baseline-packages). Both adapters
+    // take a docx path and derive the stored-resumé name from its basename, so
+    // pointing them at the baseline file itself is exactly equivalent to the
+    // copy that used to sit in the package. submission-gate re-hashes it.
+    const named = meta.resume?.ref ?? meta.resume?.docx;
+    if (named) {
+      const abs = path.isAbsolute(named) ? named : repoPath(named);
+      if (await exists(abs)) return { docx: abs, source: meta.resume?.ref ? "metadata.json baseline ref" : "metadata.json" };
       throw new Error(`metadata.json names a resume docx that does not exist: ${abs}`);
     }
   }
@@ -137,8 +142,7 @@ async function park(id: string, reason: string, runId: string, notes: string[]):
   const row = all.find((r) => r.id === id);
   if (!row) throw new Error(`opportunity not found: ${id}`);
   const stamped = `[autopilot ${runId}] ${reason}`;
-  row.notes = row.notes ? `${row.notes}\n${stamped}` : stamped;
-  await savePipeline(all);
+  await patchPipeline(id, { notes: row.notes ? `${row.notes}\n${stamped}` : stamped }, "autopilot", "park note");
   if (row.status === "manual_action_needed") return row.status;
   try {
     const r = await setStatus(id, "manual_action_needed", stamped, { actor: "autopilot" });
@@ -150,12 +154,34 @@ async function park(id: string, reason: string, runId: string, notes: string[]):
   }
 }
 
-async function appendUnknownQuestion(opportunity: Opportunity, q: { text: string; context: string }): Promise<void> {
-  const p = repoPath("state/profile/screening-answers.yaml");
-  let text = await fs.readFile(p, "utf8");
-  if (!/^unknown_questions:\s*$/m.test(text)) text = text.trimEnd() + "\n\nunknown_questions:\n";
+/**
+ * Append one unknown screening question to screening-answers.yaml, unless the
+ * same question (normalised) is already parked there. Returns true when it
+ * appended. The file is rewritten as text, not re-serialised, so the user's
+ * comments and hand-written answers survive.
+ */
+export async function appendUnknownQuestion(
+  opportunity: Pick<Opportunity, "id" | "company" | "title">,
+  q: { text: string; context: string },
+  file = repoPath("state/profile/screening-answers.yaml"),
+): Promise<boolean> {
+  let text = await fs.readFile(file, "utf8");
+  const target = normaliseQuestion(q.text);
+  let parsed: any = null;
+  try {
+    parsed = YAML.parse(text);
+  } catch {
+    parsed = null;
+  }
+  const existing = Array.isArray(parsed?.unknown_questions) ? parsed.unknown_questions : [];
+  if (existing.some((u: any) => u && typeof u.question === "string" && normaliseQuestion(u.question) === target)) return false;
+  if (!/^unknown_questions:\s*$/m.test(text)) {
+    // `unknown_questions: []` from the template, or no key at all.
+    if (/^unknown_questions:\s*\[\s*\]\s*$/m.test(text)) text = text.replace(/^unknown_questions:\s*\[\s*\]\s*$/m, "unknown_questions:");
+    else text = text.trimEnd() + "\n\nunknown_questions:\n";
+  }
   if (!text.endsWith("\n")) text += "\n";
-  const yamlStr = (s: string) => JSON.stringify(s);
+  const yamlStr = (v: string) => JSON.stringify(v);
   text += [
     `  - opportunity_id: ${opportunity.id}`,
     `    company: ${yamlStr(opportunity.company)}`,
@@ -164,7 +190,8 @@ async function appendUnknownQuestion(opportunity: Opportunity, q: { text: string
     q.context ? `    context: ${yamlStr(q.context.slice(0, 400))}` : null,
     `    answer: null`,
   ].filter(Boolean).join("\n") + "\n";
-  await fs.writeFile(p, text);
+  await fs.writeFile(file, text);
+  return true;
 }
 
 type SubmitAdapter = (o: Opportunity, p: SubmitPackage, opts: { dryRun?: boolean; resumeFilename: string; screenshotDir?: string }) => Promise<SubmitResult>;
@@ -293,12 +320,10 @@ async function main() {
     summary.reason = decision.reason;
     if (decision.action === "blocked" || decision.action === "capped") {
       // Not a package fault: leave the row at approved for a later run.
-      const all2 = await loadPipeline();
-      const r2 = all2.find((r) => r.id === id)!;
+      const r2 = (await loadPipeline()).find((r) => r.id === id)!;
       const stamped = `[autopilot ${runId}] ${decision.reason}`;
-      r2.notes = r2.notes ? `${r2.notes}\n${stamped}` : stamped;
-      await savePipeline(all2);
-      summary.status = r2.status;
+      const patched = await patchPipeline(id, { notes: r2.notes ? `${r2.notes}\n${stamped}` : stamped }, "autopilot", `gate ${decision.action}`);
+      summary.status = patched.status;
     } else {
       summary.status = await park(id, decision.reason, runId, summary.notes);
     }
@@ -337,6 +362,24 @@ async function main() {
       summary.status = (await loadPipeline()).find((r) => r.id === id)!.status;
       finish(0);
     }
+    // The confirmation screenshot is a ~1.3 MB full-page PNG and it only ever
+    // has to be readable as "this is the confirmation page". Re-encode it to a
+    // half-scale JPEG before the confirmation text names it, so the archive
+    // never accumulates the PNG. A failure here is noted, never fatal: the send
+    // already happened and the confirmation record matters more than the size.
+    if (result.screenshotPath && /\.png$/i.test(result.screenshotPath) && (await exists(result.screenshotPath))) {
+      try {
+        const [converted] = await reencodeScreenshots([result.screenshotPath]);
+        if (converted) {
+          summary.notes.push(`screenshot re-encoded to jpeg (${Math.round(converted.before / 1024)}KB → ${Math.round(converted.after / 1024)}KB)`);
+          result.screenshotPath = converted.jpeg;
+          summary.screenshotPath = converted.jpeg;
+        }
+      } catch (e: any) {
+        summary.notes.push(`screenshot re-encode failed, PNG kept: ${String(e?.message ?? e).slice(0, 120)}`);
+      }
+    }
+
     const jobId = row!.channel === "seek" ? seekJobId(row!.url) : null;
     const now = new Date().toISOString();
     const sha = sha256Text(letterText);
@@ -359,11 +402,11 @@ async function main() {
     ].join("\n") + "\n";
     await fs.writeFile(path.join(archiveDir, "confirmation.txt"), confirmation);
 
-    const all3 = await loadPipeline();
-    const r3 = all3.find((r) => r.id === id)!;
-    r3.resumeId = r3.resumeId ?? row!.classification?.matched_resume_id ?? undefined;
-    r3.draftDir = `${archiveDir}/`;
-    await savePipeline(all3);
+    const r3 = (await loadPipeline()).find((r) => r.id === id)!;
+    await patchPipeline(id, {
+      resumeId: r3.resumeId ?? row!.classification?.matched_resume_id ?? undefined,
+      draftDir: `${archiveDir}/`,
+    }, "autopilot", `submitted via ${adapterLabel}`);
     await setStatus(id, "submitted", `autopilot ${runId}: ${adapterLabel} confirmed`, {
       actor: "autopilot",
       details: { run_id: runId, confirmation_ref: result.confirmationRef, screenshot: result.screenshotPath, resume: path.basename(resume!.docx), letter_sha256: sha, elapsed_s: elapsedS, seek_job_id: jobId, user_saved: row!.userSaved === true },
@@ -379,10 +422,10 @@ async function main() {
       } catch (e: any) {
         summary.unsaved = `failed: ${String(e?.stderr ?? e?.message ?? e).slice(0, 200)}`;
         summary.notes.push(`seek:unsave failed for job ${jobId}; unsave it by hand`);
-        const all4 = await loadPipeline();
-        const r4 = all4.find((r) => r.id === id)!;
-        r4.notes = `${r4.notes ? r4.notes + "\n" : ""}[autopilot ${runId}] submitted but seek:unsave failed; unsave job ${jobId} by hand`;
-        await savePipeline(all4);
+        const r4 = (await loadPipeline()).find((r) => r.id === id)!;
+        await patchPipeline(id, {
+          notes: `${r4.notes ? r4.notes + "\n" : ""}[autopilot ${runId}] submitted but seek:unsave failed; unsave job ${jobId} by hand`,
+        }, "autopilot", "seek:unsave failed");
       }
     }
     finish(0);
@@ -390,14 +433,14 @@ async function main() {
 
   // Failure paths.
   if (result.newScreeningQuestion) {
-    await appendUnknownQuestion(row!, result.newScreeningQuestion);
+    const appended = await appendUnknownQuestion(row!, result.newScreeningQuestion);
     await auditLog({
       event_type: "screening_q_paused", role_id: id, actor: "autopilot", channel: row!.channel,
       details: { company: row!.company, title: row!.title, question: result.newScreeningQuestion.text, run_id: runId },
       provenance: { url: row!.url, channel: row!.channel },
     });
     summary.outcome = "new_screening_question";
-    summary.reason = `unknown screening question: "${result.newScreeningQuestion.text}" (appended to screening-answers.yaml unknown_questions)`;
+    summary.reason = `unknown screening question: "${result.newScreeningQuestion.text}" (${appended ? "appended to" : "already in"} screening-answers.yaml unknown_questions)`;
   } else if (result.needsManual) {
     summary.outcome = "needs_manual";
     summary.reason = result.reason;

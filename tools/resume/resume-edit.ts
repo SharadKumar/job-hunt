@@ -53,6 +53,7 @@
  *   npm run resume:edit -- --composition <path> --template classic --edits <file>
  */
 
+import { exists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { extractOps, normaliseEditInput, runCriticApply, type CriticOutcome } from "./critic-apply.ts";
@@ -106,10 +107,6 @@ export type ResumeEditResult = {
 };
 
 /* ------------------------------------------------------------- resolution */
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
 
 /**
  * Where the composition for `--resume <id>` actually lives.

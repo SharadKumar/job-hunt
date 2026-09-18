@@ -1,0 +1,23 @@
+{
+  "verdict": "pass",
+  "findings": [
+    {
+      "severity": "warn",
+      "source": "llm",
+      "quote": "architecting and building",
+      "issue": "JD phrasing echoed around a supported claim.",
+      "fix": "No change needed."
+    }
+  ],
+  "letter_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+  "letter_path": "/invented/archive/4/cover-letter.md",
+  "jd_path": "/invented/archive/4/jd.md",
+  "model": "sonnet",
+  "checked_at": "2026-09-16T23:15:00.000Z",
+  "llm": {
+    "session_id": "invented-session-4",
+    "cost_usd": 0.2,
+    "duration_ms": 41000,
+    "verdict": "pass"
+  }
+}

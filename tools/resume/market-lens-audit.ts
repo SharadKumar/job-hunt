@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
+import { sha256 } from "../lib/hash.ts";
 import { promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
 import YAML from "yaml";
 import { getResume, type MarketLens } from "../resumes.ts";
 import { resolveProfileContext } from "../profile-context.ts";
@@ -62,7 +62,8 @@ export type MarketConfirmation = {
   question?: string;
   proposed_phrasing?: string;
   evidence_hint?: string;
-  origin?: "attended" | "daily";
+  /** `triage` is the deterministic keyword-triage pass, which answers only rejects. */
+  origin?: "attended" | "daily" | "triage";
   asked_at?: string;
   status: ConfirmationStatus;
   source_update_required?: boolean;
@@ -330,7 +331,7 @@ function auditMarketLens(resumeId: string, lens: MarketLens, source: string, pro
   return {
     resume_id: resumeId,
     profile_id: profileId,
-    cv_source_hash: createHash("sha256").update(source).digest("hex"),
+    cv_source_hash: sha256(source),
     applied_terms: [...appliedTerms],
     implicit_terms_used: implicitTerms,
     confirmation_needed: confirmationNeeded,
@@ -362,7 +363,22 @@ async function main(): Promise<void> {
   const source = await fs.readFile(args["cv-source"] ?? context.cvSourcePath, "utf8");
   const confirmations = await readConfirmations(args.confirmations ?? context.marketConfirmationsPath);
   const result = auditMarketLens(resumeId, resume.market_lens, source, context.profileId, confirmations);
-  console.log(JSON.stringify(result, null, 2));
+
+  // `source_update_required` is the fail class: the user has already answered
+  // "confirm and update source" for these signals, so the positioning may not
+  // be rendered until cv-source.md carries the fact. Printing that as a
+  // zero-exit report let a caller treat a blocking audit as a clean one.
+  // `confirmation_needed` / `missing_signals` stay non-fatal on purpose: they
+  // are questions for the person and gaps to report, not a broken state.
+  const blocking = result.source_update_required ?? [];
+  console.log(JSON.stringify({ ...result, verdict: blocking.length ? "fail" : "pass" }, null, 2));
+  if (blocking.length) {
+    console.error(
+      `market-lens-audit: ${blocking.length} signal(s) require a cv-source.md update before '${resumeId}' may be rendered: ` +
+        blocking.map((b) => b.signal).join(", "),
+    );
+    process.exit(1);
+  }
 }
 
 if (process.argv[1] && /market-lens-audit\.ts$/.test(process.argv[1])) {

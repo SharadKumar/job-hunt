@@ -27,12 +27,26 @@
  *   record      --plan <keyword-plan.json> --term <t>
  *               --status confirmed|declined|not_applicable|familiarity|pending
  *               [--opportunity <id>] [--origin attended|daily] [--notes "..."]
+ *   record      --file <answers.yaml> [--origin attended|daily]
+ *               Batch form. The file maps term -> one of the four fixed answers
+ *               ("Confirm and update source" | "Not applicable" |
+ *               "Bring in as familiarity" | "Unsure / keep pending", or the
+ *               aliases confirm|na|familiarity|pending), optionally with a
+ *               `note`. Every pending keyword row matching the term is recorded
+ *               in one pass, across resumes. Idempotent: a row already at the
+ *               requested status is reported, not rewritten. No plan needed.
  *   queue       --plan <keyword-plan.json> [--origin daily]
  *               Records every plan question as `pending` without asking. Never
- *               downgrades an existing answered row.
- *   pending     [--resume <id>] [--group-by term] [--limit N]
+ *               downgrades an existing answered row. Runs the deterministic
+ *               keyword triage first: a term a named reject rule refuses (ad
+ *               furniture, a recruiter name, a date, clearance wording, a cut
+ *               word) is appended to `keyword-rejects.jsonl` instead of
+ *               entering the ledger, and is counted as `rejected_by_triage`.
+ *   pending     [--resume <id>] [--group-by term] [--limit N] [--format json|table]
  *               Read-only. Lists outstanding `kind: keyword` rows, one per term
  *               across resumes (keyword answers are person-scoped).
+ *               `--format table` (with `--group-by term`) prints the compact
+ *               aligned drain sheet the review skills ask from.
  *   apply-patch --term <t> --resume <id> --bullet "<text>"
  *               (--role-heading "<cv-source heading substring>" | --skills [--role-heading "<skills subsection>"])
  *               [--sub-heading "<bold sub-block substring>"]
@@ -49,18 +63,48 @@
  */
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import YAML from "yaml";
 import { resolveProfileContext } from "../profile-context.ts";
 import { parseArgs, normalise, type KeywordPlan, type KeywordTerm } from "./keyword-lexicon.ts";
 import { isPersonScoped, type MarketConfirmation } from "./market-lens-audit.ts";
+import { loadTriageContext, triageRows, type TriageRow } from "./keyword-triage.ts";
 
 export type KeywordConfirmStatus = "confirmed" | "declined" | "not_applicable" | "familiarity" | "pending";
+/** Who answered. `triage` is `keyword-triage.ts`, which only ever answers a reject. */
+export type KeywordOrigin = "attended" | "daily" | "triage";
 const STATUSES: readonly KeywordConfirmStatus[] = ["confirmed", "declined", "not_applicable", "familiarity", "pending"];
 /** Answered statuses are terminal for `queue`: an unattended run never reopens them. */
 const ANSWERED: ReadonlySet<string> = new Set(["confirmed", "declined", "not_applicable", "familiarity"]);
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const key = (s: string): string => normalise(s).trim();
+
+/**
+ * The four fixed answers of the evidence interview (AGENTS.md section 9), plus
+ * the short aliases a batch file may use. Keys are `key()`-normalised, so
+ * "Unsure / keep pending", "unsure_keep_pending" and "pending" all land here.
+ * Nothing else is accepted: an unrecognised answer is a usage error naming the
+ * term, never a silent downgrade to `pending`.
+ */
+export const ANSWER_LABELS: Readonly<Record<string, KeywordConfirmStatus>> = {
+  "confirm and update source": "confirmed",
+  confirm: "confirmed",
+  confirmed: "confirmed",
+  "not applicable": "not_applicable",
+  na: "not_applicable",
+  "n a": "not_applicable",
+  "bring in as familiarity": "familiarity",
+  familiarity: "familiarity",
+  familiar: "familiarity",
+  "unsure keep pending": "pending",
+  unsure: "pending",
+  pending: "pending",
+};
+
+export function answerToStatus(answer: string): KeywordConfirmStatus | null {
+  return ANSWER_LABELS[key(answer)] ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Ledger IO
@@ -130,7 +174,7 @@ export function findPlanTerm(plan: KeywordPlan, term: string): KeywordTerm | nul
 export function rowFromPlanTerm(
   plan: KeywordPlan,
   term: KeywordTerm,
-  opts: { status: KeywordConfirmStatus; opportunityId?: string | null; origin?: "attended" | "daily"; notes?: string | null },
+  opts: { status: KeywordConfirmStatus; opportunityId?: string | null; origin?: KeywordOrigin; notes?: string | null },
 ): MarketConfirmation & { resume_id: string; signal: string } {
   const question = term.question ?? plan.questions.find((q) => key(q.term) === key(term.term))?.question;
   return {
@@ -277,10 +321,146 @@ function resolvePaths(args: Record<string, string>): Paths {
   return { ledger: args.ledger ?? ctx.marketConfirmationsPath, cvSource: args["cv-source"] ?? ctx.cvSourcePath };
 }
 
+export type AnswerEntry = { term: string; answer: string; status: KeywordConfirmStatus | null; note: string | null };
+
+/**
+ * A batch answer file. Either a plain map, or the same map under `answers:`,
+ * or a list of `{term, answer, note}`. The value may be the answer string or
+ * an object carrying `answer`/`status` and `note`/`notes`.
+ */
+export function parseAnswerFile(text: string): AnswerEntry[] {
+  const parsed = YAML.parse(text) as unknown;
+  const body = (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "answers" in (parsed as Record<string, unknown>)
+    ? (parsed as Record<string, unknown>).answers
+    : parsed) as unknown;
+  const pairs: { term: string; value: unknown }[] = [];
+  if (Array.isArray(body)) {
+    for (const item of body) {
+      const row = item as Record<string, unknown>;
+      const term = String(row?.term ?? "").trim();
+      if (term) pairs.push({ term, value: row });
+    }
+  } else if (body && typeof body === "object") {
+    for (const [term, value] of Object.entries(body as Record<string, unknown>)) if (term.trim()) pairs.push({ term: term.trim(), value });
+  } else {
+    throw new Error("Answer file must be a term -> answer map, an `answers:` map, or a list of {term, answer}.");
+  }
+  return pairs.map(({ term, value }) => {
+    const object = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+    const answer = String((object ? object.answer ?? object.status : value) ?? "").trim();
+    const note = object ? String(object.note ?? object.notes ?? "").trim() || null : null;
+    return { term, answer, status: answerToStatus(answer), note };
+  });
+}
+
+export type RecordedAnswer = { term: string; status: KeywordConfirmStatus; rows: number; resumes: string[] };
+
+export type AppliedAnswers = {
+  recorded: RecordedAnswer[];
+  skipped_already_answered: { term: string; status: string }[];
+  unmatched: string[];
+};
+
+/**
+ * Land a batch of validated answers in the ledger. Extracted from
+ * `cmdRecordFile` so a caller that already has the answers in memory (the
+ * local web UI's POST /api/keywords/record) writes them through exactly this
+ * path rather than round-tripping a temp YAML through the CLI. Entries whose
+ * `status` is null are the caller's to reject first; this function trusts it.
+ *
+ * Only `pending` rows move, and the ledger is written once, at the end.
+ */
+export async function applyAnswerEntries(
+  entries: AnswerEntry[],
+  opts: { ledger: string; origin?: KeywordOrigin; dryRun?: boolean },
+): Promise<AppliedAnswers> {
+  const rows = await readLedger(opts.ledger);
+  const origin: KeywordOrigin = opts.origin ?? "attended";
+  const recorded: RecordedAnswer[] = [];
+  const skipped: { term: string; status: string }[] = [];
+  const unmatched: string[] = [];
+  for (const entry of entries) {
+    const wanted = key(entry.term);
+    const matches = rows.filter((r) => r.kind === "keyword" && (key(r.term ?? "") === wanted || key(r.signal ?? "") === wanted));
+    if (!matches.length) { unmatched.push(entry.term); continue; }
+    const targets = matches.filter((r) => r.status === "pending" && r.status !== entry.status);
+    if (!targets.length) { skipped.push({ term: entry.term, status: matches[0].status }); continue; }
+    for (const row of targets) {
+      row.status = entry.status!;
+      row.origin = origin;
+      row.asked_at ??= today();
+      row.updated_at = today();
+      if (entry.status === "confirmed") row.source_update_required = true;
+      else delete row.source_update_required;
+      if (entry.note) row.notes = entry.note;
+    }
+    recorded.push({
+      term: entry.term,
+      status: entry.status!,
+      rows: targets.length,
+      resumes: [...new Set(targets.map((r) => r.resume_id).filter((id): id is string => Boolean(id)))],
+    });
+  }
+  if (recorded.length && !opts.dryRun) await writeLedger(opts.ledger, rows);
+  return { recorded, skipped_already_answered: skipped, unmatched };
+}
+
+/** The one line a batch owes the reader afterwards: a confirmed term is still unrenderable. */
+export function recordNextStep(recorded: RecordedAnswer[]): string | null {
+  return recorded.some((r) => r.status === "confirmed")
+    ? "Confirmed terms authorise nothing yet. Run `keyword-confirm apply-patch` per confirmed term; the term stays unrenderable until cv-source.md carries the fact."
+    : null;
+}
+
+/**
+ * Batch record. The drain loop asks 4 terms per structured question, writes the
+ * answers to one temp YAML and lands them here in a single pass, because 200+
+ * pending terms is never going to be drained one CLI call per term.
+ *
+ * Only `pending` rows move. A row already answered (or already at the requested
+ * status, which is what "Unsure / keep pending" means) is reported under
+ * `skipped_already_answered`, so a second run of the same file is a no-op.
+ */
+export async function cmdRecordFile(args: Record<string, string>): Promise<number> {
+  const paths = resolvePaths(args);
+  let entries: AnswerEntry[];
+  try {
+    entries = parseAnswerFile(await fs.readFile(args.file, "utf8"));
+  } catch (error) {
+    console.error(`Cannot read ${args.file}: ${(error as Error).message}`);
+    return 2;
+  }
+  const invalid = entries.filter((e) => !e.status).map((e) => ({ term: e.term, answer: e.answer }));
+  if (invalid.length) {
+    for (const bad of invalid) console.error(`Invalid answer for ${JSON.stringify(bad.term)}: ${JSON.stringify(bad.answer)}. Use one of: Confirm and update source | Not applicable | Bring in as familiarity | Unsure / keep pending (aliases: confirm|na|familiarity|pending).`);
+    console.log(JSON.stringify({ ledger: paths.ledger, recorded: [], skipped_already_answered: [], unmatched: [], invalid }, null, 2));
+    return 2;
+  }
+  const applied = await applyAnswerEntries(entries, {
+    ledger: paths.ledger,
+    origin: args.origin === "daily" ? "daily" : "attended",
+    dryRun: args["dry-run"] === "true",
+  });
+  console.log(JSON.stringify({
+    action: "record-file",
+    ledger: paths.ledger,
+    file: args.file,
+    dry_run: args["dry-run"] === "true",
+    recorded: applied.recorded,
+    skipped_already_answered: applied.skipped_already_answered,
+    unmatched: applied.unmatched,
+    invalid,
+    next_step: recordNextStep(applied.recorded),
+  }, null, 2));
+  return 0;
+}
+
 export async function cmdRecord(args: Record<string, string>): Promise<number> {
+  if (args.file && args.file !== "true") return cmdRecordFile(args);
   const status = args.status as KeywordConfirmStatus;
   if (!args.plan || !args.term || !STATUSES.includes(status)) {
     console.error("Usage: keyword-confirm record --plan <keyword-plan.json> --term <t> --status confirmed|declined|not_applicable|familiarity|pending [--opportunity <id>] [--origin attended|daily] [--notes ..]");
+    console.error("   or: keyword-confirm record --file <answers.yaml> [--origin attended|daily]");
     return 2;
   }
   const paths = resolvePaths(args);
@@ -313,6 +493,36 @@ export async function cmdRecord(args: Record<string, string>): Promise<number> {
   return 0;
 }
 
+/**
+ * Where a term the triage refused is logged instead of the ledger. One JSON
+ * object per line, append-only: it is a record that the term was SEEN and
+ * mechanically refused, so the same junk never re-enters the question queue and
+ * a wrong rule is auditable afterwards. Never read back as an answer.
+ */
+export function rejectsPathFor(ledger: string): string {
+  return path.join(path.dirname(ledger), "keyword-rejects.jsonl");
+}
+
+export async function appendRejects(
+  file: string,
+  rows: { term: string; rule: string; opportunity_id?: string | null; resume_id?: string | null }[],
+): Promise<void> {
+  if (!rows.length) return;
+  const at = new Date().toISOString();
+  await fs.appendFile(file, rows.map((r) => JSON.stringify({ at, ...r })).join("\n") + "\n");
+}
+
+/**
+ * Queue a plan's questions as `pending`, with the deterministic keyword triage
+ * in front of the ledger.
+ *
+ * The extractor is greedy by design, so most of what a JD yields is not a skill
+ * at all (ad furniture, recruiter names, dates, clearance wording, cut words).
+ * Those terms used to land as `pending` rows and then be put to the person as
+ * "did you use or deliver <junk> in any role?". They are now refused here by a
+ * named rule and appended to `keyword-rejects.jsonl` instead, so the ledger
+ * only ever carries questions that could be about a skill.
+ */
 export async function cmdQueue(args: Record<string, string>): Promise<number> {
   if (!args.plan) {
     console.error("Usage: keyword-confirm queue --plan <keyword-plan.json> [--origin daily]");
@@ -323,20 +533,62 @@ export async function cmdQueue(args: Record<string, string>): Promise<number> {
   let rows = await readLedger(paths.ledger);
   const queued: string[] = [];
   const skipped: string[] = [];
+
+  const candidates: { term: KeywordTerm; row: TriageRow }[] = [];
   for (const question of plan.questions) {
     const term = findPlanTerm(plan, question.term);
     if (!term) continue;
     const existing = findRow(rows, plan.resume_id, term.term);
-    if (existing && ANSWERED.has(existing.status)) { skipped.push(term.term); continue; }
-    if (existing && existing.status === "pending") { skipped.push(term.term); continue; }
-    rows = upsertKeywordRow(rows, rowFromPlanTerm(plan, term, {
-      status: "pending",
-      opportunityId: args.opportunity ?? null,
-      origin: args.origin === "attended" ? "attended" : "daily",
-    })).rows;
-    queued.push(term.term);
+    if (existing && (ANSWERED.has(existing.status) || existing.status === "pending")) { skipped.push(term.term); continue; }
+    candidates.push({
+      term,
+      row: {
+        term: term.term,
+        category: term.category,
+        question: term.question ?? question.question ?? null,
+        jd_context: term.jd_context ?? null,
+        evidence_hint: term.evidence_hint ?? null,
+        opportunity_id: args.opportunity ?? plan.opportunity_id ?? null,
+        resume_id: plan.resume_id,
+      },
+    });
   }
-  if (queued.length && args["dry-run"] !== "true") await writeLedger(paths.ledger, rows);
+
+  const rejected: { term: string; rule: string; evidence: string }[] = [];
+  if (candidates.length) {
+    const triage = await loadTriageContext({
+      profile: args.profile,
+      cvSource: args["cv-source"],
+      taxonomy: args.taxonomy,
+      clouds: args.clouds,
+      boilerplate: args.boilerplate,
+    });
+    const verdicts = triageRows(candidates.map((c) => c.row), triage);
+    verdicts.forEach((verdict, i) => {
+      const candidate = candidates[i];
+      if (verdict.decision === "reject") {
+        rejected.push({ term: candidate.term.term, rule: verdict.rule, evidence: verdict.evidence });
+        return;
+      }
+      rows = upsertKeywordRow(rows, rowFromPlanTerm(plan, candidate.term, {
+        status: "pending",
+        opportunityId: args.opportunity ?? null,
+        origin: args.origin === "attended" ? "attended" : "daily",
+      })).rows;
+      queued.push(candidate.term.term);
+    });
+  }
+
+  const rejectsPath = rejectsPathFor(paths.ledger);
+  if (args["dry-run"] !== "true") {
+    if (queued.length) await writeLedger(paths.ledger, rows);
+    await appendRejects(rejectsPath, rejected.map((r) => ({
+      term: r.term,
+      rule: r.rule,
+      opportunity_id: args.opportunity ?? plan.opportunity_id ?? null,
+      resume_id: plan.resume_id,
+    })));
+  }
   console.log(JSON.stringify({
     action: "queue",
     ledger: paths.ledger,
@@ -345,6 +597,9 @@ export async function cmdQueue(args: Record<string, string>): Promise<number> {
     queued_count: queued.length,
     queued,
     already_recorded: skipped,
+    rejected_by_triage: rejected.length,
+    rejected,
+    rejects_log: rejected.length ? rejectsPath : null,
     coverage: plan.coverage,
   }, null, 2));
   return 0;
@@ -360,6 +615,43 @@ export type PendingGroup = {
   evidence_hint: string | null;
   proposed_phrasing: string | null;
 };
+
+export const PENDING_TABLE_HEADER = ["TERM", "N", "RESUMES", "CONTEXT"] as const;
+
+const clip = (text: string, width: number): string => (text.length <= width ? text : `${text.slice(0, Math.max(1, width - 1))}…`);
+
+/** First JD or title context this term was asked against: the opportunity it came from, else the evidence line, else the question. */
+export function groupContext(group: PendingGroup): string {
+  if (group.opportunities.length) return group.opportunities.join(", ");
+  const text = group.evidence_hint ?? group.question ?? "";
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The drain sheet. One line per term, aligned, so 20 outstanding questions fit
+ * on one screen and the reader can pick the four to ask next. No verdict is
+ * implied: the answer is the person's, the tool only lays out the question.
+ */
+export function formatPendingTable(groups: PendingGroup[], opts: { ledger: string; pendingTotal: number; groupCount: number }): string {
+  const widths = { term: 36, resumes: 36, context: 44 };
+  const cells = groups.map((g) => [
+    clip(g.term, widths.term),
+    String(g.count),
+    clip(g.resumes.join(", "), widths.resumes),
+    clip(groupContext(g), widths.context),
+  ]);
+  const header = [...PENDING_TABLE_HEADER];
+  const pad = header.map((h, i) => Math.max(h.length, ...cells.map((row) => row[i].length), 0));
+  const line = (row: string[]): string => row.map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(pad[i]))).join("  ").trimEnd();
+  return [
+    `ledger: ${opts.ledger}`,
+    line(header),
+    ...cells.map(line),
+    "",
+    `${groups.length} of ${opts.groupCount} terms shown, ${opts.pendingTotal} pending rows.`,
+    'Answer in bundles of 4, then: keyword-confirm record --file <answers.yaml>  (term: confirm | na | familiarity | pending)',
+  ].join("\n");
+}
 
 /**
  * Grouped by term ACROSS resumes: keyword rows are person-scoped, so the same
@@ -402,10 +694,20 @@ export async function cmdPending(args: Record<string, string>): Promise<number> 
   const paths = resolvePaths(args);
   const rows = await readLedger(paths.ledger);
   const limit = Number(args.limit ?? 20);
+  const table = args.format === "table";
   if (args["group-by"] === "term") {
     const groups = groupPending(rows, args.resume ?? null);
-    console.log(JSON.stringify({ ledger: paths.ledger, pending_total: groups.reduce((n, g) => n + g.count, 0), group_count: groups.length, shown: Math.min(limit, groups.length), groups: groups.slice(0, limit) }, null, 2));
+    const pendingTotal = groups.reduce((n, g) => n + g.count, 0);
+    if (table) {
+      console.log(formatPendingTable(groups.slice(0, limit), { ledger: paths.ledger, pendingTotal, groupCount: groups.length }));
+      return 0;
+    }
+    console.log(JSON.stringify({ ledger: paths.ledger, pending_total: pendingTotal, group_count: groups.length, shown: Math.min(limit, groups.length), groups: groups.slice(0, limit) }, null, 2));
     return 0;
+  }
+  if (table) {
+    console.error("Usage: keyword-confirm pending --group-by term --format table [--limit N] [--resume <id>]. The table is the per-term drain sheet; the ungrouped list stays JSON.");
+    return 2;
   }
   const pending = dedupeByTerm(
     rows.filter((r) => r.kind === "keyword" && r.status === "pending" && (!args.resume || r.resume_id === args.resume || isPersonScoped(r))),

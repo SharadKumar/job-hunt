@@ -1,9 +1,38 @@
 #!/usr/bin/env tsx
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { buildResumeContext, cloudsStatus, measuredFromAudit, MEASURED_STATUSES, lexiconStatus, parseCheckIds, parseEditorialRules, UNIVERSAL_CHECKS_PATH } from "../tools/resume/resume-context.ts";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { KeywordCloudsFile } from "../tools/keyword-clouds.ts";
-import { activeResumes } from "../tools/resumes.ts";
+
+// The live brief is built against a fixture profile in a temp repo root, never
+// against the person's own state/profile/: a real corpus makes the byte budgets
+// below meaningless and ties the test to whatever was rendered last.
+//
+// The tools compute their state/ and templates/ paths at import time through
+// tools/repo-root.ts, so HARNESS_REPO_ROOT must be set BEFORE the first import
+// of anything under tools/ (hence the dynamic imports).
+const testsDir = path.dirname(fileURLToPath(import.meta.url));
+const realRoot = path.dirname(testsDir);
+const fixtureRoot = mkdtempSync(path.join(tmpdir(), "resume-context-test-"));
+
+process.chdir(realRoot); // cwd-relative reads (quality-checks, voice rules) stay framework-side
+mkdirSync(path.join(fixtureRoot, "state"), { recursive: true });
+cpSync(path.join(testsDir, "fixtures", "profile-min"), path.join(fixtureRoot, "state", "profile"), { recursive: true });
+mkdirSync(path.join(fixtureRoot, "state", "org"), { recursive: true });
+writeFileSync(
+  path.join(fixtureRoot, "state", "org", "keyword-clouds.yaml"),
+  readFileSync(path.join(testsDir, "fixtures", "profile-min", "org", "keyword-clouds.yaml"), "utf8")
+    .replace(/refreshed_at: "[^"]+"/, `refreshed_at: "${new Date().toISOString().slice(0, 10)}"`),
+);
+// Templates are framework, not state: point the fixture root at the real ones.
+symlinkSync(path.join(realRoot, "templates"), path.join(fixtureRoot, "templates"), "dir");
+process.env.HARNESS_REPO_ROOT = fixtureRoot;
+
+const { buildResumeContext, cloudsStatus, measuredFromAudit, MEASURED_STATUSES, lexiconStatus, parseCheckIds, parseEditorialRules, UNIVERSAL_CHECKS_PATH } =
+  await import("../tools/resume/resume-context.ts");
+const { activeResumes } = await import("../tools/resumes.ts");
 
 // Pure parsers
 const ids = parseCheckIds(`# x\n## Structural (text)\n### page_count\nblah\n### ats_lint\n## Visual (png)\n### layout_balance\n## Per-template overrides\n### should_be_structural\n`);
@@ -105,6 +134,13 @@ for (const id of declared.structural) assert.ok(brief.check_ids.structural.inclu
 for (const id of declared.visual) assert.ok(brief.check_ids.visual.includes(id), `missing visual check id ${id}`);
 assert.ok(Array.isArray(brief.editorial_rules.profile));
 assert.ok(brief.market_confirmations.confirmed && brief.market_confirmations.pending);
+// The fixture, not the person's own profile, is what was read.
+assert.equal(brief.profile.dir, path.join(fixtureRoot, "state", "profile"));
+assert.equal(brief.market_confirmations.confirmed.length, 1);
+assert.equal(brief.market_confirmations.pending.length, 1);
+assert.equal(brief.editorial_rules.profile.length, 2, "both fixture rule entries are parsed");
+assert.equal(brief.clouds.present, true, "the fixture positioning references a resolvable cloud");
+assert.equal(brief.clouds.stale, false, "the fixture cloud is stamped fresh at test time");
 assert.ok(["approved", "stale", "fresh", "missing"].includes(brief.baseline.approval_status));
 
 // The brief always carries the keyword-cloud status, so every caller can

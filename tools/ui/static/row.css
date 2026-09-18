@@ -1,0 +1,277 @@
+/* row.css - one opportunity, end to end (#/row/<id>).
+   Tokens, type and every shared primitive come from app.css; nothing here
+   introduces a colour, a radius or a shadow of its own.
+
+   Four blocks this file adds that app.css has no use for elsewhere: the header
+   block that carries the pills and the facts (.row-intro), the stacked send
+   control at the top right (.send-aside), the gates strip and its package line
+   (.row-gates), and the row's own history spine (.history). It also re-flows
+   the shared .timeline under 720 px, scoped to this page, because the row is
+   the only screen that draws one. Everything else is a primitive from app.css,
+   scoped. */
+
+/* One rhythm down the page: every top-level section sits 24 px under the one
+   before it. Each section used to set its own margin, so the decision card,
+   which set none, ended up flush against the letter above it. Adjacent margins
+   collapse, so the page header's own 24 px stays 24 px. */
+.row-page > * + * { margin-top: 24px; }
+
+/* --- The header block ---------------------------------------------------- */
+
+/* The pills and the facts belong to the title, so they sit inside the header
+   rather than as two more sections 24 px apart from it. */
+.page-header .row-intro { grid-column: 1 / -1; margin-top: 4px; }
+
+.row-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* A score is a number in ink with tabular figures, never a verdict colour. */
+.row-score {
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-meta { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.detail-meta a { color: var(--ink); }
+
+/* The one control that can send says what it will do, and then says what it is
+   doing, directly under itself. */
+.send-aside {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  max-width: 320px;
+}
+
+.send-aside p { margin: 0; text-align: right; }
+
+/* "Why it stopped": the reason in full, in the serif, at the reading measure. */
+.row-why {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+.row-why-label { font-weight: 600; }
+
+/* --- The gates strip ----------------------------------------------------- */
+
+/* One chip per recorded verdict, then what is actually in the package. A gate
+   with no record on file says "not run" and is never read as a pass. */
+.row-gates { display: grid; gap: 8px; }
+
+.gates-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A chip that scrolls to the findings it counts is a button wearing the pill's
+   own metrics, which .pill sets and the button rules do not override. */
+.gate-chip { font-weight: 400; }
+.gate-chip:hover { background: transparent; text-decoration: underline; }
+
+.package-line { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* --- The letter beside the advert ---------------------------------------- */
+
+.columns { display: grid; gap: 24px; align-items: start; }
+
+/* With no letter in the package there is nothing to read beside, so the job
+   description takes the whole measure instead of half of it. */
+.columns.one { grid-template-columns: minmax(0, 1fr); }
+
+/* Each card is as tall as its own content; the folded advert does not stretch to the letter. */
+.columns > .card { display: flex; flex-direction: column; min-width: 0; }
+
+@media (min-width: 960px) {
+  .columns { grid-template-columns: 3fr 2fr; }
+}
+
+.letter { max-width: var(--measure); font-size: 15px; }
+.letter p { margin: 0 0 12px; }
+.letter p:last-child { margin-bottom: 0; }
+.letter mark { background: var(--wash); color: inherit; padding: 0 1px; border-radius: 1px; }
+
+.letter-edit {
+  width: 100%;
+  min-height: 320px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.45;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.letter-edit:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
+
+/* The one question an editor asks: there are unsaved edits, and Escape was
+   pressed. It asks once, in place, and never in a browser dialog. */
+.letter-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+
+.letter-notes { display: grid; gap: 12px; margin-top: 16px; }
+.letter-notes:empty { display: none; }
+
+/* The critic's findings sit under the letter, and the gates strip scrolls
+   here. */
+.letter-findings { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 16px; }
+.letter-findings:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
+.letter-findings-head { margin: 0 0 12px; font-size: 15px; }
+
+.findings { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+
+.fix { border-left: 2px solid var(--rule); padding-left: 12px; }
+.fix.bad { border-left-color: var(--fail); }
+.fix-sev { margin: 0; font-size: 13px; color: var(--muted); }
+.fix.bad .fix-sev { color: var(--fail); }
+.fix-quote { margin: 4px 0 0; font-size: 15px; color: var(--ink); }
+.fix-issue { margin: 4px 0 0; font-size: 15px; overflow-wrap: anywhere; }
+.fix-do { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+
+/* --- The advert ---------------------------------------------------------- */
+
+/* The job description is folded, not scrolled: a nested scroll region inside a
+   page that already scrolls is a trap. `.disclosure` in app.css opens it. */
+.jd { overflow: visible; }
+
+.jd pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.jd-fold { margin-top: 12px; }
+
+/* --- Screening ----------------------------------------------------------- */
+
+/* One question: what was asked, who asked it, the field, then the two buttons
+   under the field and left aligned with it. Nothing sets its own width. */
+.screening { display: grid; gap: 16px; }
+.screening-slot:empty { display: none; }
+
+.screening-ask {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 16px;
+}
+
+.screening-ask:first-child { border-top: 0; padding-top: 0; }
+
+.screening-question { margin: 0; font-size: 15px; font-weight: 600; }
+.screening-ask .action-buttons { margin-bottom: 0; }
+.screening-ask .field { max-width: var(--measure); }
+.screening-done { margin: 0; font-size: 15px; }
+
+.screening-sub { margin: 0; font-size: 15px; font-weight: 600; }
+
+/* The send, under the question it is waiting on. It arrives disabled and is
+   never pressed from code (AGENTS.md section 2). */
+.screening-send { display: grid; gap: 4px; justify-items: start; }
+.screening-send p { margin: 0; }
+
+/* Skill, Years and the button on one baseline: the labels sit above their own
+   controls, so the row aligns on the bottom of the fields. */
+.years-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.years-row .field { flex: 1 1 220px; max-width: var(--measure); }
+.years-row .field.short { flex: 0 0 96px; }
+
+.screening-years { display: grid; gap: 8px; }
+
+.screening-bank { border-top: 1px solid var(--rule); padding-top: 16px; }
+
+.screening-banked { display: grid; gap: 8px; }
+
+.screening-banked-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.banked-q { color: var(--ink); overflow-wrap: anywhere; }
+.banked-a { color: var(--muted); }
+
+/* --- The decision, and the forms a button opens -------------------------- */
+
+.decide-card .action-buttons { margin-bottom: 12px; }
+.decide-card .field { max-width: 320px; margin-bottom: 12px; }
+
+/* What a started job is saying while it runs, and what it said when it
+   stopped, in full: never narrated into something softer (AGENTS.md 3.8).
+   `.job-line` itself belongs to pipeline.css, which draws the same control in
+   a list row. */
+.send-aside .job-line, .screening-send .job-line { overflow-wrap: anywhere; }
+
+/* --- The history --------------------------------------------------------- */
+
+/* One hairline spine, newest first, the person's word for the move and the
+   machine's own transition in the pill after it. No coloured dots: a move is
+   not a verdict (docs/ui-redesign-2026-09-18.md, section 6, Row page). */
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 16px;
+  border-left: 1px solid var(--rule);
+  display: grid;
+  gap: 16px;
+}
+
+.history li { margin: 0; }
+
+.hist-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.hist-when { margin-left: auto; color: var(--muted); font-size: 13px; }
+.hist-why { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.hist-fold { margin-top: 4px; }
+
+/* --- The timeline on a narrow screen ------------------------------------- */
+
+/* Section 7: under 720 px the timeline wraps to two lines and never scrolls
+   sideways. `.timeline` in app.css sizes a step at 96 px, which is six across
+   and 576 px wide, so the strip is re-flowed to three a line here. The rule is
+   scoped to the row page, which is the only screen that draws one. */
+@media (max-width: 719px) {
+  .row-page .timeline > li { flex: 1 1 33%; min-width: 0; }
+  .row-page .timeline .step-label, .row-page .timeline .branch { overflow-wrap: anywhere; }
+  /* The spine runs from each step to the next, so the last step on a wrapped
+     line has nothing to reach and its half would hang off the page. */
+  .row-page .timeline > li:nth-child(3n)::after { content: none; }
+}
+
+@media (max-width: 719px) {
+  .send-aside { justify-items: start; }
+  .send-aside p { text-align: left; }
+  .hist-when { margin-left: 0; }
+}

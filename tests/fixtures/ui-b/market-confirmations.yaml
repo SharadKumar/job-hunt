@@ -1,0 +1,22 @@
+# Fixture keyword ledger for tests/ui-b.test.ts. `{{opportunity}}` is replaced
+# with the seeded row id at run time, because an opportunity id is a hash of the
+# advert url and cannot be written down ahead of the run.
+confirmations:
+  - resume_id: solution-architect
+    kind: keyword
+    scope: person
+    signal: Apply Now
+    term: Apply Now
+    category: process
+    opportunity_id: "{{opportunity}}"
+    origin: daily
+    status: pending
+  - resume_id: solution-architect
+    kind: keyword
+    scope: person
+    signal: Azure API Management
+    term: Azure API Management
+    category: platform
+    opportunity_id: "{{opportunity}}"
+    origin: daily
+    status: pending

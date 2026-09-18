@@ -435,6 +435,127 @@ assert.equal(await cmdApplyPatch({ ...base, term: "CMDB", resume: "r", bullet: "
   assert.equal(findRow(parsed.confirmations, "servicenow-architect", "integrationhub")!.term, "IntegrationHub");
 }
 
+// --- pending --format table -------------------------------------------------
+
+const DRAIN_ROWS: MarketConfirmation[] = [
+  { resume_id: "servicenow-architect", kind: "keyword", scope: "person", signal: "CMDB", term: "CMDB", status: "pending", opportunity_id: "opp-123", question: "CMDB: did you own the data model?" },
+  { resume_id: "applied-ai", kind: "keyword", scope: "person", signal: "CMDB", term: "CMDB", status: "pending", opportunity_id: "opp-456" },
+  { resume_id: "servicenow-architect", kind: "keyword", scope: "person", signal: "SPM", term: "SPM", status: "pending", evidence_hint: "cv-source.md:12 (Delivery Manager, Department of Education)" },
+  { resume_id: "servicenow-architect", kind: "keyword", scope: "person", signal: "HRSD", term: "HRSD", status: "pending", question: "HRSD: did you deliver HR service delivery?" },
+  { resume_id: "applied-ai", kind: "keyword", scope: "person", signal: "Incident Management", term: "Incident Management", status: "pending", opportunity_id: "opp-456" },
+  { resume_id: "applied-ai", kind: "keyword", scope: "person", signal: "Now Assist", term: "Now Assist", status: "pending", evidence_hint: "cv-source.md:40 (Enterprise Architect, Revenue NSW)" },
+  { resume_id: "applied-ai", kind: "keyword", scope: "person", signal: "Virtual Agent", term: "Virtual Agent", status: "pending", opportunity_id: "opp-789" },
+  { resume_id: "applied-ai", kind: "keyword", scope: "person", signal: "Predictive Intelligence", term: "Predictive Intelligence", status: "confirmed" },
+];
+
+{
+  await reset(DRAIN_ROWS.map((r) => ({ ...r })));
+  logs.length = 0;
+  assert.equal(await cmdPending({ ...base, "group-by": "term", format: "table" }), 0);
+  const lines = logs.join("\n").split("\n");
+  const headerAt = lines.findIndex((l) => l.startsWith("TERM"));
+  assert.ok(headerAt >= 0, "the table prints a header");
+  assert.deepEqual(lines[headerAt].split(/\s{2,}/), ["TERM", "N", "RESUMES", "CONTEXT"]);
+  const body = lines.slice(headerAt + 1, lines.indexOf("", headerAt));
+  assert.equal(body.length, 6, "one line per pending term, not one per row");
+  assert.deepEqual(body.map((l) => l.split(/\s{2,}/)[0]), ["CMDB", "HRSD", "Incident Management", "Now Assist", "SPM", "Virtual Agent"]);
+  assert.deepEqual(body[0].split(/\s{2,}/), ["CMDB", "2", "servicenow-architect, applied-ai", "opp-123, opp-456"]);
+  assert.ok(body[4].split(/\s{2,}/)[3].startsWith("cv-source.md:12"), "a term with no opportunity falls back to its evidence line");
+  assert.ok(lines.some((l) => l.includes("7 pending rows")), "the footer counts rows, not terms");
+  assert.ok(lines.some((l) => l.includes("record --file")), "the footer names the batch recorder");
+  // The ungrouped list stays JSON; a table there would be a silent format swap.
+  assert.equal(await cmdPending({ ...base, format: "table" }), 2);
+  // --limit trims the sheet, and --format json is the unchanged default shape.
+  logs.length = 0;
+  assert.equal(await cmdPending({ ...base, "group-by": "term", format: "table", limit: "2" }), 0);
+  assert.equal(logs.join("\n").split("\n").findIndex((l) => l === ""), 4, "ledger + header + 2 rows");
+  assert.equal(await cmdPending({ ...base, "group-by": "term" }), 0);
+  assert.equal(lastJson().group_count, 6);
+  assert.equal(lastJson().pending_total, 7);
+}
+
+// --- record --file ----------------------------------------------------------
+
+const answersPath = path.join(tmp, "answers.yaml");
+
+{
+  await reset(DRAIN_ROWS.map((r) => ({ ...r })));
+  await fs.writeFile(answersPath, [
+    "CMDB: confirm",
+    "SPM: Not applicable",
+    "HRSD:",
+    "  answer: Bring in as familiarity",
+    '  note: "Can speak to it, never delivered it"',
+    'Incident Management: "Confirm and update source"',
+    "Now Assist: na",
+    'Virtual Agent: "Unsure / keep pending"',
+    "Knowledge Management: confirm",
+    "",
+  ].join("\n"));
+  assert.equal(await cmdRecord({ ...base, file: answersPath }), 0);
+  const out = lastJson();
+  assert.equal(out.action, "record-file");
+  assert.deepEqual(out.recorded.map((r: { term: string }) => r.term), ["CMDB", "SPM", "HRSD", "Incident Management", "Now Assist"], "five terms in one pass");
+  assert.equal(out.recorded[0].rows, 2, "every pending row for the term is recorded, across resumes");
+  assert.deepEqual(out.recorded[0].resumes, ["servicenow-architect", "applied-ai"]);
+  assert.deepEqual(out.skipped_already_answered.map((r: { term: string }) => r.term), ["Virtual Agent"], "keep pending changes nothing");
+  assert.deepEqual(out.unmatched, ["Knowledge Management"], "a term with no pending row is reported, never invented");
+  assert.deepEqual(out.invalid, []);
+  assert.match(out.next_step, /apply-patch/, "a confirmed term still authorises nothing until cv-source.md carries it");
+
+  const rows = await readLedger(ledgerPath);
+  assert.equal(rows.length, DRAIN_ROWS.length, "no rows created");
+  const byTerm = (t: string): MarketConfirmation[] => rows.filter((r) => r.term === t);
+  assert.deepEqual(byTerm("CMDB").map((r) => r.status), ["confirmed", "confirmed"]);
+  assert.deepEqual(byTerm("CMDB").map((r) => r.source_update_required), [true, true]);
+  assert.equal(byTerm("SPM")[0].status, "not_applicable");
+  assert.equal(byTerm("SPM")[0].source_update_required, undefined);
+  assert.equal(byTerm("HRSD")[0].status, "familiarity");
+  assert.equal(byTerm("HRSD")[0].notes, "Can speak to it, never delivered it");
+  assert.equal(byTerm("Now Assist")[0].status, "not_applicable");
+  assert.equal(byTerm("Virtual Agent")[0].status, "pending", "keep pending leaves the question open");
+  assert.equal(byTerm("Predictive Intelligence")[0].status, "confirmed", "an answered row is never touched");
+  assert.equal(byTerm("CMDB")[0].origin, "attended");
+}
+
+{
+  // idempotent: the same file twice reports nothing to do and rewrites nothing
+  const before = await fs.readFile(ledgerPath, "utf8");
+  assert.equal(await cmdRecord({ ...base, file: answersPath }), 0);
+  const out = lastJson();
+  assert.deepEqual(out.recorded, [], "second run records nothing");
+  assert.equal(out.skipped_already_answered.length, 6);
+  assert.equal(await fs.readFile(ledgerPath, "utf8"), before, "the ledger is untouched");
+}
+
+{
+  // an unrecognised answer is a usage error naming the term, never a downgrade
+  await reset(DRAIN_ROWS.map((r) => ({ ...r })));
+  const before = await fs.readFile(ledgerPath, "utf8");
+  await fs.writeFile(answersPath, "CMDB: confirm\nSPM: maybe later\n");
+  const realError = console.error;
+  const errs: string[] = [];
+  console.error = (...parts: unknown[]) => { errs.push(parts.map(String).join(" ")); };
+  assert.equal(await cmdRecord({ ...base, file: answersPath }), 2);
+  console.error = realError;
+  assert.ok(errs.some((e) => e.includes('"SPM"') && e.includes("maybe later")), "the refusal names the term and the answer");
+  assert.deepEqual(lastJson().invalid, [{ term: "SPM", answer: "maybe later" }]);
+  assert.deepEqual(lastJson().recorded, [], "nothing lands when any answer is invalid");
+  assert.equal(await fs.readFile(ledgerPath, "utf8"), before);
+}
+
+{
+  // dry-run and the per-term CLI both still work
+  await reset(DRAIN_ROWS.map((r) => ({ ...r })));
+  const before = await fs.readFile(ledgerPath, "utf8");
+  await fs.writeFile(answersPath, "CMDB: familiarity\n");
+  assert.equal(await cmdRecord({ ...base, file: answersPath, "dry-run": "true" }), 0);
+  assert.equal(await fs.readFile(ledgerPath, "utf8"), before);
+  assert.equal(await cmdRecord({ ...base, term: "CMDB", status: "declined" }), 0, "the per-term form is unchanged");
+  assert.equal((await readLedger(ledgerPath)).find((r) => r.term === "CMDB")!.status, "declined");
+  assert.equal(await cmdRecord({ ...base }), 2, "neither --file nor --term is a usage error");
+}
+
 console.log = realLog;
 await fs.rm(tmp, { recursive: true, force: true });
 console.log("keyword-confirm.test.ts: all assertions passed");

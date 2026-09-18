@@ -57,24 +57,55 @@ async function loadUrlContent(urls: string[]): Promise<string> {
   return parts.join("\n\n");
 }
 
+/**
+ * Rate band, work arrangement, red flags and the legal channel ids are the
+ * policy the agent writes every resume entry against. A blanket `catch {}` let
+ * an unreadable profile.md or a channels.yaml with a YAML syntax error produce
+ * a context blob with no constraints in it at all, and the agent then invented
+ * rate bands and channel ids with nothing saying it had been left blind.
+ * Missing is reported in the blob; unreadable or malformed is a stop.
+ */
 async function loadHarnessContext(): Promise<string> {
   const parts: string[] = [];
+  const profilePath = repoPath("state/profile/profile.md");
+  let profile: string | null = null;
   try {
-    const profile = await fs.readFile(repoPath("state/profile/profile.md"), "utf8");
+    profile = await fs.readFile(profilePath, "utf8");
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") throw new Error(`cannot read ${profilePath}: ${error?.message ?? error}`);
+    parts.push(`# NOTE\nprofile.md missing at ${profilePath} — no rate band, work arrangement or red flags are available. Run the setup skill first.`);
+  }
+  if (profile !== null) {
     const rateBand = profile.match(/Day rate[\s\S]*?(?=\n##|$)/i)?.[0]?.trim();
     if (rateBand) parts.push(`# User's rate band (anchor for any target's rate_band field)\n${rateBand}`);
     const workArr = profile.match(/Work arrangement[\s\S]*?(?=\n##|$)/i)?.[0]?.trim();
     if (workArr) parts.push(`# User's work arrangement\n${workArr}`);
     const redFlags = profile.match(/Red flags[\s\S]*?(?=\n##|$)/i)?.[0]?.trim();
     if (redFlags) parts.push(`# User's red flags\n${redFlags}`);
-  } catch {}
+  }
+
+  const channelsPath = repoPath("state/profile/channels.yaml");
+  let channelsRaw: string | null = null;
   try {
-    const channels = await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8");
-    const channelIds = YAML.parse(channels)?.channels;
+    channelsRaw = await fs.readFile(channelsPath, "utf8");
+  } catch (error: any) {
+    if (error?.code !== "ENOENT") throw new Error(`cannot read ${channelsPath}: ${error?.message ?? error}`);
+    parts.push(`# NOTE\nchannels.yaml missing at ${channelsPath} — no valid channel ids are available; leave preferred_channels empty rather than guessing.`);
+  }
+  if (channelsRaw !== null) {
+    let parsed: any;
+    try {
+      parsed = YAML.parse(channelsRaw);
+    } catch (error: any) {
+      throw new Error(`${channelsPath} is not valid YAML (${error?.message ?? error}). Repair it before running onboarding; guessing channel ids is not an option.`);
+    }
+    const channelIds = parsed?.channels;
     if (channelIds) {
       parts.push(`# Valid channel ids for preferred_channels (use ONLY these; never invent)\n${Object.keys(channelIds).join(", ")}`);
+    } else {
+      parts.push(`# NOTE\n${channelsPath} has no 'channels:' key — no valid channel ids are available.`);
     }
-  } catch {}
+  }
   return parts.join("\n\n");
 }
 

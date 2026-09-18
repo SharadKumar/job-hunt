@@ -1,0 +1,13 @@
+version: 1
+clouds:
+  - id: azure-integration
+    kind: tooling
+    label: Azure integration
+    refreshed_at: 2026-09-01
+    terms:
+      - term: Azure Functions
+        aliases: [Functions app]
+        tier: corpus
+      - term: LlamaIndex
+        aliases: []
+        tier: preppable

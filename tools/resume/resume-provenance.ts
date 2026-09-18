@@ -7,8 +7,8 @@
  * and that cited source ranges exist in the current canonical profile files.
  */
 
+import { sha256 } from "../lib/hash.ts";
 import { promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
 import { resolveProfileContext } from "../profile-context.ts";
 import type { ResumeContent, ResumeSourceProvenance, SourceReference } from "../../templates/resume/_interface.ts";
 import { loadComposition } from "./lib/composition-io.ts";
@@ -30,10 +30,6 @@ function parseArgs(): Record<string, string> {
 
 async function readText(file: string): Promise<string> {
   return fs.readFile(file, "utf8");
-}
-
-function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
 }
 
 function add(issues: Issue[], severity: Severity, rule: string, detail: string): void {

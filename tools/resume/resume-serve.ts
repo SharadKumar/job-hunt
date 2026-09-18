@@ -13,6 +13,7 @@
  *   tsx tools/resume/resume-serve.ts [--port 4173] [--profile <id>] [--open]
  */
 
+import { parseArgs } from "../lib/args.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -169,21 +170,8 @@ export async function startResumeServer(options: ServeOptions = {}): Promise<{ s
 
 /* -------------------------------------------------------------------- cli */
 
-function parseArgs(argv: string[]): Record<string, string | boolean> {
-  const args: Record<string, string | boolean> = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (!token.startsWith("--")) continue;
-    const [flag, inline] = token.slice(2).split("=", 2);
-    if (inline !== undefined) { args[flag] = inline; continue; }
-    const next = argv[i + 1];
-    if (next && !next.startsWith("--")) { args[flag] = next; i += 1; } else { args[flag] = true; }
-  }
-  return args;
-}
-
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2)).flags;
   const port = typeof args.port === "string" ? Number(args.port) : 4173;
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     console.error(`Invalid --port '${String(args.port)}'`);

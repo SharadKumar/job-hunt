@@ -7,18 +7,23 @@
  * curated set of smoke checks. Returns a report.
  *
  * Usage:
- *   tsx tools/verify-plan.ts [--plan <path>] [--json]
+ *   tsx tools/verify-plan.ts --plan <path> [--json]
  *
- * Exit code: 0 if all checks pass, 1 if any warn, 2 if any fail.
+ * `--plan` is required. It used to default to one contributor's local
+ * ~/.claude/plans/ file, which no longer exists, so every run silently
+ * degraded to "plan file not found (skipping plan-derived checks)" and nobody
+ * noticed the verifier had stopped looking at a plan at all.
+ *
+ * Exit code: 0 if all checks pass, 1 if any warn (or the synthetic-event
+ * cleanup failed), 2 if any fail or the arguments are wrong.
  */
 
+import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import { repoRoot } from "./repo-root.ts";
-
-const DEFAULT_PLAN = `${process.env.HOME}/.claude/plans/let-s-create-a-harness-delightful-meadow.md`;
+import { repoRoot, repoPath } from "./repo-root.ts";
 
 type Check = { id: string; verdict: "pass" | "warn" | "fail"; detail: string };
 
@@ -27,10 +32,6 @@ const TEMPLATE_SAMPLES = [
   { name: "modern", maxPages: 3 },
   { name: "minimalist", maxPages: 2 },
 ] as const;
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
 
 async function fileSizeOk(p: string, minBytes = 50): Promise<boolean> {
   try { const s = await fs.stat(p); return s.size >= minBytes; } catch { return false; }
@@ -108,11 +109,9 @@ async function checkArtefacts(checks: Check[]): Promise<void> {
     "tools/resume/resume-lint-ats.ts", "tools/resume/resume-evaluate.ts",
     "tools/profile.ts",
     "tools/channels/_interface.ts", "tools/channels/seek.ts",
-    // Channels (stubs are fine, but must exist)
+    // Channels with an adapter (see HUNT_SCRIPTS in _interface.ts)
     "tools/channels/linkedin-jobs.ts", "tools/channels/linkedin-posts.ts",
-    "tools/channels/hays.ts", "tools/channels/talenza.ts", "tools/channels/paxus.ts",
-    "tools/channels/robert-half.ts", "tools/channels/peoplebank.ts",
-    "tools/channels/hn-who-is-hiring.ts", "tools/channels/wellfound.ts",
+    "tools/channels/hn-who-is-hiring.ts",
     "tools/channels/seek-submit.ts",
     // Scripts
     "scripts/daily.sh", "scripts/install-launchd.sh", "scripts/login-channel.ts",
@@ -432,10 +431,14 @@ async function smokeAudit(checks: Check[]): Promise<void> {
   checks.push({ id: "smoke:audit_log", verdict: "pass", detail: "log + dedup index write" });
   checks.push({ id: "smoke:audit_dedup", verdict: duped ? "pass" : "fail", detail: duped ? "dedup index returns prior match" : "dedup didn't find synthetic event" });
 
-  // Clean up: remove sentinel from dedup-index and audit-log.jsonl
+  // Clean up: remove the sentinel from the dedup index and the audit log.
+  // A failure here is not cosmetic — the synthetic "submitted" event stays in
+  // the person's real audit trail and the dedup index, where it will later be
+  // reported as a prior application to a company that does not exist. Swallowing
+  // it left the verifier printing a clean report over a polluted log.
+  const logPath = repoPath("state/audit/audit-log.jsonl");
+  const indexPath = repoPath("state/audit/dedup-index.json");
   try {
-    const logPath = "state/audit/audit-log.jsonl";
-    const indexPath = "state/audit/dedup-index.json";
     if (await exists(logPath)) {
       const txt = await fs.readFile(logPath, "utf8");
       const filtered = txt.split("\n").filter((l) => l && !l.includes(SENTINEL_CO)).join("\n");
@@ -446,7 +449,13 @@ async function smokeAudit(checks: Check[]): Promise<void> {
       for (const k of Object.keys(idx)) if (k.includes("verify-synthetic") || k.includes(SENTINEL_CO.toLowerCase())) delete idx[k];
       await fs.writeFile(indexPath, JSON.stringify(idx, null, 2));
     }
-  } catch {}
+  } catch (error: any) {
+    console.error(
+      `verify-plan: failed to scrub the synthetic '${SENTINEL_CO}' / verify-synthetic event from ${logPath} and ${indexPath}: ` +
+        `${error?.message ?? error}. Remove the verify-synthetic entries from both files by hand before trusting the dedup index.`,
+    );
+    process.exit(1);
+  }
 }
 
 async function smokeClassifierFallback(checks: Check[]): Promise<void> {
@@ -466,11 +475,19 @@ async function main() {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith("--")) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
   }
-  const plan = a.plan || DEFAULT_PLAN;
+  const plan = a.plan;
+  if (!plan || plan === "true") {
+    console.error("Usage: tsx tools/verify-plan.ts --plan <path-to-plan.md> [--json]");
+    process.exit(2);
+  }
   const checks: Check[] = [];
 
   const planExists = await exists(plan);
-  checks.push({ id: "plan:exists", verdict: planExists ? "pass" : "warn", detail: planExists ? plan : `plan file ${plan} not found (skipping plan-derived checks)` });
+  checks.push({
+    id: "plan:exists",
+    verdict: planExists ? "pass" : "fail",
+    detail: planExists ? plan : `plan file ${plan} not found; --plan must name a plan that exists`,
+  });
 
   await checkArtefacts(checks);
   await checkTemplateSamples(checks);

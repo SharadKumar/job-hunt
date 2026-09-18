@@ -1,6 +1,6 @@
 # Quality-report completeness enforcement (#9)
 
-Shared procedure used by both `/resume-render` and `/resume-review` skills. After resume-writer returns its JSON quality report, validate the report is COMPLETE before surfacing it to the user. A missing check id is worse than a failing one — failures surface, omissions hide.
+Shared procedure used by both `/resume-render` and `/resume-review` skills. After resume-writer returns its JSON quality report, validate the report is COMPLETE before surfacing it to the user. A missing check id is worse than a failing one: failures surface, omissions hide.
 
 ## Procedure
 
@@ -8,8 +8,8 @@ Shared procedure used by both `/resume-render` and `/resume-review` skills. Afte
 
 Read both files (the second is optional, may not exist):
 
-- `.claude/skills/resume-render/references/quality-checks.md` — universal checks (applies to every CV regardless of template)
-- `templates/resume/<template>/quality-checks.md` — per-template overrides (where `<template>` is the resume's chosen template from `resumes.yaml` / `resume-types.yaml`)
+- `.claude/skills/resume-render/references/quality-checks.md`: universal checks (applies to every CV regardless of template)
+- `templates/resume/<template>/quality-checks.md`: per-template overrides (where `<template>` is the resume's chosen template from `resumes.yaml` / `resume-types.yaml`)
 
 Each declares one or more checks via `### <check-id>` headings. Extract the set of all declared check ids. Per-template can add new ids; per-template can `skip` a universal id; if per-template `skip`s, the id still must appear in the report (as `verdict: "skip"`), not be omitted. `npm run resume:context -- --resume <id>` returns the same set under `check_ids`, bucketed structural / visual / skipped; use it rather than re-parsing the markdown by hand.
 
@@ -63,14 +63,14 @@ Rules:
 - `composition_hash` must equal `compositionContentHash(<prefix>.composition.json)` as it stands now. A mismatch means the CV changed after the review, so the review is void and the critique skill re-runs.
 - The same three conditions are enforced independently by `npm run resume:approve`, which exits 1 rather than approving. The field here exists so the skill catches it before it asks the user a question it cannot honour.
 
-### 3. On rejection — two strategies
+### 3. On rejection: two strategies
 
 **Strategy A: re-invoke resume-writer with explicit instruction** (preferred when there's budget):
 - Spawn resume-writer again with the same target + a note listing the missing check ids: "Your prior report omitted verdicts for: [list]. Re-render OR re-audit and return a complete report including verdicts for these ids."
 - Accept the second report if complete; else fall through to Strategy B.
 
 **Strategy B: hard error to user**:
-- Surface to the user: "resume-writer's quality report is incomplete — missing verdicts for: [list]. The artefact has been rendered but the quality contract isn't satisfied. Options: accept the partial audit (review the artefact yourself for the missing checks) / re-invoke resume-writer / cancel."
+- Surface to the user: "resume-writer's quality report is incomplete, missing verdicts for: [list]. The artefact has been rendered but the quality contract isn't satisfied. Options: accept the partial audit (review the artefact yourself for the missing checks) / re-invoke resume-writer / cancel."
 - Use AskUserQuestion. Don't silently approve.
 
 ### 4. On acceptance
@@ -85,4 +85,4 @@ Pass the complete report to the next step in the skill (the approve/edit/skip de
 - silent regression where a check passes everywhere because it stopped being run
 - an approval offered on a CV that every machine liked and no reader ever read
 
-The contract is "every declared check has a verdict in every report" — enforced at the skill layer, not just hoped for in the subagent prompt.
+The contract is "every declared check has a verdict in every report", enforced at the skill layer, not just hoped for in the subagent prompt.

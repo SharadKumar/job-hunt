@@ -21,6 +21,7 @@
  *   tsx tools/resume/resume-renderer.ts --content-json <path> --resume <id> --template modern --flavours ats,presentation
  */
 
+import { sha256 } from "../lib/hash.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -97,7 +98,7 @@ export async function writeBaselineMetadataIfNeeded(args: {
   const templateHash = await templateContentHash(args.templateName).catch(() => null);
   const format = await getResumeFormat(args.formatId);
   const composerHash = args.contentJsonPath
-    ? createHash("sha256").update(await fs.readFile(args.contentJsonPath)).digest("hex")
+    ? sha256(await fs.readFile(args.contentJsonPath))
     : null;
   const pdfPath = args.result.presentation?.pdf ?? args.result.ats?.pdf ?? null;
   const pageCount = pdfPath ? await countPdfPages(pdfPath) : null;

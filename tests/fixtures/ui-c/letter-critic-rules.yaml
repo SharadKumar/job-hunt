@@ -1,0 +1,20 @@
+# Profile-owned rules for tools/letter-critic.ts. Personal: never leaves state/.
+#
+# never_named: deterministic regex pre-checks. Any match on a letter line is a fail.
+# standing_rules: appended, numbered, to the critic's STANDING RULES.
+
+never_named:
+  - pattern: "\\bExample\\s*Holdings\\b"
+    issue: "Names the client behind the current engagement."
+    fix: "Replace the name with 'a large Australian retailer'."
+
+standing_rules:
+  - 'The first rule, which must survive an edit to the one below it.'
+  - 'The second rule, in which the client''s name is never used.'
+
+# A comment between the rules and the sections. It must still be here afterwards.
+profile_sections:
+  - Engagement targets
+
+profile_facts:
+  - "Contracts through own company on a contract basis."

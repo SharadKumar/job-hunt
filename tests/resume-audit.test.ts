@@ -3,7 +3,17 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
-import { runAudit } from "../tools/resume/resume-audit.ts";
+import { makeTempRoot, repoFile } from "./helpers/temp-root.ts";
+
+// The audit folds in the provenance gate, which reads state/profile/cv-source.md
+// through repoPath(). That file is git-ignored, so a fresh clone has none: the
+// audit is run against the fixture profile in a temp repo root instead, which
+// also keeps the person's CV out of a template-sample audit. HARNESS_REPO_ROOT
+// must be set before the first tools/ import, hence the dynamic one.
+makeTempRoot("resume-audit-test-");
+const { runAudit } = await import("../tools/resume/resume-audit.ts");
+
+const SAMPLE = repoFile("templates/resume/classic/sample/sample-content.json");
 
 // One audit = one Chromium launch. Inject a counting launcher so the assertion
 // is structural, not inferred from timings.
@@ -16,7 +26,7 @@ const countingLaunch = async () => {
 const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "resume-audit-test-"));
 const started = Date.now();
 const { compact, full, verdict } = await runAudit({
-  contentJson: "templates/resume/classic/sample/sample-content.json",
+  contentJson: SAMPLE,
   template: "classic",
   outDir,
   filenamePrefix: "sample",
@@ -74,7 +84,7 @@ console.log("  ✓ artefacts written; audit.json holds hashes and full metrics")
 // Re-audit with unchanged content: nothing changed.
 launches = 0;
 const second = await runAudit({
-  contentJson: "templates/resume/classic/sample/sample-content.json",
+  contentJson: SAMPLE,
   template: "classic",
   outDir,
   filenamePrefix: "sample",

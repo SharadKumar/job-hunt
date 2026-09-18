@@ -1,0 +1,30 @@
+{
+  "verdict": "block",
+  "findings": [
+    {
+      "severity": "fail",
+      "source": "llm",
+      "quote": "the Vantor Freight programme I ran",
+      "issue": "Inflation of scope. Vantor Freight is described as a programme the applicant ran; the corpus says he led one stream of it.",
+      "fix": "Say 'I led the integration stream' rather than naming the whole programme."
+    },
+    {
+      "severity": "fail",
+      "source": "llm",
+      "quote": "building the Orbis Trust payments platform",
+      "issue": "Misattribution: the Orbis Trust engagement was call centre reporting, not a payments platform.",
+      "fix": "Attribute the payments work to the engagement the corpus names, or remove it."
+    }
+  ],
+  "letter_sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+  "letter_path": "/invented/archive/2/cover-letter.md",
+  "jd_path": "/invented/archive/2/jd.md",
+  "model": "sonnet",
+  "checked_at": "2026-09-15T04:32:00.000Z",
+  "llm": {
+    "session_id": "invented-session-2",
+    "cost_usd": 0.2,
+    "duration_ms": 41000,
+    "verdict": "block"
+  }
+}

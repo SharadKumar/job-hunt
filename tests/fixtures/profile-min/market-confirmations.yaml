@@ -1,0 +1,16 @@
+confirmations:
+  - resume_id: example-resume
+    signal: delivery governance
+    question: Did you own the delivery governance forum?
+    status: confirmed
+    kind: keyword
+    notes: Fixture row.
+    source_update_required: true
+    updated_at: 2026-01-02
+  - resume_id: example-resume
+    signal: portfolio reporting
+    question: Have you delivered portfolio-level reporting?
+    status: pending
+    kind: market_lens
+    notes: Fixture row.
+    updated_at: 2026-01-02

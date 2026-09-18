@@ -26,24 +26,31 @@
 
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { runResumeEdit } from "../tools/resume/resume-edit.ts";
-import { compositionContentHash, loadComposition } from "../tools/resume/lib/composition-io.ts";
-import { benchKeyForExperience } from "../tools/resume/lib/fit-ops.ts";
+import { makeTempRoot, repoFile } from "./helpers/temp-root.ts";
 import type { CriticReviewFile } from "../tools/resume/critic-apply.ts";
 import type { ResumeContent, ResumeSourceProvenance } from "../templates/resume/_interface.ts";
 
-const ref = (a: number, b: number) => [{ file: "state/profile/cv-source.md", lines: [a, b] as [number, number] }];
-
 /* ------------------------------------------------------------- fixtures */
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "resume-edit-"));
+// The edit re-anchors provenance and audits in place, and both read
+// state/profile/cv-source.md through repoPath(). That path is git-ignored, so a
+// fresh clone has none: the whole run happens inside a fixture repo root built
+// from tests/fixtures/profile-min. HARNESS_REPO_ROOT must be exported before
+// the first tools/ import, hence the dynamic imports below.
+const { root } = makeTempRoot("resume-edit-");
+
+const { runResumeEdit } = await import("../tools/resume/resume-edit.ts");
+const { compositionContentHash, loadComposition } = await import("../tools/resume/lib/composition-io.ts");
+const { benchKeyForExperience } = await import("../tools/resume/lib/fit-ops.ts");
+
+const ref = (a: number, b: number) => [{ file: "state/profile/cv-source.md", lines: [a, b] as [number, number] }];
+
 const dir = path.join(root, "state", "profile", "resumes", "sample");
 await fs.mkdir(dir, { recursive: true });
 
 const compositionPath = path.join(dir, "sample.composition.json");
-const sample = JSON.parse(await fs.readFile("templates/resume/classic/sample/sample-content.json", "utf8")) as ResumeContent;
+const sample = JSON.parse(await fs.readFile(repoFile("templates/resume/classic/sample/sample-content.json"), "utf8")) as ResumeContent;
 await fs.writeFile(compositionPath, `${JSON.stringify(sample, null, 2)}\n`);
 
 const featured = sample.experiences.filter((x) => x.placement === "feature");

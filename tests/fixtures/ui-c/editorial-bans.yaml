@@ -1,0 +1,13 @@
+# Machine-readable editorial bans for this profile's rendered CVs.
+version: 1
+
+rules:
+  - id: venture-title
+    note: The venture renders with build verbs, never ownership framing.
+    scope:
+      company: "Example Venture"
+    title_must_equal: "Founding Engineer"
+    forbidden_phrases:
+      - "founder"
+      - "incorporat"
+    severity: fail

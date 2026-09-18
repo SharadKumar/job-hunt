@@ -1,0 +1,15 @@
+{
+  "verdict": "pass",
+  "findings": [],
+  "letter_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+  "letter_path": "/invented/archive/5/cover-letter.md",
+  "jd_path": "/invented/archive/5/jd.md",
+  "model": "sonnet",
+  "checked_at": "2026-09-12T02:00:00.000Z",
+  "llm": {
+    "session_id": "invented-session-5",
+    "cost_usd": 0.2,
+    "duration_ms": 41000,
+    "verdict": "pass"
+  }
+}

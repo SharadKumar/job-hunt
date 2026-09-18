@@ -10,6 +10,15 @@
 # Start with autopilot off. Run a few attended cycles, read the prepared
 # packages, then enable it once you trust the letters the harness produces.
 
+# Google Sheet mirror. Off by default: the local UI (`npm run ui`, then
+# http://127.0.0.1:7788) is the approval surface, and it needs no Google Cloud
+# project, no service account and no credentials in .env. Set `enabled: true`
+# if you also want the phone-side Tray in a Sheet; the two run side by side.
+# A profile with no `sheet:` block at all is treated as enabled, so an older
+# profile keeps mirroring until it says otherwise.
+sheet:
+  enabled: false
+
 kill_switch: false                          # Set true to halt every submission, attended or not.
 max_auto_submits_per_day: 20                # Attended cap across all channels.
 per_channel_rate_limit_per_hour: 5          # Spacing between sends on one channel.
@@ -129,4 +138,4 @@ hard_gates:
 post_submit:
   capture_screenshot: true                   # archived at state/pipeline/archive/<opportunity-id>/confirmation.png
   capture_confirmation_text: true            # archived at .../confirmation.txt
-  write_back_to_sheet: true
+  write_back_to_sheet: true                  # the write half; it only applies while sheet.enabled is true

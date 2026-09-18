@@ -47,11 +47,19 @@
  *   npm run resume:critic:apply -- --composition <path> --findings <json> --round 2 --dry-run
  */
 
+import { readJsonIfExists } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { ResumeContent, ResumeSourceProvenance, ExperienceFeatured, ExperienceMentioned } from "../../templates/resume/_interface.ts";
 import { loadComposition, writeComposition, compositionContentHash, compositionHash } from "./lib/composition-io.ts";
 import { applyFitOps, benchKeyForExperience, type FitOp } from "./lib/fit-ops.ts";
+import {
+  appendLearnedRules,
+  collectReviews,
+  findRecurringFindings,
+  suggestedBanRules,
+  type RecurringFinding,
+} from "./critic-learn.ts";
 
 /* ----------------------------------------------------------------- types */
 
@@ -158,8 +166,9 @@ export function criticSidecarPath(compositionPath: string): string {
   return compositionPath.replace(/\.json$/, "") + ".critic.json";
 }
 
+/** Tolerant on purpose: a missing or corrupt sidecar means "no review", not a crash. */
 async function readJson(file: string): Promise<any | null> {
-  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return null; }
+  return readJsonIfExists(file).catch(() => null);
 }
 
 export async function loadCriticReview(compositionPath: string): Promise<CriticReviewFile | null> {
@@ -749,146 +758,22 @@ export function applyCriticFindings(input: {
 /* ------------------------------------------------------- recurrence rule */
 
 /**
- * The comparison key for "the same complaint, twice". Punctuation, case and
- * whitespace vary between two renders of the same defect; the words do not.
+ * Recurrence learning lives in `critic-learn.ts`: it is a different pass over a
+ * different scope (every review under the resumes directory, not this one
+ * composition), and it owns the only file this tool appends to besides the
+ * review trail. Re-exported here so every existing importer of
+ * `critic-apply.ts` keeps resolving.
  */
-export function normaliseQuotePattern(quote: string): string {
-  return String(quote ?? "")
-    .toLowerCase()
-    .replace(/[‘’“”]/g, "'")
-    .replace(/[^a-z0-9'\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export {
+  normaliseQuotePattern,
+  LEARNABLE_KINDS,
+  findRecurringFindings,
+  collectReviews,
+  appendLearnedRules,
+  suggestedBanRules,
+  type RecurringFinding,
+} from "./critic-learn.ts";
 
-/** Kinds that describe a durable editorial preference rather than a one-off. */
-export const LEARNABLE_KINDS = new Set<CriticKind>(["rule", "register", "duplicate"]);
-
-export type RecurringFinding = {
-  kind: CriticKind;
-  pattern: string;
-  resumes: string[];
-  why: string;
-  proposed_edit: string | null;
-  example_quote: string;
-};
-
-/**
- * A finding recurs when the same kind and the same normalised quote pattern
- * turn up on two or more DISTINCT resumes. One resume complaining twice is a
- * render loop, not a rule.
- */
-export function findRecurringFindings(
-  reviews: Array<{ resume: string; findings: CriticFinding[] }>,
-  minResumes = 2,
-): RecurringFinding[] {
-  const groups = new Map<string, RecurringFinding & { resumeSet: Set<string> }>();
-  for (const review of reviews) {
-    const resume = String(review?.resume ?? "").trim();
-    if (!resume) continue;
-    for (const finding of review.findings ?? []) {
-      if (!LEARNABLE_KINDS.has(finding?.kind as CriticKind)) continue;
-      const quote = finding.quotes?.[0] ?? finding.quote ?? "";
-      const pattern = normaliseQuotePattern(quote);
-      if (!pattern) continue;
-      const key = `${finding.kind}::${pattern}`;
-      const existing = groups.get(key);
-      if (existing) { existing.resumeSet.add(resume); continue; }
-      groups.set(key, {
-        kind: finding.kind,
-        pattern,
-        resumes: [],
-        resumeSet: new Set([resume]),
-        why: String(finding.why ?? "").trim(),
-        proposed_edit: typeof finding.proposed_edit === "string" ? finding.proposed_edit : null,
-        example_quote: String(quote).trim(),
-      });
-    }
-  }
-  return [...groups.values()]
-    .filter((g) => g.resumeSet.size >= minResumes)
-    .map(({ resumeSet, ...rest }) => ({ ...rest, resumes: [...resumeSet].sort() }))
-    .sort((a, b) => a.pattern.localeCompare(b.pattern));
-}
-
-/** Every `<prefix>.critic.json` under a rendered-resumes directory. */
-export async function collectReviews(resumesDir: string): Promise<Array<{ resume: string; findings: CriticFinding[] }>> {
-  const entries = await fs.readdir(resumesDir, { withFileTypes: true }).catch(() => []);
-  const out: Array<{ resume: string; findings: CriticFinding[] }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    const dir = path.join(resumesDir, entry.name);
-    const files = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".critic.json"));
-    for (const file of files) {
-      const review = (await readJson(path.join(dir, file))) as CriticReviewFile | null;
-      if (!review) continue;
-      const findings = (review.rounds ?? []).flatMap((r) => r.findings ?? []);
-      out.push({ resume: String(review.resume || entry.name), findings: findings.length ? findings : review.findings ?? [] });
-    }
-  }
-  return out;
-}
-
-const LEARNED_HEADING = "Learned from review";
-
-/**
- * Append recurring findings to the profile's prose editorial rules. Appending
- * is the point: the file is append-only by contract, and a rule already in the
- * file is never restated.
- */
-export async function appendLearnedRules(rulesPath: string, recurring: RecurringFinding[], today = new Date()): Promise<RecurringFinding[]> {
-  if (!recurring.length) return [];
-  const existing = await fs.readFile(rulesPath, "utf8").catch(() => null);
-  if (existing === null) return [];
-  const fresh = recurring.filter((r) => !existing.includes(`pattern: \`${r.pattern}\``));
-  if (!fresh.length) return [];
-  const date = today.toISOString().slice(0, 10);
-  const lines = [
-    "",
-    `## ${date} - ${LEARNED_HEADING}`,
-    "",
-    "Appended by `npm run resume:critic:apply`. Each entry is a finding the resume-critic raised on two or more separate positionings, so it is a standing preference rather than a one-off edit.",
-    "",
-  ];
-  for (const r of fresh) {
-    lines.push(`- **${r.kind}** on ${r.resumes.join(", ")}: ${r.why || "recurring review finding"}`);
-    lines.push(`  - pattern: \`${r.pattern}\``);
-    lines.push(`  - example: "${r.example_quote}"`);
-    if (r.proposed_edit) lines.push(`  - preferred wording: ${r.proposed_edit === "delete" ? "remove the unit" : `"${r.proposed_edit}"`}`);
-  }
-  lines.push("");
-  await fs.writeFile(rulesPath, `${existing.replace(/\s*$/, "")}\n${lines.join("\n")}`);
-  return fresh;
-}
-
-/**
- * A suggestion only. Writing `editorial-bans.yaml` is a user decision: a ban is
- * a hard gate on every future render, and the critic does not get to install
- * one on its own say-so.
- */
-export function suggestedBanRules(findings: CriticFinding[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const finding of findings ?? []) {
-    if (!LEARNABLE_KINDS.has(finding?.kind as CriticKind)) continue;
-    const literal = finding.forbidden_pattern?.trim()
-      || (finding.proposed_edit && isDelete(finding.proposed_edit) ? (finding.quotes?.[0] ?? finding.quote ?? "").trim() : "");
-    if (!literal) continue;
-    // Only a plain phrase is bannable from the text alone; a sentence is judgement.
-    if (literal.length > 60 || literal.split(/\s+/).length > 8 || /[.!?]$/.test(literal)) continue;
-    const id = `critic-${normaliseQuotePattern(literal).replace(/\s+/g, "-").slice(0, 40) || "phrase"}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push([
-      `  - id: ${id}`,
-      `    note: suggested by resume-critic finding ${finding.id}: ${finding.why}`,
-      `    scope: { field: any }`,
-      `    forbidden_phrases: ["${literal.replace(/"/g, '\\"')}"]`,
-      `    severity: warn`,
-    ].join("\n"));
-  }
-  return out;
-}
 
 /* ------------------------------------------------------------ recording */
 

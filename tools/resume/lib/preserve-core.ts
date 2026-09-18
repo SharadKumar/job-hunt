@@ -157,11 +157,6 @@ function tokens(value: string | undefined | null): string[] {
     .filter((w) => !NOISE_TOKENS.has(w));
 }
 
-/** Company forms differ by legal suffix and ampersand style across corpus and composition. */
-function companyKey(value: string | undefined | null): string {
-  return tokens(value).join("");
-}
-
 /** "present" / "current" / empty all mean the same open-ended end date. */
 export function normaliseDate(value: string | undefined | null): string {
   const raw = (value ?? "").trim().toLowerCase();

@@ -19,22 +19,12 @@
       "Bash(launchctl print:*)",
       "Read",
       "Write",
-      "Edit",
-      "Bash(npm run submit:seek:*)",
-      "Bash(npm run submit:linkedin:*)",
-      "Bash(npm run submit:gate:*)",
-      "Bash(npm run autopilot:submit:*)",
-      "Bash(npm run letter:critic:*)",
-      "Bash(npm run seek:saved:*)",
-      "Bash(npm run seek:unsave:*)"
+      "Edit"
     ],
     "deny": [
       "Bash(rm -rf /)",
       "Bash(git push --force:*)",
-      "Bash(git reset --hard:*)",
-      "Bash(npm run submit:recruiter_email:*)",
-      "Bash(node tools/channels/recruiter-email*)",
-      "Bash(tsx tools/channels/recruiter-email*)"
+      "Bash(git reset --hard:*)"
     ]
   },
   "hooks": {
@@ -44,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/session-start.sh"
+            "command": "bash \"$(git rev-parse --show-toplevel)/.claude/hooks/session-start.sh\""
           }
         ]
       }

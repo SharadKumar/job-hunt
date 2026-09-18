@@ -1,0 +1,163 @@
+/* pipeline.css - the Pipeline screen (#/pipeline/<segment>).
+
+   Tokens, type and every shared primitive come from app.css: `.list`,
+   `.list-row` and its cells, `.pill`, `.segments`, `.chips`, `.inline-field`,
+   `.chip`, `.btn` and `.group-heading` are all defined there and are not
+   repeated here. Nothing in this file introduces a colour, a radius or a
+   shadow of its own.
+
+   What this file adds, and why each one is not a primitive:
+
+     .chips-slot   the strip of filters is rebuilt when the segment's rows
+                   arrive, so it needs a slot of its own to be swapped into.
+     .chip-group   the channel chips are one group inside the chip row, and
+                   the group wraps as a unit rather than a chip at a time.
+     .pipeline-count  the list header's "Show all" sits on the count's
+                   baseline. It is a second class on app.css's `.page-count`,
+                   so neither file defines the other's selector.
+     .pipeline-list .group-heading  a group heading is a scroll target for Today's
+                   links, so it keeps clear of the top of the viewport.
+     .mark-sent    the small forms a selected row's control opens.
+     .job-line     one line of a tool's own verdict, never softened.
+*/
+
+/* --- Split application workbench ---------------------------------------- */
+
+.view[data-route="pipeline"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="pipeline"] > .page-header {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+}
+
+.pipeline-tabs { max-width: min(960px, 68vw); overflow-x: auto; scrollbar-width: none; }
+.pipeline-tabs::-webkit-scrollbar { display: none; }
+.pipeline-tabs .tally { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.pipeline-workbench {
+  display: grid;
+  grid-template-columns: minmax(320px, 34%) minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.pipeline-browser {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wash);
+  border-right: 1px solid var(--rule);
+}
+
+.pipeline-browser-head { padding: 24px 24px 12px; }
+.pipeline-browser-head .eyebrow { margin-bottom: 4px; }
+.pipeline-browser-head h2 { margin: 0; }
+.pipeline-browser .chips-slot { padding: 0 24px; }
+.pipeline-detail-slot { min-width: 0; min-height: 0; overflow: hidden; }
+.pipeline-detail-slot > .today-detail { height: 100%; min-height: 0; }
+
+/* Pipeline rows are selection targets, not small forms. The selected
+   application owns the controls in the right pane. */
+.pipeline-list { flex: 1 1 auto; min-height: 0; overflow: auto; border-top: 1px solid var(--rule); }
+.pipeline-list .pipeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px 24px;
+  color: inherit;
+  text-decoration: none;
+}
+.pipeline-list .pipeline-item:hover { background: var(--paper); text-decoration: none; }
+.pipeline-list .pipeline-item.selected { background: var(--paper); }
+.pipeline-list .pipeline-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+.pipeline-item-score { color: var(--ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pipeline-item-copy { min-width: 0; display: flex; flex-direction: column; }
+.pipeline-item-title { overflow-wrap: anywhere; }
+.pipeline-item-meta, .pipeline-item-reason, .pipeline-item-when { font-size: 13px; color: var(--muted); }
+.pipeline-item-meta { margin-top: 4px; }
+.pipeline-item-reason { margin-top: 4px; color: var(--ink); }
+.pipeline-item-when { white-space: nowrap; }
+
+.pipeline-list .group-heading {
+  margin: 0;
+  padding: 16px 24px 8px;
+  background: var(--wash);
+}
+
+/* Sections group the Needs you list and the Sent follow-ups. The rhythm
+   between two sections is 32 px; inside one, the hairline is the gap. */
+.pipeline-list > section + section { margin-top: 0; }
+.pipeline-list > section:first-child > .group-heading { margin-top: 0; }
+
+/* A heading Today links straight at (#/pipeline/needs#open_portal) must not
+   land under the top of the viewport. The selector is scoped to the list
+   rather than restated, because app.css owns `.group-heading` itself. */
+.pipeline-list .group-heading { scroll-margin-top: 24px; }
+
+/* The count line carries the way out of a capped list on its own baseline. It
+   is the page header's own `.page-count` with one more class, so app.css keeps
+   the only definition of the header line. */
+.pipeline-count { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+/* --- The filters --------------------------------------------------------- */
+
+.chips-slot:empty { display: none; }
+
+/* The channel chips wrap as one group, so a lone chip never orphans on a line
+   of its own beside the score floor and the sort. */
+.chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* --- What a row's own control opens -------------------------------------- */
+
+/* One line from a job the person started: the progress while it runs, then the
+   tool's own verdict. Never rewritten into something softer (AGENTS.md 3.8). */
+.job-line { margin: 0; font-size: 13px; }
+.job-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.job-progress:empty { display: none; }
+
+/* Recording an application the person sent themselves, and reopening a closed
+   row: both are a small form under the row, opened by the row's own button.
+   The fields inside are `.field` and `.action-fields` from app.css. */
+.mark-sent { display: grid; gap: 8px; padding: 12px 0 0; }
+.mark-sent .action-buttons { margin-bottom: 0; }
+.mark-sent .field { max-width: 420px; }
+
+@media (max-width: 959px) {
+  .view[data-route="pipeline"] { display: block; height: auto; padding-top: calc(var(--shell-h) + 16px); padding-bottom: 32px; overflow: visible; }
+  .view[data-route="pipeline"] > .page-header { grid-template-columns: minmax(0, 1fr); margin: 0 0 16px; }
+  .view[data-route="pipeline"] > .page-header .page-aside { width: 100%; min-width: 0; justify-self: stretch; margin-top: 12px; }
+  .pipeline-tabs { width: 100%; max-width: 100%; }
+  .pipeline-tabs a { flex: 0 0 auto; white-space: nowrap; }
+  .pipeline-workbench { grid-template-columns: minmax(0, 1fr); }
+  .pipeline-browser, .pipeline-list, .pipeline-detail-slot { overflow: visible; }
+  .pipeline-browser { border-right: 0; border-bottom: 1px solid var(--rule); }
+}
+
+@media (max-width: 719px) {
+  .pipeline-workbench { margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .pipeline-detail-slot { grid-row: 1; }
+  .pipeline-browser { grid-row: 2; }
+  .pipeline-list .pipeline-item { padding-right: 16px; padding-left: 16px; }
+  .pipeline-item-when { display: none; }
+}

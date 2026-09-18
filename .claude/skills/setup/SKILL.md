@@ -3,11 +3,11 @@ name: setup
 description: Guided first-run setup on a new machine, from a fresh clone to autopilot. Use when the user says "set me up", "get this running", "new machine", "configure the harness", "connect my Google Sheet", "log in to SEEK / LinkedIn", "turn on autopilot", or when `npm run setup:check` reports a blocked stage, or when session start finds no profile. Checks the machine, scaffolds the profile, asks the questions the profile needs, ingests the CV, hands off to /onboarding and /resume-review, logs the channels in, connects the Sheet, installs the daily schedule, and switches autopilot on. Works the same under Claude Code and Codex.
 ---
 
-# /setup — from clone to autopilot
+# /setup: from clone to autopilot
 
 You are walking a person through their first run. They may know nothing about this repo. Be brief, ask in batches with the structured question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex; fall back to a numbered plain-text list only if neither exists), and never guess at machine state: `npm run setup:check` is the source of truth for what is done and what is next.
 
-Resolve the repo root first (`bash .claude/hooks/repo-root.sh`) and treat it as the base for every path.
+Resolve the repo root first (`references/harness/repo-root.md`).
 
 ## Loop
 
@@ -47,17 +47,19 @@ Invoke the `resume-review` skill. It renders every active positioning through `r
 
 1. Ask which channels to enable: SEEK (Australia), LinkedIn Jobs, LinkedIn hiring posts, HN Who is Hiring. Set `enabled: true` in `state/profile/channels.yaml` for the chosen ones; set the `location` / `geo` fields from the profile.
 2. For SEEK and LinkedIn, the login is theirs to do: tell them to run `! npm run login:seek` and `! npm run login:linkedin`. Each opens a browser; they log in once; the session persists under `state/channels/`. Wait for them to say it is done, then re-run the check.
-3. Ask whether they use SEEK's "save job" feature and explain the rule: a saved job is an order to apply, regardless of score.
+3. Ask whether they use SEEK's "save job" feature and explain the rule in one line: a saved job is an order to apply, regardless of score (`references/harness/saved-jobs-rule.md`).
 
-## Stage 6: Google Sheet (optional)
+## Stage 6: Google Sheet (optional, and off by default)
 
-Ask whether they want the phone-side Tray. If no, skip; the check treats an unconfigured Sheet as fine. If yes, guide them through it in order, one step per message, waiting for each:
+The local UI (stage 9) is the approval surface, so this stage is a genuine opt-in. The template ships `sheet.enabled: false` in `submission-policy.yaml` and the check then reports stage 6 as `skipped`, not blocked. Ask whether they also want the phone-side Tray in a Google Sheet. If no, leave the flag alone and move on. If yes, set `sheet.enabled: true` first, then guide them through it in order, one step per message, waiting for each:
 
 1. Google Cloud console: create a project (or use one), enable the Google Sheets API.
 2. IAM > Service accounts: create one, then Keys > Add key > JSON. Save the file somewhere outside the repo.
 3. Create an empty Google Sheet. Share it with the service account's email (the `client_email` field in the JSON) as Editor.
 4. Put the JSON path in `.env` as `GOOGLE_APPLICATION_CREDENTIALS` and the Sheet id (the long segment of the URL) as `SHEETS_SPREADSHEET_ID`. You may edit `.env` for them if they paste the values.
 5. Re-run the check; `sheet_reachable` reports the Sheet's title when it works. Then `npm run sheets:sync` to create the tabs.
+
+They can switch the mirror back off at any time with `sheet.enabled: false`; every Sheet step then exits 0 with `skipped: "sheet.enabled=false"` and nothing else changes.
 
 The most common failure is step 3 (Sheet not shared with the service-account email); say so when `sheet_reachable` fails with a 403.
 
@@ -69,7 +71,7 @@ Before enabling any schedule, make sure they have done at least one attended app
 
 ## Stage 8: autopilot
 
-Explain the two lanes in three sentences: one-click channels (SEEK Quick Apply, LinkedIn Easy Apply) can send unattended once the letter-critic and the gate pass; everything else stops at a prepared package for them; the kill switch in `submission-policy.yaml` stops everything. Then ask, as one structured question: "Turn autopilot on now?" with options: On for SEEK and LinkedIn (Recommended after an attended run) / On for SEEK only / Not yet. Write `autopilot.enabled` and `autopilot.channels` accordingly, keep `max_per_day` at the template default unless they ask, and re-run the check.
+Explain the two lanes in three sentences: one-click channels (SEEK Quick Apply, LinkedIn Easy Apply) can send unattended once the letter-critic and the gate pass (`references/harness/autopilot-gates.md`); everything else stops at a prepared package for them; the kill switch in `submission-policy.yaml` stops everything. Then ask, as one structured question: "Turn autopilot on now?" with options: On for SEEK and LinkedIn (Recommended after an attended run) / On for SEEK only / Not yet. Write `autopilot.enabled` and `autopilot.channels` accordingly, keep `max_per_day` at the template default unless they ask, and re-run the check.
 
 When `ready_for_autopilot: true`, print the closing brief:
 
@@ -79,6 +81,17 @@ When `ready_for_autopilot: true`, print the closing brief:
 - that `state/` is git-ignored and never leaves the machine
 
 Write a journal entry summarising what was configured (no secrets, no key paths).
+
+## Stage 9: local UI (optional, never blocking)
+
+Stage 9 only reports: whether `~/Library/LaunchAgents/com.job-hunt-harness.ui.plist` is installed and points at this checkout, and whether something answers on `127.0.0.1:7788`. It never blocks `ready_for_autopilot`, so treat a failing check as an offer, not a fault.
+
+Tell them in one line what the UI is: the local approval surface, same decisions as the Sheet Tray, no credentials needed. Then offer two commands:
+
+- run it when they want it: `npm run ui -- --open`
+- keep it running across reboots: `bash scripts/install-ui-launchd.sh` (logs to `state/journal/launchd/ui.log`, remove with `--uninstall`)
+
+If they want it on their phone, say the two conditions in one sentence: reach the machine over Tailscale or the LAN, and start it with `--host <that address>` plus a long random `HARNESS_UI_TOKEN` (the plist has the line commented out, ready to fill). Never put a token in the journal.
 
 ## Rules
 

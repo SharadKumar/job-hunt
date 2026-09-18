@@ -1,6 +1,6 @@
 # Cover-letter quality checks (universal)
 
-The checks cover-letter-writer runs against every cover letter, regardless of template. Template-agnostic — they describe what makes any cover letter fit-to-send.
+The checks cover-letter-writer runs against every cover letter, regardless of template. Template-agnostic: they describe what makes any cover letter fit-to-send.
 
 cover-letter-writer reads this file on every invocation, then optionally overlays per-template overrides from `templates/cover-letter/<name>/quality-checks.md` (rare).
 
@@ -9,7 +9,7 @@ Each check declares:
 - **what**: human description
 - **how**: how to check
 - **auto_fix**: action when auto-fixable
-- **severity**: `pass | warn | fail` — fail means human review needed; warn is logged
+- **severity**: `pass | warn | fail`, where fail means human review needed; warn is logged
 
 ---
 
@@ -50,7 +50,7 @@ Each check declares:
 - **severity**: fail (any reader sees this as wrong)
 
 ### opener_pattern
-- **what**: the first sentence leads with a specific credential, outcome, or relevance hook — NOT one of the forbidden hollow openers ("I am writing to…", "I hope this message finds you well…", "I'm thrilled to…", "I'm excited to apply…", "I'm reaching out to…", "As a [job title] with X years of experience…")
+- **what**: the first sentence leads with a specific credential, outcome, or relevance hook, and NOT one of the forbidden hollow openers ("I am writing to…", "I hope this message finds you well…", "I'm thrilled to…", "I'm excited to apply…", "I'm reaching out to…", "As a [job title] with X years of experience…")
 - **how**: regex the first sentence against the forbidden patterns; also judge whether it leads with substance
 - **auto_fix**: regenerate with explicit instruction on what to lead with (the target's `cover_letter_angle`)
 - **severity**: fail (hollow openers are the strongest AI-tell)
@@ -86,7 +86,7 @@ Each check declares:
 ### no_unsupported_claims
 - **what**: every concrete claim in the letter (years of experience, specific platforms, specific industries) is supported by the user's actual CV. No "5 years of React" if the user has 2; no "Kubernetes expert" if the user has only adjacency.
 - **how**: read the letter + the canonical CV (`state/profile/cv/`); cross-check each numerical/expertise claim
-- **auto_fix**: none — fabricated claims are an integrity issue; regenerate with explicit instruction to stick to verifiable claims
+- **auto_fix**: none, because fabricated claims are an integrity issue; regenerate with explicit instruction to stick to verifiable claims
 - **severity**: fail
 
 ### profile_editorial_rules

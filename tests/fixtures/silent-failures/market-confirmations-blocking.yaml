@@ -1,0 +1,12 @@
+confirmations:
+  - resume_id: silent-failure-lens
+    signal: formal LLM evals
+    question: Were formal LLM evals used?
+    status: confirmed
+    source_update_required: true
+    updated_at: "2026-09-17"
+  - resume_id: silent-failure-lens
+    signal: autonomous production agents
+    question: Were autonomous production agents deployed?
+    status: declined
+    updated_at: "2026-09-17"

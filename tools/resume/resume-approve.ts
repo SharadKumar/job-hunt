@@ -22,9 +22,37 @@ import { getResume } from "../resumes.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { compositionContentHash } from "./lib/composition-io.ts";
 
+/**
+ * metadata.json IS the approval state: whether a baseline is approved, against
+ * which content hash, and what the critic said. A `null` here reads downstream
+ * as "no baseline yet", so swallowing a parse error turned a corrupt approval
+ * record into a fresh, unapproved one that `approve` would then happily
+ * overwrite. Missing is a fact; unreadable is a stop.
+ */
 async function loadMeta(resumeId: string, perResumeDir: string): Promise<any | null> {
-  try { return JSON.parse(await fs.readFile(path.join(perResumeDir, resumeId, "metadata.json"), "utf8")); }
-  catch { return null; }
+  const file = path.join(perResumeDir, resumeId, "metadata.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return null;
+    throw new Error(`cannot read approval state ${file}: ${error?.message ?? error}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error: any) {
+    throw new Error(`approval state ${file} is not valid JSON (${error?.message ?? error}). Repair it or delete it and re-render the baseline.`);
+  }
+}
+
+/** Directory listing that treats "not there" as empty and anything else as a stop. */
+async function readdirOrEmpty(dir: string): Promise<string[]> {
+  try {
+    return await fs.readdir(dir);
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return [];
+    throw new Error(`cannot list ${dir}: ${error?.message ?? error}`);
+  }
 }
 
 async function saveMeta(resumeId: string, meta: any, perResumeDir: string): Promise<void> {
@@ -33,8 +61,7 @@ async function saveMeta(resumeId: string, meta: any, perResumeDir: string): Prom
 }
 
 async function listResumes(perResumeDir: string): Promise<string[]> {
-  try { return (await fs.readdir(perResumeDir)).filter((d) => !d.startsWith(".")); }
-  catch { return []; }
+  return (await readdirOrEmpty(perResumeDir)).filter((d) => !d.startsWith("."));
 }
 
 type RenderedArtefacts = {
@@ -48,7 +75,7 @@ type RenderedArtefacts = {
 
 async function findRenderedArtefacts(resumeId: string, perResumeDir: string): Promise<RenderedArtefacts | null> {
   const dir = path.join(perResumeDir, resumeId);
-  const files = await fs.readdir(dir).catch(() => [] as string[]);
+  const files = await readdirOrEmpty(dir);
   const pick = (ext: string) => files.find((f) => f.endsWith(ext) && !f.startsWith(".")) ?? null;
   const artefacts = {
     docx: pick(".docx"),
@@ -126,7 +153,7 @@ async function criticBlockReason(resumeId: string, perResumeDir: string): Promis
   // that helper returns null unless a rendered docx/pdf/html/md is present, and
   // a gate that quietly opens when it cannot find its evidence is not a gate.
   const dir = path.join(perResumeDir, resumeId);
-  const compositionFile = (await fs.readdir(dir).catch(() => [] as string[]))
+  const compositionFile = (await readdirOrEmpty(dir))
     .find((f) => f.endsWith(".composition.json") && !f.startsWith("."));
   const current = compositionFile ? await compositionContentHash(path.join(dir, compositionFile)) : null;
   if (current && critic.composition_hash && current !== critic.composition_hash) {
@@ -170,7 +197,7 @@ async function status(perResumeDir: string, profileId?: string | null): Promise<
   const ids = await listResumes(perResumeDir);
   const out = await Promise.all(ids.map(async (id) => {
     const m = await loadMeta(id, perResumeDir) ?? await inferMetaFromRendered(id, perResumeDir, profileId);
-    if (!m) return { id, status: "missing" };
+    if (!m) return { id, status: "missing", approval_state: "missing" };
     return {
       id,
       status: m.approval_status,
@@ -185,7 +212,11 @@ async function status(perResumeDir: string, profileId?: string | null): Promise<
 
 async function check(resumeId: string, perResumeDir: string, profileId?: string | null): Promise<void> {
   const m = await loadMeta(resumeId, perResumeDir) ?? await inferMetaFromRendered(resumeId, perResumeDir, profileId);
-  if (!m) { console.error(`No baseline for '${resumeId}'`); process.exit(2); }
+  if (!m) {
+    console.log(JSON.stringify({ resume: resumeId, approval_state: "missing" }, null, 2));
+    console.error(`No baseline for '${resumeId}'`);
+    process.exit(2);
+  }
   if (m.approval_status === "approved") process.exit(0);
   if (m.approval_status === "stale") { console.error(`stale — re-review needed`); process.exit(1); }
   process.exit(2);

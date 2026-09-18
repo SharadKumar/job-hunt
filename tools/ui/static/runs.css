@@ -1,0 +1,117 @@
+/* runs.css - the list of daily runs and one run's page
+   (#/schedules, #/schedules/<date>).
+   Tokens, type and every shared primitive come from app.css; nothing here
+   introduces a colour, a radius or a shadow of its own.
+
+   The screen follows the same three-level flow as Resumes: persistent app
+   navigation, run history, and one selected run with tabbed evidence. */
+
+.view[data-route="schedules"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  padding-top: calc(var(--shell-h) + 16px);
+  padding-bottom: 16px;
+  overflow: hidden;
+}
+
+.view[data-route="schedules"] > .page-header { flex: 0 0 auto; margin: 0 0 16px; }
+.runs-stage { flex: 1 1 auto; min-height: 0; }
+
+.runs-workbench {
+  display: grid;
+  grid-template-columns: minmax(260px, 30%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.run-browser { min-width: 0; overflow: auto; background: var(--wash); border-right: 1px solid var(--rule); }
+.run-browser-head { padding: 24px; }
+.run-browser-head .eyebrow { margin-bottom: 4px; }
+.run-browser-head h2 { margin: 0; }
+.run-browser-list { display: block; border-top: 1px solid var(--rule); }
+
+/* A whole row that is a link. app.css knows how one tints on hover but not
+   that it must lose the browser's own underline, and a list row whose title,
+   meta line and tally are all underlined reads as three links rather than one
+   target. Said here rather than in app.css, which this pass may not add to. */
+.run-row { position: relative; color: inherit; text-decoration: none; }
+.run-browser .run-row { padding: 16px 24px; }
+.run-row:hover { text-decoration: none; }
+.run-row:hover .list-title { text-decoration: underline; }
+.run-row.selected { background: var(--paper); }
+.run-row.selected::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--you); }
+
+.run-selected { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.run-selected-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 24px; padding: 24px 32px 16px; }
+.run-selected-head h2 { margin: 0; font-size: 27px; }
+.run-meta { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 13px; }
+.run-selected-tabs { flex: 0 0 auto; padding: 0 32px; border-bottom: 1px solid var(--rule); }
+.run-inspector-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 24px 32px 32px; }
+.run-overview { min-width: 0; }
+
+/* 32 px between the sections of a run's page, 12 px from a heading to its
+   list, which is what `h2` already carries. */
+.run-section { margin-top: 32px; }
+
+
+/* The run's own arithmetic. A definition list in two columns: the label at
+   13 px muted, the figure at 15 px in ink, tabular, so the column of numbers
+   reads down. */
+.run-numbers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  border-top: 1px solid var(--rule);
+}
+
+.run-number-key,
+.run-number-value {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.run-number-key { font-size: 13px; color: var(--muted); }
+.run-number-value { justify-self: end; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* --- The folds ---------------------------------------------------------- */
+
+.run-fold { margin-top: 16px; }
+
+/* The launchd log as it was written. It wraps: there is no inner scroll region
+   in this UI, and a log the person has to drag sideways to read is one. */
+.run-log {
+  margin: 0;
+  padding: 12px;
+  border-radius: 4px;
+  background: var(--wash);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The letters an unattended run sent, each under the line that names the send
+   (AGENTS.md section 3.9). */
+.run-letter { padding-top: 12px; border-top: 1px solid var(--rule); }
+.run-letter:first-child { padding-top: 0; border-top: 0; }
+.run-letter-head { margin: 0 0 8px; font-weight: 600; max-width: var(--measure); }
+
+@media (max-width: 719px) {
+  .view[data-route="schedules"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="schedules"] > .page-header { margin: 32px 0 24px; }
+  .runs-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .run-selected { grid-row: 1; overflow: visible; }
+  .run-selected-head, .run-selected-tabs, .run-inspector-body { padding-right: 16px; padding-left: 16px; }
+  .run-selected-tabs { overflow-x: auto; }
+  .run-inspector-body { overflow: visible; }
+  .run-browser { grid-row: 2; overflow: visible; border-top: 1px solid var(--rule); border-right: 0; }
+}
+
+@media (min-width: 720px) and (max-width: 1099px) {
+  .runs-workbench { grid-template-columns: minmax(240px, 32%) minmax(0, 1fr); }
+}

@@ -21,9 +21,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import YAML from "yaml";
-import { load as loadPipeline, save as savePipeline, upsert, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
@@ -182,6 +181,7 @@ export async function enrichSeekRoles(options: {
   if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
 
   const ctx = await openChromeContext("seek-enrich", { headless: true });
+  const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0;
   let unchanged = 0;
   let failed = 0;
@@ -226,8 +226,20 @@ export async function enrichSeekRoles(options: {
             workArrangement: inferArrangement(data.location || role.location || "", data.description),
           };
           const changed = applySeekEnrichment(role, enrichment);
-          if (changed) enriched++;
-          else unchanged++;
+          if (changed) {
+            enriched++;
+            // Queue the enriched fields; one transaction at the end beats a
+            // whole-pipeline rewrite per enriched row.
+            patches.push({
+              id: role.id,
+              fields: {
+                description: role.description,
+                location: role.location,
+                postedAt: role.postedAt,
+                workArrangement: role.workArrangement,
+              },
+            });
+          } else unchanged++;
         } catch (error) {
           failed++;
           console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}`);
@@ -246,7 +258,7 @@ export async function enrichSeekRoles(options: {
     await ctx.close();
   }
 
-  if (enriched) await savePipeline(roles);
+  if (patches.length) await patchMany(patches, "seek:enrich");
   return { selected: candidates.length, enriched, unchanged, failed };
 }
 
@@ -504,8 +516,9 @@ async function main() {
     let alreadyKnown = 0;
     let expired = 0;
     if (upsertFlag) {
-      const known = new Map((await loadPipeline()).map((r) => [r.id, r]));
+      const known = new Map((await listPipeline()).map((r) => [r.id, r]));
       const now = new Date().toISOString();
+      const batch: (Partial<Opportunity> & { channel: string; url: string; title: string; company: string })[] = [];
       for (const job of jobs) {
         if (job.expired) {
           expired++;
@@ -527,12 +540,13 @@ async function main() {
           ...(existing ? {} : { location: job.location, status: "discovered" as const }),
         };
         if (!existing?.userSavedAt) partial.userSavedAt = now;
-        await upsert(partial);
+        batch.push(partial);
         ids.push(id);
       }
+      await upsertMany(batch);
       console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, ids }, null, 2));
     } else {
-      const known = new Set((await loadPipeline()).map((r) => r.id));
+      const known = new Set((await listPipeline()).map((r) => r.id));
       for (const job of jobs) {
         const id = opportunityIdFor("seek", job.url);
         ids.push(id);
@@ -564,11 +578,9 @@ async function main() {
   const opportunities = await seek.search(cfg);
   console.error(`[seek] discovered ${opportunities.length} opportunities`);
   if (upsertFlag) {
-    for (const r of opportunities) {
-      const id = opportunityIdFor(r.channel, r.url);
-      const partial: any = { ...r, id, status: "discovered" };
-      await upsert(partial);
-    }
+    // One transaction for the whole page of cards: the old per-card upsert
+    // reloaded and rewrote the entire pipeline ~750 times per hunt.
+    await upsertMany(opportunities.map((r) => ({ ...r, id: opportunityIdFor(r.channel, r.url), status: "discovered" as const })));
     console.error(`[seek] upserted ${opportunities.length} opportunities`);
   } else {
     console.log(JSON.stringify(opportunities, null, 2));

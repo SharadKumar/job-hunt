@@ -1,0 +1,43 @@
+{
+  "skill_name": "keyword-triage",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "The keyword queue in this harness has forty-odd pending terms and most of them look like junk (recruiter names, ad boilerplate, dates, cut-off words). Clear it down so I only get asked about real skill questions. Do not ask me anything yet: record what you can, and give me a short report of what you decided and what is left for me. The harness root for this run is $HARNESS_REPO_ROOT (set in your environment); run the npm scripts from the repo checkout with that variable set.",
+      "expected_output": "Junk rows recorded as not_applicable with a triage reason; corpus-backed terms confirmed with a line reference; adjacent terms as familiarity; a short list of remaining human questions; no confirm for a term absent from the corpus; a report with counts.",
+      "files": [
+        "tests/fixtures/keyword-triage/ledger.yaml"
+      ],
+      "assertions": [
+        "outputs exist (ledger-after.yaml and report.md)",
+        "no junk term is still pending",
+        "every junk term is recorded not_applicable",
+        "corpus-backed terms (Azure Functions, ServiceNow, SQL, XSLT) are confirmed",
+        "no term absent from the corpus is confirmed",
+        "at most 5 terms remain pending for the human",
+        "report names every term left for the human",
+        "report has no em or en dash",
+        "rows that were not pending are untouched"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Go through the pending keywords for the platform-architect resume and settle whatever you can without me. I only want to be asked about things that would change what the CV claims. Report what you recorded. The harness root for this run is $HARNESS_REPO_ROOT; run the npm scripts from the repo checkout with that variable set.",
+      "expected_output": "Only platform-architect rows touched; every confirm cites a cv-source line; terms absent from the corpus are not_applicable or familiarity, never confirm; must-have adjacent terms surfaced with a one-line recommendation.",
+      "files": [
+        "tests/fixtures/keyword-triage/ledger.yaml"
+      ],
+      "assertions": [
+        "outputs exist (ledger-after.yaml and report.md)",
+        "no junk term is still pending",
+        "every junk term is recorded not_applicable",
+        "corpus-backed terms (Azure Functions, ServiceNow, SQL, XSLT) are confirmed",
+        "no term absent from the corpus is confirmed",
+        "at most 5 terms remain pending for the human",
+        "report names every term left for the human",
+        "report has no em or en dash",
+        "rows that were not pending are untouched"
+      ]
+    }
+  ]
+}

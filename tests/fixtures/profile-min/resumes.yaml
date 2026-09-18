@@ -1,0 +1,45 @@
+# One complete, standalone positioning. No org resume-types pool in the fixture,
+# so every required field is present here.
+render_efficiency:
+  target_minutes_per_baseline: 4
+  hard_stop_minutes: 7
+  max_full_render_iterations: 3
+  max_reaudit_only_iterations: 1
+
+resumes:
+  - id: example-resume
+    label: Example Consultant
+    display_headline: Example Consultant
+    active: true
+    template: classic
+    page_policy:
+      target_pages: 2
+      preferred: 2
+      hard_max: 2
+      last_page_min_fill_pct: 75
+    search_keywords:
+      - Example Consultant
+    should:
+      - delivery ownership
+    could:
+      - governance experience
+    flagged:
+      - junior role
+    cover_letter_angle: >-
+      Led an example programme end to end and ran the governance forum that
+      signed off each release.
+    rate_band:
+      floor: 1000
+      target: 1200
+      ceiling: 1400
+      currency: AUD
+      billing_unit: day
+      gst_handling: + GST
+    preferred_channels:
+      - seek
+    market_lens:
+      clouds:
+        - { id: example-delivery, weight: 5 }
+      must_signal:
+        - delivery governance
+    notes: Fixture positioning; not a real market strategy.

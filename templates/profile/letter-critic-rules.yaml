@@ -23,6 +23,15 @@ never_named: []
 standing_rules: []
 #  - 'The current engagement is "in delivery, first release live"; never "complete" or "delivered end to end".'
 #  - 'The 2019 side project is never mentioned in letters and is never attributed to an employer.'
+#
+# `npm run letter:critic -- --digest --since 14d` groups the fail findings of
+# recent blocked letters by theme and prints a `proposed_rule` per theme in
+# exactly this shape. A theme with count >= 2 is the writer making the same
+# mistake twice, so it belongs here. Paste the line, then edit it to say the
+# permitted wording before you keep it; the digest can only see what was wrong,
+# only you know what is right. Promote in an attended session, never from the
+# unattended daily run. A pasted candidate looks like this:
+#  - 'acme holdings: blocked 3 letters on inflation. Say only what cv-source.md supports about it, in the corpus''s own scope and verb. Permitted wording: "I led the integration stream", not "I ran the programme".'
 
 # Which "## " sections of profile.md the critic receives as PROFILE FACTS
 # (heading prefix match). The defaults below are what the skeleton profile has.

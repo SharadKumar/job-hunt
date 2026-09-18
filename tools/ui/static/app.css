@@ -1,0 +1,1248 @@
+/*
+ * app.css - the tokens, the type, the layout and the primitives every screen
+ * in the local harness UI is built from. One file per screen sits beside this
+ * one (today.css, pipeline.css, row.css, resumes.css, guardrails.css,
+ * runs.css, settings.css) and owns nothing that is shared.
+ *
+ * The room this has to work in: one person, in the morning, after an
+ * unattended run, deciding what the machine did under their name and what it
+ * still needs from them. The page is a private control room, not a dashboard:
+ * a written brief at the top, quiet hairline lists under it, and one accent
+ * colour that means "your action" and nothing else.
+ *
+ * The contract is docs/ui-redesign-2026-09-18.md, sections 3, 6 and 7. The
+ * house rules it fixes, enforced here:
+ *   1. two families, both already on the machine: a serif for voice, the
+ *      system sans for data. Nothing is fetched.
+ *   2. `--you` is the only decorative colour, and it is never used on
+ *      something that is not a link or an action. Verdict colours are used
+ *      only for verdicts. A score is a number in ink, tabular, never green.
+ *   3. flat surfaces: no drop shadow anywhere.
+ *   4. one spacing scale: 4, 8, 12, 16, 24, 32, 48, and nothing else. The one
+ *      component metric off it is the 10 px side padding section 7 fixes for a
+ *      form field.
+ *   5. no all-caps labels, no ellipsis truncation, no inner scroll region.
+ *   6. breakpoints at 720 and 960, and a tap target of 40 px on a touch
+ *      screen.
+ *   7. dark and light purely through prefers-color-scheme, no theme toggle.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #ffffff;   /* the page */
+  --ink: #141414;     /* text, primary button fill */
+  --muted: #66655f;   /* secondary text, small labels */
+  --rule: #dcdbd6;    /* hairlines */
+  --wash: #f4f3ef;    /* selected row, code, tag fill */
+  --you: #2337c6;     /* the person's lane: needs you, links, primary action */
+  --pass: #1a7f3c;    /* machine verdict: pass, sent */
+  --fail: #b3261e;    /* machine verdict: fail, block, reject, kill switch */
+  --warn: #8a5a00;    /* warn: worth a look */
+  --sidebar: #14233b;  /* persistent navigation */
+  --sidebar-ink: #ffffff;
+  --sidebar-muted: rgba(255, 255, 255, 0.68);
+  --sidebar-active: rgba(255, 255, 255, 0.12);
+  --sidebar-w: 216px;
+  --shell-h: 64px;
+
+  /*
+   * The names the screens were written against, while each screen is being
+   * rewritten in its own pass. They are aliases, not a second palette: every
+   * one of them resolves to a token above, so nothing on screen can drift
+   * from the table in docs/ui-redesign-2026-09-18.md. A screen agent drops
+   * the alias from its own file as it goes.
+   */
+  --page: var(--paper);
+  --card: var(--paper);
+  --hover: var(--wash);
+  --grey: var(--muted);
+  --line: var(--rule);
+  --pill: var(--wash);
+  --pill-ink: var(--muted);
+  --green: var(--pass);
+  --red: var(--fail);
+  --amber: var(--warn);
+
+  --serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  --sans: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+
+  --maxw: 1080px;
+  --gutter: 24px;
+  --measure: 62ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e0f11;
+    --ink: #e8e6e1;
+    --muted: #9d9b94;
+    --rule: #2a2c30;
+    --wash: #17181b;
+    --you: #8fa0ff;
+    --pass: #4cc574;
+    --fail: #f2685f;
+    --warn: #d9a03a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: inherit; }
+a:hover { text-decoration: underline; }
+
+/* Every interactive element carries the same visible ring, so a keyboard can
+   always see where it is (section 7, Keyboard and focus). */
+:focus-visible {
+  outline: 2px solid var(--you);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* --- Header ------------------------------------------------------------- */
+
+.top {
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* The bar stretches its children, so a nav link is as tall as the bar and its
+   2 px underline lands exactly on the bar's own hairline (margin-bottom: -1px
+   pulls the link over the rule). Everything that is not a link, the wordmark,
+   the switch and the cog, is centred back. */
+.top-inner {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.brand:hover { text-decoration: none; }
+.brand .rocket { font-size: 18px; line-height: 1; }
+
+.nav {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  justify-content: flex-end;
+}
+
+.nav a {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 400;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.nav a:hover { text-decoration: none; border-bottom-color: var(--rule); }
+.nav a[aria-current="page"] { font-weight: 600; border-bottom-color: var(--you); }
+
+/* Above 720 px the nav is always shown, so the Menu button is not. Scoped to
+   the header so it beats the `.btn` display the button also carries. */
+.top .menu-toggle { display: none; }
+
+/* A screen's own tabs, on the page rather than in the header: the same
+   underline the nav uses, one step down the type scale, so the second level of
+   navigation is visibly second. They sit in the page header's aside slot. */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 13px;
+  color: var(--muted);
+  padding-bottom: 4px;
+  border-bottom: 2px solid transparent;
+}
+.tabs a:hover { text-decoration: none; color: var(--ink); border-bottom-color: var(--rule); }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--you); }
+
+/* The cog is a bare icon, not a second button: the autopilot switch is the one
+   bordered control up here, so the two stop reading as a pair. */
+.nav .cog {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 0;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.nav .cog:hover { color: var(--ink); background: none; text-decoration: none; }
+.nav .cog:focus-visible { color: var(--ink); }
+.nav .cog[aria-current="page"] { color: var(--ink); }
+
+/* The autopilot switch: a button that says the lane it is in, in words, with
+   today's cap beside it. The dot repeats the state for a glance, and under
+   720 px the dot and the word are all that is left. */
+.switch-slot { align-self: center; display: inline-flex; align-items: center; gap: 8px; }
+
+.switch::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 8px;
+  background: var(--muted);
+  vertical-align: baseline;
+}
+
+.switch.on::before { background: var(--pass); }
+.switch.off::before { background: var(--fail); }
+.switch.unknown::before { background: var(--muted); }
+.switch-note { max-width: 240px; }
+
+.alarm { color: var(--fail); font-weight: 600; }
+.ok { color: var(--pass); font-weight: 600; }
+
+/* --- Page furniture ----------------------------------------------------- */
+
+.view {
+  display: block;
+  padding-top: 0;
+  padding-bottom: 32px;
+  outline: none;
+}
+
+/* One header for every screen: 32 px of air above it, the title, whatever the
+   screen puts on the title's baseline, the lede 4 px under the title, and
+   24 px before the first section. Nothing else sets the top of a screen. */
+.page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  margin: 32px 0 24px;
+}
+
+.page-header .backlink { grid-column: 1 / -1; }
+.page-header h1 { grid-column: 1; }
+.page-header .lede, .page-header .page-count { grid-column: 1 / -1; }
+.page-aside { justify-self: end; display: flex; align-items: center; gap: 8px; }
+
+/* The voice: page titles, ledes, section headings, empty states and the brief
+   are set in the serif. Rows, forms and pills stay in the sans. */
+h1 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+h3 { margin: 0; font-size: 15px; font-weight: 600; }
+
+/* The subtitle under any page title: a sentence, not a caption. */
+.lede {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: var(--measure);
+}
+
+.page-count { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: var(--measure); }
+
+/* The one crumb back to the list a detail page was opened from. */
+.backlink { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+/* A small label. Sentence case at 13 px in muted: nothing in this UI shouts
+   (section 6, Global components). */
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.measure { max-width: var(--measure); }
+.grey, .small { color: var(--muted); }
+.small { font-size: 13px; }
+
+.sorter { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+
+/* A bare select, anywhere it is not inside a labelled .field. */
+select {
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  height: 36px;
+  padding: 0 10px;
+}
+
+/* --- The brief ----------------------------------------------------------
+   The paragraph Today opens with. Serif, 17 px, 62ch. Its numbers are live and
+   each one is a link into the list it counts, underlined in the person's
+   colour rather than coloured, so the sentence still reads as a sentence.
+   A zero is plain text: there is nothing behind it to open. */
+
+.brief {
+  margin: 0;
+  max-width: var(--measure);
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.brief p { margin: 0 0 12px; }
+.brief p:last-child { margin-bottom: 0; }
+
+.brief a, a.brief-number {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-decoration-color: var(--you);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.brief a:hover, a.brief-number:hover { text-decoration-thickness: 2px; }
+
+/* --- Lists -------------------------------------------------------------- */
+
+/*
+ * The list is the shape of this UI. Full width, hairline separated, no card
+ * around a row: a row is a line to scan, and a card's worth of padding around
+ * each one buries the list.
+ *
+ * Three cells (section 7): the main cell with the title, its pills, one meta
+ * line and the reason in full; the score, right aligned on the title baseline;
+ * and one action, vertically centred. Under 720 px the grid becomes one
+ * column and the button goes full width under the reason.
+ */
+.list { display: block; border-top: 1px solid var(--rule); }
+
+.list-row {
+  display: grid;
+  /* Three columns: the score leads, so a ranked list scans as a column of
+     numbers down the left; the text takes the middle; the actions sit in a
+     right rail as wide as their widest button. Nothing floats in between. */
+  grid-template-columns: 3ch minmax(0, 1fr) auto;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* A whole row that is a link may tint on hover. A row carrying buttons must
+   not: the tint would promise a click the row itself does not answer. */
+a.list-row, .list-row.is-link { color: inherit; text-decoration: none; }
+a.list-row:hover, .list-row.is-link:hover { background: var(--wash); text-decoration: none; }
+/* A serif heading with its count beside it, the head of every list section. */
+.section-head { display: flex; align-items: baseline; gap: 12px; margin: 32px 0 12px; }
+.section-head h2, .section-head h3 { margin: 0; }
+.section-head .tally { font-family: var(--sans); font-size: 17px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The row the person just acted on, marked for three seconds and then let go.
+   A bar drawn in the row's own box rather than a shadow: this UI has none. */
+.list-row.just-acted { position: relative; }
+.list-row.just-acted::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  width: 2px;
+  background: var(--you);
+}
+
+.list-main { grid-column: 2; grid-row: 1 / span 3; min-width: 0; }
+/* A row with nothing to rank (a rule, a run, a term) does not keep an empty
+   score gutter: its text starts where the heading starts. */
+.list-row:not(:has(> .list-score)) .list-main { grid-column: 1 / span 2; }
+
+.list-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+.list-title:hover { text-decoration: underline; }
+
+/* The pills follow the title on its own line and wrap as one group. Singly
+   they orphan, and a lone pill on line two reads as a different row. */
+.list-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+/* One meta line, 13 px muted: employer, location, apply method. */
+.list-meta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* The reason in full. Truncation is banned: a reason the person cannot read
+   is a row they have to open for no good reason (section 6). */
+.list-reason {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+  max-width: var(--measure);
+  overflow-wrap: anywhere;
+}
+
+.list-score {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  padding-top: 1px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The rail: top aligned with the title, right aligned, one button under the
+   next at one width, so a row with two choices reads as a short menu rather
+   than two buttons jostling on a line. The negative top margin brings a 32 px
+   button level with the 22 px title line. */
+.list-action {
+  grid-column: 3;
+  grid-row: 1 / span 3;
+  align-self: start;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: -4px;
+  min-width: 0;
+}
+.list-action .btn, .list-action button { width: 100%; }
+
+/* A group of rows is a section with its own heading and count, and a link to
+   the whole list when the group is capped. */
+.group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 24px 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.group-heading .tally { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- Pills -------------------------------------------------------------- */
+
+/*
+ * A pill is a label, never a link and never a button. There is one for the
+ * lane, one for "saved by you", one for the apply method when the method is
+ * what decides the lane, and one for the status. Channel is text in the meta
+ * line, because a channel is not a state (section 6).
+ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* The person's lane. `--you` means your action, so only this one takes it. */
+.pill-you { background: transparent; border-color: var(--you); color: var(--you); }
+/* The machine's lane stays quiet: the run needs nothing from anybody. */
+.pill-autopilot { background: transparent; border-color: var(--rule); color: var(--muted); }
+/* The machine's own word for where the row is, shown once beside the person's. */
+.pill-status { background: var(--wash); color: var(--ink); }
+
+/* A verdict is quoted, never invented, and it carries the word as well as the
+   colour so it is not colour alone that says it. */
+.pill-pass { background: transparent; border-color: var(--pass); color: var(--pass); }
+.pill-fail { background: transparent; border-color: var(--fail); color: var(--fail); }
+.pill-warn { background: transparent; border-color: var(--warn); color: var(--warn); }
+.pill-none { background: transparent; border-color: var(--rule); color: var(--muted); }
+
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+/* --- Segments: the tab strip with counts -------------------------------- */
+
+/*
+ * The Pipeline segments, and any strip like them. Each tab carries the count
+ * the list behind it will show, so a count is never a dead end and never
+ * disagrees with the list it names. A zero stays visible and muted: an empty
+ * segment is an answer.
+ */
+.segments {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  margin: 0 0 16px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.segments::-webkit-scrollbar { display: none; }
+
+.segments a, .segments button {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  height: auto;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.segments a:hover, .segments button:hover { background: none; color: var(--ink); text-decoration: none; }
+.segments .tally { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.segments [aria-current="page"], .segments [aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--you);
+}
+
+/* --- Chips: the filters that sit under the strip ------------------------ */
+
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 0 0 16px; }
+
+.chip {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover { background: var(--wash); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+.chip .dot { width: 8px; height: 8px; border-radius: 8px; background: var(--muted); }
+.chip.good .dot { background: var(--pass); }
+.chip.warn .dot { background: var(--warn); }
+.chip.bad .dot { background: var(--fail); }
+
+/* An inline label and its control on one baseline: "Min score [ ]", "Sort [v]". */
+.inline-field { display: inline-flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+.inline-field input[type="number"] {
+  font: inherit;
+  font-size: 15px;
+  width: 64px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+/*
+ * One button. 36 px on a detail page, 32 px in a list, 12 px of side padding,
+ * 4 px radius, weight 600. Primary is the ink fill and there is one per view
+ * region; everything else is the hairline secondary; destructive is that
+ * secondary with `--fail` text, never red text on its own.
+ */
+button, .btn {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button:hover, .btn:hover { background: var(--wash); text-decoration: none; }
+
+/* In a list a button is 32 px, so the row keeps its line height. */
+.list .btn, .list button, .list-action .btn, .list-action button, .btn.sm, button.sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.primary, .btn-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.primary:hover, .btn-primary:hover { background: var(--ink); opacity: 0.9; }
+
+.danger, .btn-danger { color: var(--fail); border-color: var(--rule); }
+.danger:hover, .btn-danger:hover { border-color: var(--fail); background: var(--paper); }
+
+/* Disabled keeps its label: a control whose words vanish tells the person
+   nothing about why it will not move. */
+button[disabled], .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* Busy: the label becomes the present participle and the width is locked, so
+   the row does not jump while a job runs. */
+button[aria-busy="true"], .btn[aria-busy="true"] { cursor: progress; }
+
+/*
+ * The confirm state. One press arms the button, the second commits, and a
+ * Cancel beside it (and Escape) backs out. The armed button takes the primary
+ * style; a destructive one takes the fail fill so the second press is never
+ * the same colour as the first. There are no native confirm() dialogs in this
+ * UI at all.
+ */
+.armed {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.armed:hover { background: var(--ink); opacity: 0.9; }
+.armed.danger, .armed.btn-danger {
+  background: var(--fail);
+  border-color: var(--fail);
+  color: var(--paper);
+}
+.armed.danger:hover, .armed.btn-danger:hover { background: var(--fail); }
+
+.confirm { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Cancel is a word, not a third button competing with the two beside it. */
+.btn-text, .linkish, .linky, .more {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  text-decoration: underline;
+}
+.btn-text:hover, .linkish:hover, .linky:hover, .more:hover { background: none; color: var(--ink); }
+
+.btn.disabled { color: var(--muted); cursor: not-allowed; }
+.btn.disabled:hover { background: var(--paper); }
+
+/* app.css gives every button a display of its own, which beats the browser's
+   own [hidden] rule, so a button hidden in script stayed on the page. Said
+   here once, for every button in the UI. */
+button[hidden], .btn[hidden], .mark-sent[hidden], .job-progress[hidden] { display: none; }
+
+/* --- Cards -------------------------------------------------------------- */
+
+/* A card is reserved for a distinct object the person opens or approves: a
+   resume baseline, a run, a rule. A list of rows is not a stack of cards, and
+   a card never nests inside another. */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.card > h2 { font-size: 17px; margin: 0 0 12px; }
+
+.cards { display: grid; gap: 24px; }
+
+/* A card whose title row carries controls: the title left, buttons hard
+   right, both on one baseline. */
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.card-head h2 { font-size: 17px; margin: 0; }
+.card-head-actions { display: flex; align-items: center; gap: 8px; }
+.card-head-actions:empty { display: none; }
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 16px 0; }
+.why { margin: 0; color: var(--ink); }
+
+/* --- The timeline: a linear sequence of steps --------------------------- */
+
+/*
+ * The queue as steps: discovered, shortlisted, drafted, approved, sent, reply.
+ * A dot on a hairline spine with its label under it. The step the row is on is
+ * filled in the person's colour; a hold or an exit is a labelled branch under
+ * the step it left, in the person's own words, because it is not a seventh
+ * step.
+ */
+.timeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timeline > li {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  flex: 1 1 96px;
+  min-width: 96px;
+  position: relative;
+}
+
+/* The spine: one hairline behind the dots, drawn from each step to the next. */
+.timeline > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 100%;
+  height: 1px;
+  background: var(--rule);
+}
+
+.timeline .dot {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.timeline .step-label { text-align: center; }
+
+.timeline .done .dot { background: var(--ink); border-color: var(--ink); }
+.timeline .done .step-label { color: var(--ink); }
+
+.timeline .current .dot { width: 10px; height: 10px; background: var(--you); border-color: var(--you); }
+.timeline .current .step-label { color: var(--you); font-weight: 600; }
+
+/* The branch: what stopped, said in the person's vocabulary, under the step it
+   left the line at. */
+.timeline .branch { color: var(--fail); text-align: center; }
+
+/* --- Disclosure --------------------------------------------------------- */
+
+/* A fold: the raw log, a reference section, a long description. The summary is
+   a text link in ink with a chevron that turns, never a button. It is also how
+   anything long is shown: there is no inner scroll region in this UI. */
+.disclosure { margin: 0; font-size: 15px; }
+.disclosure > summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  list-style: none;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform-origin: 25% 50%;
+  transition: transform 120ms ease;
+}
+.disclosure[open] > summary::before { transform: rotate(90deg); }
+.disclosure > summary:hover { text-decoration: underline; }
+.disclosure > *:not(summary) { margin-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure > summary::before { transition: none; }
+}
+
+/* --- Forms -------------------------------------------------------------- */
+
+.action-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.action-fields { display: grid; gap: 16px; margin-bottom: 12px; }
+
+/* A labelled control: the label 4 px above the field, the help under it, and
+   an error that replaces the help rather than stacking under it. One shape for
+   every form in the UI. */
+.field { display: grid; gap: 4px; min-width: 0; }
+/* An author display beats the browser's own [hidden] rule, so it is said here. */
+.field[hidden] { display: none; }
+.field-label { font-size: 13px; font-weight: 400; color: var(--muted); }
+.field-help { font-size: 13px; color: var(--muted); }
+.field-error { font-size: 13px; color: var(--fail); }
+.field > .field-label + .field-help { margin-top: 0; }
+
+.field input, .field select, .field textarea {
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.field textarea { height: auto; min-height: 96px; padding: 8px; resize: vertical; }
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
+  outline: 2px solid var(--you);
+  outline-offset: 2px;
+}
+
+.action-fields input, .action-fields textarea {
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.action-fields textarea { min-height: 96px; resize: vertical; }
+
+/* A form or a progress line a button opens runs the width of the row, under
+   the line it belongs to, rather than squeezing into the control column. */
+.row-extra { grid-column: 1 / -1; }
+.row-extra:empty { display: none; }
+
+/* The decision bar is one row of buttons; everything any of them has to say
+   lands here, under it, so the bar keeps its shape however much is said. */
+.action-extra { display: grid; gap: 8px; margin-bottom: 16px; }
+.action-extra:empty { display: none; }
+
+/* --- Prose, stamps and bars --------------------------------------------- */
+
+.prose { max-width: var(--measure); }
+.prose h2 { margin-top: 24px; font-size: 21px; }
+.prose h3 { margin-top: 16px; }
+.prose pre {
+  overflow: auto;
+  font-size: 13px;
+  background: var(--wash);
+  padding: 12px;
+  border-radius: 4px;
+}
+.prose ul { padding-left: 16px; }
+
+/* Where the state of a rendered thing is stamped: approved, stale, missing. */
+.stamp {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.stamp.approved { color: var(--pass); border-color: var(--pass); background: transparent; }
+.stamp.stale { color: var(--warn); border-color: var(--warn); background: transparent; }
+.stamp.missing { color: var(--fail); border-color: var(--fail); background: transparent; }
+
+.bar {
+  height: 4px;
+  margin: 0 0 16px;
+  border-radius: 4px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.bar span { display: block; height: 100%; background: var(--ink); }
+
+/* --- Safety ------------------------------------------------------------- */
+
+.safety p:first-child { margin-top: 0; }
+
+/* --- Loading, empty, error, toast --------------------------------------- */
+
+/*
+ * A screen draws its title at once and stands three placeholder rows where the
+ * list will be. No spinner, no "Loading." sentence: both say less than the
+ * shape of what is coming.
+ */
+.placeholder { border-top: 1px solid var(--rule); opacity: 0.4; }
+
+.placeholder-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.placeholder-row span { display: block; height: 12px; border-radius: 4px; background: var(--wash); }
+.placeholder-row span:first-child { width: 40%; }
+.placeholder-row span:last-child { width: 70%; }
+
+/* An empty state is a sentence: what would put something here, and the next
+   thing to do. */
+.empty, .error {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.45;
+  max-width: var(--measure);
+}
+
+.empty { color: var(--muted); }
+.error { color: var(--ink); }
+.error p { margin: 0 0 12px; }
+
+/* A load that failed is said in place, at the top of the list it failed to
+   fill, with the retry beside it. Never a toast: a toast for a load failure
+   disappears before the person has read what broke. */
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.load-error p { margin: 0; }
+
+/*
+ * One status line at a time, bottom left, for four seconds. It names the
+ * outcome in the same words the button used ("Rejected", "Answer banked").
+ */
+.toast {
+  position: fixed;
+  left: var(--gutter);
+  bottom: 24px;
+  max-width: min(540px, calc(100vw - 48px));
+  padding: 12px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 15px;
+  z-index: 20;
+}
+
+.toast.bad { background: var(--fail); color: var(--paper); }
+
+/* --- Decision workbench shell ------------------------------------------ */
+
+/* The desktop shell keeps orientation and operating state visible while a
+   screen changes. It uses the same static HTML and no added dependency. */
+body { background: var(--wash); }
+
+.top {
+  position: fixed;
+  z-index: 20;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  background: var(--sidebar);
+  color: var(--sidebar-ink);
+  border: 0;
+}
+
+.top .wrap { max-width: none; padding: 24px; }
+
+.top-inner {
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 24px;
+}
+
+.brand { color: var(--sidebar-ink); }
+
+.nav {
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.nav a[data-nav]:not(.cog) {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  margin: 0;
+  color: var(--sidebar-muted);
+}
+
+.nav a[data-nav]:not(.cog):hover {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  text-decoration: none;
+}
+
+.nav a[data-nav][aria-current="page"]:not(.cog) {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  font-weight: 600;
+}
+
+.nav a[data-nav="guardrails"] { margin-top: 16px; }
+
+.shell-quote {
+  display: grid;
+  gap: 8px;
+  margin: auto 0 0;
+  padding: 16px 12px 0;
+  border-top: 1px solid var(--sidebar-active);
+  color: var(--sidebar-muted);
+}
+
+.shell-quote-text {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.shell-quote-by {
+  display: block;
+  color: var(--sidebar-ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.switch-slot {
+  width: 100%;
+  margin-top: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sidebar-active);
+}
+
+.switch-slot .switch {
+  width: 100%;
+  height: auto;
+  min-height: 36px;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  font-size: 13px;
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+  border-color: var(--sidebar-active);
+}
+.switch-slot .switch-tally { display: none; }
+
+.nav .cog { align-self: flex-start; color: var(--sidebar-muted); }
+
+.nav .cog:hover, .nav .cog:focus-visible, .nav .cog[aria-current="page"] {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+}
+
+.shell-status {
+  position: fixed;
+  z-index: 15;
+  top: 0;
+  right: 0;
+  left: var(--sidebar-w);
+  min-height: var(--shell-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 32px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.shell-date { font-family: var(--serif); font-size: 17px; }
+.shell-state { display: flex; align-items: center; gap: 16px; color: var(--muted); font-size: 13px; }
+.shell-lane { color: var(--ink); font-weight: 600; }
+
+.view {
+  width: calc(100% - var(--sidebar-w));
+  max-width: none;
+  min-height: 100vh;
+  margin-left: var(--sidebar-w);
+  padding: calc(var(--shell-h) + 32px) 32px 48px;
+}
+
+.card { background: var(--paper); }
+
+/* --- Responsive --------------------------------------------------------- */
+
+/* 960: the row page is allowed its second column. Below it, one column. */
+@media (max-width: 959px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 720: one column everywhere, stacked rows, full-width buttons, and the nav
+   behind a Menu button so the wordmark and the autopilot state still fit. */
+@media (max-width: 719px) {
+  body { background: var(--paper); }
+  .top {
+    position: static;
+    width: auto;
+    background: var(--paper);
+    color: var(--ink);
+    border-bottom: 1px solid var(--rule);
+  }
+  .top .wrap { padding: 0 var(--gutter); }
+  .top-inner { height: auto; min-height: 64px; flex-direction: row; }
+  .brand { color: var(--ink); }
+  .shell-status { display: none; }
+  .view { width: 100%; min-height: 0; margin-left: 0; padding: 0 var(--gutter) 32px; }
+
+  .page-header { grid-template-columns: minmax(0, 1fr); }
+  .page-aside { justify-self: start; order: 1; margin-top: 12px; }
+
+  .list-row { grid-template-columns: 3ch minmax(0, 1fr); }
+  .list-main { grid-column: 2; grid-row: 1; }
+  .list-score { grid-column: 1; grid-row: 1; }
+  .list-action { grid-column: 1 / span 2; grid-row: 2; justify-self: stretch; margin-top: 8px; }
+
+  .chips { gap: 8px; }
+
+  .top-inner { flex-wrap: wrap; align-items: center; padding-top: 12px; padding-bottom: 12px; gap: 8px; }
+  .brand { flex: 1 1 auto; white-space: nowrap; }
+
+  .top .menu-toggle { display: inline-flex; order: 2; }
+
+  /* The bar keeps the switch and the cog; the five links wrap under it, one to
+     a line, and only when the Menu button says so. */
+  .nav {
+    order: 3;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0 16px;
+  }
+  .nav a[data-nav]:not(.cog) {
+    order: 1;
+    flex: 1 0 100%;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+    border-top: 0;
+    margin-bottom: 0;
+    color: var(--ink);
+    background: transparent;
+    border-radius: 0;
+  }
+  .nav a[data-nav="guardrails"] { margin-top: 0; }
+  .shell-quote { display: none; }
+  .nav.closed a[data-nav]:not(.cog) { display: none; }
+  .nav .cog { order: 0; color: var(--muted); }
+  .nav .cog:hover, .nav .cog:focus-visible, .nav .cog[aria-current="page"] { color: var(--ink); background: transparent; }
+  .switch-slot { order: 0; width: auto; margin-top: 0; padding-top: 0; border-top: 0; }
+  .switch-slot .switch { width: auto; color: var(--ink); background: var(--paper); border-color: var(--rule); }
+  /* The switch keeps its dot and its word; the cap goes with the space. */
+  .switch .switch-tally { display: none; }
+  .switch-note { display: none; }
+
+  .timeline > li { flex: 1 1 33%; min-width: 0; }
+}
+
+/* A finger is not a mouse pointer: every target it has to hit is 40 px. */
+@media (pointer: coarse) {
+  button, .btn, .list .btn, .list button, .chip, .segments a, .nav a {
+    min-height: 40px;
+  }
+  .btn-text, .linkish, .linky, .more { min-height: 40px; }
+}

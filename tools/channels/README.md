@@ -25,7 +25,7 @@ Channels without `submit` always land approved rows in
 
 1. Create `tools/channels/<id>.ts` exporting a `HuntChannel`.
 2. Add the channel to `state/profile/channels.yaml` (enabled, search config).
-3. Add an npm script in `package.json` (`hunt:<id>`).
+3. Add an npm script in `package.json` (`hunt:<id>`) and the id to `HUNT_SCRIPTS` in `_interface.ts`.
 4. Run `npm run hunt:<id>` to smoke-test.
 5. (Optional) Add `<id>-submit.ts` and wire it into the policy.
 
@@ -36,9 +36,15 @@ Channels without `submit` always land approved rows in
 | `seek` | ✅ | ✅ `seek-submit.ts` (Quick Apply) | Primary AU job board. Playwright headless on the persistent signed-in Chrome profile `state/channels/chrome-profile/seek` (`npm run login:seek`). Also `seek:saved` (saved-jobs watcher) and `seek:unsave`. |
 | `linkedin-jobs` | ✅ | ✅ `linkedin-submit.ts` (Easy Apply) | Rewritten 2026-09-16 against the logged-in SDUI layout. Persistent Chrome profile `state/channels/chrome-profile/linkedin` (`npm run login:linkedin`). `search --upsert` also enriches new rows (`linkedin:enrich`: full JD + `applyMethod` easy_apply / external). Easy Apply modal lives in a shadow root; the adapter handles multi-step and single-step variants, uploads the exact docx, answers screening questions from `screening-answers.yaml`, unticks "Follow", parks unknown questions. LinkedIn is retiring classic job search from Sept 2026: 0 cards with no login wall means re-probe the DOM. |
 | `linkedin-posts` | stub | n/a | Scans feed for "hiring" posts; drafts only. |
-| `hays`, `talenza`, `paxus`, `robert-half`, `peoplebank` | stubs | n/a | AU IT recruiters — search-only initially; Hays portal submit adapter planned. |
 | `hn-who-is-hiring` | stub | n/a | Monthly thread parsing; always manual apply. |
-| `wellfound` | stub | n/a | Off by default. |
+
+## Channels without an adapter
+
+`channels.yaml` may list ids that have no module yet (`hays`, `talenza`,
+`paxus`, `robert_half`, `peoplebank`, `wellfound`). They ship `enabled: false`.
+`huntScriptFor(id)` in `_interface.ts` is the single registry of ids that do
+have a scraper; anything else resolves to `no adapter for <id>`, which
+`npm run setup:check` surfaces rather than silently skipping.
 
 ## Login flow for authenticated channels
 

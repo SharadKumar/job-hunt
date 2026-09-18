@@ -14,8 +14,7 @@
  * with and ships.
  */
 
-import { promises as fs } from "node:fs";
-import YAML from "yaml";
+import { readYamlIfExists } from "./lib/fs.ts";
 import { resolveProfileContext } from "./profile-context.ts";
 import { repoPath } from "./repo-root.ts";
 import { loadProfile } from "./profile.ts";
@@ -175,15 +174,6 @@ export type ResolvedResume = {
 
 const DEFAULT_RESUMES_PATH = repoPath("state/profile/resumes.yaml");
 const DEFAULT_ORG_RESUME_TYPES_PATH = repoPath("state/org/resume-types.yaml");
-
-async function readYamlIfExists<T>(filePath: string): Promise<T | null> {
-  try {
-    return YAML.parse(await fs.readFile(filePath, "utf8")) as T;
-  } catch (e: any) {
-    if (e?.code === "ENOENT") return null;
-    throw e;
-  }
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);

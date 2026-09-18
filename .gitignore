@@ -49,3 +49,7 @@ state/org/resume-types.yaml
 
 # Optional list of personal terms tests/profile-template.test.ts must not find in the public skeleton.
 state/leak-terms.txt
+
+# skill-creator eval workspaces (fixture roots, run outputs)
+.claude/skills/*-workspace/
+!tests/fixtures/**/*.log

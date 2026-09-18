@@ -27,6 +27,7 @@
  * `npm run resume:design:golden -- --template <name>` and commit the PNGs.
  */
 
+import { exists, todayStamp } from "../lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -60,14 +61,6 @@ export type ScaffoldResult = {
 
 class ScaffoldError extends Error {}
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-async function exists(p: string): Promise<boolean> {
-  try { await fs.access(p); return true; } catch { return false; }
-}
-
 /** `Family=File.woff2` → a `FontFace` literal for the design object. */
 function fontFaceLiteral(spec: string): { family: string; file: string; line: string } {
   const match = spec.match(/^\s*(.+?)\s*=\s*(\S+\.woff2)\s*$/i);
@@ -92,7 +85,7 @@ function rewriteRender(source: string, args: { name: string; from: string; layou
   }
 
   const header = `/**
- * ${args.name} / render.ts — scaffolded from '${args.from}' on ${today()}.
+ * ${args.name} / render.ts — scaffolded from '${args.from}' on ${todayStamp()}.
  *
  *   - presentation → shared HTML builder + ${args.name}/styles.css + bundled
  *     fonts → Playwright PDF (the designed artefact a human reads).
@@ -133,7 +126,7 @@ function rewriteRubric(source: string, args: { name: string; from: string }): st
 }
 
 function rewriteTemplateMd(source: string, args: { name: string; from: string; layout?: Layout }): string {
-  const stamp = today();
+  const stamp = todayStamp();
   const frontmatterMatch = source.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!frontmatterMatch) throw new ScaffoldError(`${args.from}/template.md has no YAML frontmatter to rewrite.`);
 

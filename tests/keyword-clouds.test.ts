@@ -4,11 +4,21 @@
  *
  * Three things matter here: the validator says no to a malformed cloud file or
  * a bad reference, resolution hands a positioning its clouds in weight order,
- * and the real migrated state/org/keyword-clouds.yaml holds its shape.
+ * and the keyword-clouds.yaml on disk holds its shape.
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
-import {
+import { makeTempRoot } from "./helpers/temp-root.ts";
+import type { KeywordCloudsFile } from "../tools/keyword-clouds.ts";
+
+// The on-disk half of this file is checked against a fixture repo root, never
+// the person's own state/org/keyword-clouds.yaml: that file is git-ignored, so
+// a fresh clone has none, and reading it would tie the assertions to whatever
+// the last cloud refresh happened to produce. HARNESS_REPO_ROOT has to be set
+// before the first import of anything under tools/, hence the dynamic imports.
+makeTempRoot("keyword-clouds-test-");
+
+const {
   CLOUD_KINDS,
   cloudAgeDays,
   cloudRefs,
@@ -22,9 +32,8 @@ import {
   resolveForbiddenClaims,
   validateKeywordClouds,
   validateTypeCloudRefs,
-  type KeywordCloudsFile,
-} from "../tools/keyword-clouds.ts";
-import { loadResolvedResumes } from "../tools/resumes.ts";
+} = await import("../tools/keyword-clouds.ts");
+const { loadResolvedResumes } = await import("../tools/resumes.ts");
 
 const now = new Date("2026-09-11T00:00:00Z");
 const fresh = "2026-09-01";
@@ -161,19 +170,19 @@ const ok = (): KeywordCloudsFile => ({
   assert.equal(parseKeywordClouds("version: 1\nclouds: []").version, 1);
 }
 
-// --- the real migrated file -------------------------------------------------
+// --- the file on disk -------------------------------------------------------
 {
   const file = await loadKeywordClouds();
-  assert.ok(file.clouds.length >= 15, `expected the migrated clouds, got ${file.clouds.length}`);
+  assert.ok(file.clouds.length >= 3, `expected the clouds on disk, got ${file.clouds.length}`);
   for (const c of file.clouds) assert.ok(CLOUD_KINDS.includes(c.kind), `${c.id} has a known kind`);
   assert.ok(file.clouds.some((c) => c.kind === "capability"));
   assert.ok(file.clouds.some((c) => c.kind === "domain"));
   assert.ok(file.clouds.some((c) => c.kind === "tooling"));
 
   const structural = validateKeywordClouds(file, null, now);
-  assert.deepEqual(structural.errors, [], "the migrated clouds file is structurally valid");
+  assert.deepEqual(structural.errors, [], "the clouds file on disk is structurally valid");
 
-  // The migration must not have lost or duplicated a term.
+  // No term may be lost to, or duplicated across, two clouds.
   const seen = new Set<string>();
   let terms = 0;
   for (const c of file.clouds) for (const t of c.terms ?? []) {
@@ -182,7 +191,7 @@ const ok = (): KeywordCloudsFile => ({
     assert.ok(!seen.has(k), `term '${t.term}' appears in more than one cloud`);
     seen.add(k);
   }
-  assert.ok(terms >= 130, `expected the migrated term corpus, got ${terms}`);
+  assert.ok(terms >= 6, `expected the term corpus on disk, got ${terms}`);
 
   // Every active positioning references clouds that exist, with legal weights,
   // and no positioning is left with nothing to write against.
