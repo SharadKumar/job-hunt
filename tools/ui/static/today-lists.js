@@ -249,7 +249,7 @@ function lastRunLine(health, runs, journalHeadline) {
   const run = runs && runs.length ? runs[0] : null;
   const last = health && health.last_run ? health.last_run : null;
   if (!run && !last) {
-    return pair("#/runs", "Last run", journalHeadline || "No run has been logged yet");
+    return pair("#/schedules", "Last run", journalHeadline || "No run has been logged yet");
   }
   const date = (run && run.date) || (last && last.date) || "";
   const started = (last && last.started_at) || (run && run.started_at) || null;
@@ -258,12 +258,12 @@ function lastRunLine(health, runs, journalHeadline) {
   const hover = started ? whenFull(started) : "";
   if (running) {
     const going = soFar((run && run.duration_s) ?? (last && last.duration_seconds));
-    return pair(`#/runs/${date}`, "Last run", `${stamp}, running now${going ? `, ${going}` : ""}`, { stamp: hover });
+    return pair(`#/schedules/${date}`, "Last run", `${stamp}, running now${going ? `, ${going}` : ""}`, { stamp: hover });
   }
   const exit = (last && last.exit_code) ?? (run && run.exit_code) ?? null;
   const took = duration((last && last.duration_seconds) ?? (run && run.duration_s));
   const verdict = exit === null ? "did not write a finish line" : exit === 0 ? "finished cleanly" : `failed, exit ${exit}`;
-  return pair(`#/runs/${date}`, "Last run", `${stamp}, ${verdict}${took ? ` in ${took}` : ""}`, { stamp: hover });
+  return pair(`#/schedules/${date}`, "Last run", `${stamp}, ${verdict}${took ? ` in ${took}` : ""}`, { stamp: hover });
 }
 
 /** Whether each channel the profile switched on can still sign in. */

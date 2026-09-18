@@ -53,7 +53,6 @@
 
 .resume-browser { min-width: 0; overflow: auto; background: var(--wash); border-right: 1px solid var(--rule); }
 .resume-browser-head { padding: 24px; }
-.resume-browser-head .eyebrow { margin-bottom: 4px; }
 .resume-browser-head h2 { margin: 0; }
 .resume-browser-list { display: block; border-top: 1px solid var(--rule); }
 
@@ -91,7 +90,6 @@
 .resume-selected-head h2 { margin: 0; font-size: 27px; }
 .resume-head-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
-.resume-meta { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); max-width: var(--measure); }
 .resume-selected-tabs { flex: 0 0 auto; padding: 0 32px; border-bottom: 1px solid var(--rule); }
 .resume-overview { min-width: 0; overflow: auto; padding: 0 32px 32px; }
 

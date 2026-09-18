@@ -1,11 +1,12 @@
-/* runs.css - the list of daily runs and one run's page (#/runs, #/runs/<date>).
+/* runs.css - the list of daily runs and one run's page
+   (#/schedules, #/schedules/<date>).
    Tokens, type and every shared primitive come from app.css; nothing here
    introduces a colour, a radius or a shadow of its own.
 
    The screen follows the same three-level flow as Resumes: persistent app
    navigation, run history, and one selected run with tabbed evidence. */
 
-.view[data-route="runs"] {
+.view[data-route="schedules"] {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -15,7 +16,7 @@
   overflow: hidden;
 }
 
-.view[data-route="runs"] > .page-header { flex: 0 0 auto; margin: 0 0 16px; }
+.view[data-route="schedules"] > .page-header { flex: 0 0 auto; margin: 0 0 16px; }
 .runs-stage { flex: 1 1 auto; min-height: 0; }
 
 .runs-workbench {
@@ -101,8 +102,8 @@
 .run-letter-head { margin: 0 0 8px; font-weight: 600; max-width: var(--measure); }
 
 @media (max-width: 719px) {
-  .view[data-route="runs"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
-  .view[data-route="runs"] > .page-header { margin: 32px 0 24px; }
+  .view[data-route="schedules"] { display: block; height: auto; min-height: 0; padding-top: 0; padding-bottom: 32px; overflow: visible; }
+  .view[data-route="schedules"] > .page-header { margin: 32px 0 24px; }
   .runs-workbench { height: auto; grid-template-columns: minmax(0, 1fr); margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
   .run-selected { grid-row: 1; overflow: visible; }
   .run-selected-head, .run-selected-tabs, .run-inspector-body { padding-right: 16px; padding-left: 16px; }

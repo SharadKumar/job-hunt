@@ -1,5 +1,6 @@
 /*
- * runs.js - what the daily run did: the list (#/runs) and one run (#/runs/<date>).
+ * runs.js - what the daily schedule did: the list (#/schedules) and one run
+ * (#/schedules/<date>). The API still calls each execution a run.
  *
  * AGENTS.md section 3.9: an unattended run says what it did in the journal,
  * including the full text of anything it sent. This screen is the reading end
@@ -68,7 +69,7 @@ export function runLine(run) {
 function runRow(run, selected) {
   const row = h("a", {
     class: selected ? "list-row run-row selected" : "list-row run-row",
-    href: `#/runs/${encodeURIComponent(run.date)}`,
+    href: `#/schedules/${encodeURIComponent(run.date)}`,
   });
   const main = h("div", { class: "list-main" });
   main.append(h("span", { class: "list-title", text: runDay(run.date) }));
@@ -236,7 +237,7 @@ function runSelected(data, date, query) {
     const q = new URLSearchParams(query);
     if (tab.key === "overview") q.delete("panel");
     else q.set("panel", tab.key);
-    const link = h("a", { href: `#/runs/${encodeURIComponent(date)}${q.toString() ? `?${q}` : ""}`, text: tab.label });
+    const link = h("a", { href: `#/schedules/${encodeURIComponent(date)}${q.toString() ? `?${q}` : ""}`, text: tab.label });
     if (tab.key === active) link.setAttribute("aria-current", "page");
     tabs.append(link);
   }
@@ -268,7 +269,7 @@ function runSelected(data, date, query) {
 
 export async function viewRuns(view, id, query) {
   const count = h("p", { class: "page-count" });
-  view.append(pageHeader({ title: "Runs", lede: count }));
+  view.append(pageHeader({ title: "Schedules", lede: count }));
   const host = h("div", { class: "runs-stage" });
   host.append(placeholderRows(3));
   view.append(host);
@@ -284,7 +285,7 @@ export async function viewRuns(view, id, query) {
     return;
   }
   const selected = runs.find((run) => run.date === id) || runs[0];
-  if (id !== selected.date) history.replaceState(null, "", `#/runs/${encodeURIComponent(selected.date)}`);
+  if (id !== selected.date) history.replaceState(null, "", `#/schedules/${encodeURIComponent(selected.date)}`);
   const loading = h("div", {});
   loading.append(placeholderRows(3));
   host.append(loading);

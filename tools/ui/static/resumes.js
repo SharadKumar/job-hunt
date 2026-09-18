@@ -26,7 +26,7 @@ import {
 import { viewKeywords } from "./keywords.js";
 
 const TABS = [
-  { key: "baselines", label: "Baselines", hash: "#/resumes" },
+  { key: "baselines", label: "Resumes", hash: "#/resumes" },
   { key: "evidence", label: "Evidence questions", hash: "#/resumes/evidence" },
 ];
 
@@ -414,10 +414,7 @@ async function resumeSelected(item, query) {
   const criticPassed = ((item.critic || {}).verdict || "") === "pass";
   if (criticPassed && !approved) actions.append(approveControl(item));
   const head = h("header", { class: "resume-selected-head" },
-    h("div", {}, h("p", { class: "eyebrow", text: "Selected resume" }), h("h2", { text: label })), actions);
-  const meta = [item.positioning || "", item.last_render_at ? `rendered ${when(item.last_render_at)}` : "never rendered"]
-    .filter(Boolean).join(", ");
-  head.append(h("p", { class: "resume-meta", title: whenFull(item.last_render_at), text: meta }));
+    h("h2", { text: label }), actions);
   const tabs = h("nav", { class: "tabs resume-selected-tabs", "aria-label": "Selected resume tabs" });
   const overview = h("a", { href: inspectorHref(query, item.id, "overview"), text: "Overview" });
   if (active === "overview") overview.setAttribute("aria-current", "page");
@@ -440,15 +437,15 @@ async function baselines(view, count, query) {
   if (!data) { count.textContent = ""; return; }
   const items = data.resumes || [];
   const approved = items.filter((item) => item.stamp && item.stamp.kind === "approved").length;
-  count.textContent = `${plural(items.length, "positioning")}, ${approved} approved`;
+  count.textContent = `${plural(items.length, "version")}, ${approved} approved`;
   if (!items.length) {
-    host.append(h("p", { class: "empty", text: `No positionings yet. Run /onboarding, then /resume-review. ${APPROVE_GATE}` }));
+    host.append(h("p", { class: "empty", text: `No resume versions yet. Run /onboarding, then /resume-review. ${APPROVE_GATE}` }));
     return;
   }
   const params = query instanceof URLSearchParams ? query : new URLSearchParams();
   const selected = items.find((item) => item.id === params.get("selected")) || items[0];
-  const browser = h("section", { class: "resume-browser", "aria-label": "Resume positionings" },
-    h("header", { class: "resume-browser-head" }, h("p", { class: "eyebrow", text: "Positionings" }), h("h2", { text: "Baselines" })),
+  const browser = h("section", { class: "resume-browser", "aria-label": "Resume versions" },
+    h("header", { class: "resume-browser-head" }, h("h2", { text: "Versions" })),
     h("nav", { class: "resume-browser-list" }));
   const list = browser.querySelector(".resume-browser-list");
   for (const item of items) list.append(resumeBrowserItem(item, item.id === selected.id, params));
