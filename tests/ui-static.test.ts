@@ -1642,6 +1642,7 @@ test("the Resumes screen lives in its own module that app.js routes to", () => {
   assert.match(app, /route === "resumes"/, "app.js must route #/resumes to the resumes view");
   assert.match(resumesJs, /export async function viewResumes\s*\(/, "resumes.js must export the view");
   assert.ok(resumesJs.includes('"resumes"'), "resumes.js must call GET /api/resumes");
+  assert.match(app, /viewResumes\(view, id, query\)/, "the selected resume must travel in the address query");
 });
 
 test("the Resumes screen renders nothing, and approves only through the tool", () => {
@@ -1854,13 +1855,21 @@ test("a run is a real page: sent, stopped, numbers, and the raw text folded away
   assert.match(runsCss, /\.run-number-value \{[^}]*color: var\(--ink\)/, "a figure is ink, never a verdict colour");
 });
 
-test("the resume card is styled as the board asks", () => {
+test("Resumes uses a three-level selection workbench", () => {
   const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const resumesCss = sheet["resumes.css"].replace(/\/\*[\s\S]*?\*\//g, "");
   assert.match(rules, /\.stamp\.approved \{ color: var\(--pass\)/, "an approved stamp takes the pass colour");
   assert.match(rules, /\.stamp\.missing \{ color: var\(--fail\)/, "a missing render the fail colour");
-  assert.match(resumesCss, /@media \(min-width: 960px\) \{\s*\.resume-grid \{ grid-template-columns: repeat\(2/,
-    "two positionings sit side by side on a desktop");
+  assert.match(resumesCss, /\.resume-workbench \{[\s\S]*?grid-template-columns: minmax\(220px, 25%\) minmax\(340px, 1fr\) minmax\(280px, 31%\);/,
+    "desktop Resumes has positioning, selected baseline and quality evidence columns");
+  assert.match(resumesJs, /class: "resume-browser"/, "the first level is the positioning browser");
+  assert.match(resumesJs, /class: "resume-overview"/, "the second level is the selected baseline");
+  assert.match(resumesJs, /class: "resume-quality"/, "the third level is the render evidence");
+  assert.match(resumesJs, /q\.set\("selected", id\)/, "selection is preserved in the address");
+  assert.match(resumesCss, /\.resume-browser-item\.selected::before[\s\S]*?background: var\(--you\);/,
+    "the selected positioning carries the same person-colour rail as Pipeline");
+  assert.match(resumesCss, /\.resume-overview \{ grid-row: 1;/,
+    "on a phone the selected baseline comes before the long positioning list");
   // Section 6: four tall thin bars become one horizontal row of short ones,
   // the percentage in ink, and a page under the floor is warned about.
   assert.match(resumesCss, /\.fills \{[\s\S]*?display: flex;/, "the page fills sit in one horizontal row");
