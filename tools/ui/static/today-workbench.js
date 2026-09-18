@@ -6,6 +6,7 @@ import {
 import { gatesStrip } from "./row-letter.js";
 import { timeline } from "./row.js";
 import { screeningCard } from "./screening.js";
+import { alsoControls, contextualControl, reopenControl, routeButton } from "./pipeline-rows.js";
 
 const ACTION_LABELS = {
   answer: "Answer a screening question",
@@ -36,23 +37,33 @@ function stateNote(row, action) {
   return "Open the full application to review the package and its history.";
 }
 
-function actionLinks(row, action) {
+function actionLinks(row, action, changed, summary) {
   const links = h("div", { class: "workbench-actions" });
-  const href = action.href || row.url;
-  if ((action.kind === "portal" || action.kind === "mark_sent") && href) {
-    links.append(h("a", {
-      class: "btn btn-primary", href, target: "_blank", rel: "noreferrer noopener", text: "Open portal",
-    }));
+  const primary = contextualControl(row, changed, { small: false });
+  if (primary) links.append(primary);
+  const more = alsoControls(row, changed, { small: false });
+  for (const button of more.buttons) links.append(button);
+  if (action.kind === "reopen") {
+    const reopen = reopenControl(row, changed, { small: false });
+    links.append(reopen.button);
+    for (const extra of [reopen.extra]) links.append(extra);
+  }
+  if (summary && typeof summary.days_since === "number") {
+    links.append(routeButton(row, {
+      label: "Mark responded", path: "outcome",
+      body: { status: "responded", note: "recorded from the pipeline" }, primary: true, small: false,
+    }, changed));
   }
   links.append(h("a", {
-    class: action.kind === "portal" || action.kind === "mark_sent" ? "btn" : "btn btn-primary",
+    class: links.childElementCount ? "btn" : "btn btn-primary",
     href: `#/row/${encodeURIComponent(row.id)}`,
     text: "Review application",
   }));
+  for (const extra of more.extras) links.append(extra);
   return links;
 }
 
-export async function todayWorkDetail(summary) {
+export async function todayWorkDetail(summary, changed = () => render()) {
   const shell = h("section", { class: "today-detail", "aria-label": "Selected application" });
   if (!summary) {
     shell.append(h("div", { class: "workbench-empty" },
@@ -98,6 +109,6 @@ export async function todayWorkDetail(summary) {
       h("div", {}, h("p", { class: "eyebrow", text: "Application package" }), h("h3", { text: "Recorded checks and files" })),
       h("a", { href: `#/row/${encodeURIComponent(row.id)}`, text: "See full package" })),
     gatesStrip(pkg, data.package_files)));
-  shell.append(actionLinks(row, action));
+  shell.append(actionLinks(row, action, changed, summary));
   return shell;
 }

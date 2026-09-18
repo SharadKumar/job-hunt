@@ -22,11 +22,12 @@
  */
 
 import {
-  $, api, clear, getSummary, h, loadError, loadSummary, pageHeader, parseHash, placeholderRows, setQuery,
+  $, api, channelLabel, clear, getSummary, h, loadError, loadSummary, pageHeader, parseHash, placeholderRows, setQuery, when,
 } from "./app.js";
 import {
-  channelLabel, loadReasonHelper, markActed, pipelineRow, reopenControl, routeButton,
+  loadReasonHelper, markActed, plainReasonText,
 } from "./pipeline-rows.js";
+import { todayWorkDetail } from "./today-workbench.js";
 
 /**
  * The six segments, with the statuses behind each one. They are the same six
@@ -101,6 +102,7 @@ function stateFrom(which, query) {
     min: (q.get("min") || "").trim(),
     sort: q.get("sort") === "updated" ? "updated" : "score",
     all: q.get("all") === "1",
+    selected: (q.get("selected") || "").trim(),
   };
 }
 
@@ -198,9 +200,15 @@ export async function viewApplications(view, which, query) {
   const head = pageHeader({ title: "Pipeline", lede: count });
   const strip = segmentStrip(state);
   const chips = h("div", { class: "chips-slot" });
-  const list = h("div", { class: "list" });
+  const list = h("div", { class: "list pipeline-list" });
   list.append(placeholderRows(3));
-  view.append(head, strip, chips, list);
+  const detail = h("div", { class: "pipeline-detail-slot" }, placeholderRows(3));
+  const browser = h("aside", { class: "pipeline-browser", "aria-label": `${state.segment.label} applications` },
+    h("div", { class: "pipeline-browser-head" },
+      h("div", {}, h("p", { class: "eyebrow", text: "Applications" }), h("h2", { text: state.segment.label }))),
+    chips, list);
+  const workbench = h("div", { class: "pipeline-workbench" }, browser, detail);
+  view.append(head, strip, workbench);
 
   /** Fetch the segment and repaint the list in place, without moving the page.
    * `acted` is the row an action just landed on, marked for three seconds. */
@@ -211,14 +219,16 @@ export async function viewApplications(view, which, query) {
     const [data] = await Promise.all([fetchSegment(state), loadSummary()]);
     clear(strip);
     for (const tab of [...segmentStrip(state).children]) strip.append(tab);
-    paint(data);
+    await paint(data);
     markActed(acted);
   };
 
-  const paint = (data) => {
+  const paint = async (data) => {
     clear(list);
+    clear(detail);
     if (data.error) {
       list.append(loadError("the pipeline", data.error, () => refresh()));
+      detail.append(h("section", { class: "today-detail" }, h("p", { class: "grey", text: "Select an application when the list is available." })));
       count.textContent = "";
       return;
     }
@@ -233,9 +243,13 @@ export async function viewApplications(view, which, query) {
     writeCount(count, rows.length, total, data);
     if (!rows.length && !(data.followups || []).length) {
       list.append(h("p", { class: "empty", text: data.rows.length ? "No row matches these filters. Widen them to see more." : EMPTY[state.segment.key] }));
+      detail.append(await todayWorkDetail(null));
       return;
     }
-    for (const section of sections(state, rows, data, refresh)) list.append(section);
+    const candidates = [...rows, ...(data.followups || [])];
+    const selected = candidates.find((row) => row.id === state.selected) || candidates[0] || null;
+    for (const section of sections(state, rows, data, selected && selected.id)) list.append(section);
+    detail.append(await todayWorkDetail(selected, () => refresh(selected && selected.id)));
     // Today links at one group ("12 are portals you open"). Land on that
     // heading and give it the focus, so it is read out rather than left to be
     // found by eye.
@@ -249,7 +263,35 @@ export async function viewApplications(view, which, query) {
     }
   };
 
-  paint(await fetchSegment(state));
+  await paint(await fetchSegment(state));
+}
+
+/** Preserve the filters while selecting a row in the split workbench. */
+function selectionHref(state, id) {
+  const q = new URLSearchParams(parseHash().query);
+  q.set("selected", id);
+  return `#/pipeline/${state.segment.key}?${q.toString()}`;
+}
+
+/** One compact row in the application browser. Actions belong to the detail
+ * pane, so the full row is one predictable selection target. */
+function browserRow(state, row, selected) {
+  const meta = [row.company, row.location, channelLabel(row.channel)].filter(Boolean).join("  /  ");
+  const reason = plainReasonText((row.action || {}).note || row.reason);
+  const article = h("a", {
+    class: `list-row pipeline-item${row.id === selected ? " selected" : ""}`,
+    href: selectionHref(state, row.id), dataset: { row: row.id },
+    "aria-current": row.id === selected ? "true" : null,
+  });
+  article.append(
+    h("span", { class: "pipeline-item-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "-" }),
+    h("span", { class: "pipeline-item-copy" },
+      h("strong", { class: "pipeline-item-title", text: row.title || "Untitled role" }),
+      meta ? h("span", { class: "pipeline-item-meta", text: meta }) : null,
+      reason ? h("span", { class: "pipeline-item-reason", text: reason }) : null),
+    row.updated_at ? h("span", { class: "pipeline-item-when", text: when(row.updated_at), title: row.updated_at }) : null,
+  );
+  return article;
 }
 
 /**
@@ -295,49 +337,25 @@ async function fetchSegment(state) {
 
 /** The list, in sections: the Needs you groups, the Sent follow-ups, or one
  * flat run of rows for every other segment. */
-function sections(state, rows, data, refresh) {
-  if (state.segment.key === "needs") return needsSections(rows, refresh);
-  if (state.segment.key === "sent") return sentSections(rows, data.followups, refresh);
+function sections(state, rows, data, selected) {
+  if (state.segment.key === "needs") return needsSections(state, rows, selected);
+  if (state.segment.key === "sent") return sentSections(state, rows, data.followups, selected);
   const out = [];
   const section = h("section");
-  for (const row of rows) section.append(rowFor(state, row, refresh));
+  for (const row of rows) section.append(browserRow(state, row, selected));
   out.push(section);
   return out;
 }
 
-/**
- * One row, dressed the way its segment reads. The queue is the one place the
- * lane and the machine's own status earn their pills: it is the difference
- * between a row the run will send and a row waiting on the person.
- *
- * A reopen is the server's own action (`kind: "reopen"`), and it is the one
- * move that asks for a reason before it posts, so it opens a form under the
- * row instead of arming in place.
- */
-function rowFor(state, row, refresh) {
-  const queue = state.segment.key === "queue";
-  const article = pipelineRow(row, refresh, { lanePill: queue, statusPill: queue });
-  if ((row.action || {}).kind === "reopen") {
-    const control = reopenControl(row, () => refresh(row.id));
-    // One action cell per row: a closed row that also offers Mark as applied
-    // already has one, and a second would sit on top of it in the same slot.
-    let cell = article.querySelector(":scope > .list-action");
-    if (!cell) { cell = h("div", { class: "list-action" }); article.append(cell); }
-    cell.append(control.button);
-    article.append(h("div", { class: "row-extra" }, control.extra));
-  }
-  return article;
-}
-
 /** Needs you, grouped by what the row actually needs, with an anchor per group
  * so Today can link straight at one of them. */
-function needsSections(rows, refresh) {
+function needsSections(state, rows, selected) {
   const out = [];
   // A server that sends no groups (an older process still running) gets a
   // flat list rather than every row under a made-up heading.
   if (!rows.some((row) => row.needs_you_group)) {
     const section = h("section");
-    for (const row of rows) section.append(rowFor({ segment: { key: "needs" } }, row, refresh));
+    for (const row of rows) section.append(browserRow(state, row, selected));
     return [section];
   }
   for (const group of GROUPS) {
@@ -347,11 +365,7 @@ function needsSections(rows, refresh) {
     // The heading carries the anchor id itself, so Today's link lands on the
     // heading rather than on an empty span above it.
     section.append(groupHeading(group.key, group.label, mine.length));
-    for (const row of mine) {
-      // A row waiting on a redraft is waiting on the run, not on the person:
-      // it is listed, quietly, and there is nothing to press.
-      section.append(pipelineRow(row, refresh, { action: !group.quiet }));
-    }
+    for (const row of mine) section.append(browserRow(state, row, selected));
     out.push(section);
   }
   return out;
@@ -360,7 +374,7 @@ function needsSections(rows, refresh) {
 /** Sent, with the applications that have gone quiet grouped above the rest in
  * the same row style. Nothing here sends: Mark responded records what the
  * person already heard back. */
-function sentSections(rows, followups, refresh) {
+function sentSections(state, rows, followups, selected) {
   const out = [];
   if (followups.length) {
     const section = h("section", { "aria-labelledby": "followups-heading" });
@@ -373,10 +387,10 @@ function sentSections(rows, followups, refresh) {
     if (showAll) {
       showAll.addEventListener("click", () => {
         showAll.remove();
-        for (const item of followups.slice(FOLLOW_UP_SHOWN)) body.append(followUpRow(item, refresh));
+        for (const item of followups.slice(FOLLOW_UP_SHOWN)) body.append(browserRow(state, item, selected));
       });
     }
-    for (const item of followups.slice(0, FOLLOW_UP_SHOWN)) body.append(followUpRow(item, refresh));
+    for (const item of followups.slice(0, FOLLOW_UP_SHOWN)) body.append(browserRow(state, item, selected));
     section.append(heading, body);
     out.push(section);
   }
@@ -386,19 +400,7 @@ function sentSections(rows, followups, refresh) {
     heading.id = "sent-heading";
     section.append(heading);
   }
-  for (const row of rows) section.append(pipelineRow(row, refresh));
+  for (const row of rows) section.append(browserRow(state, row, selected));
   out.push(section);
   return out;
-}
-
-/** One application that has gone quiet, in the same row style as the rest of
- * the segment, with the one thing the person can record about it. */
-function followUpRow(item, refresh) {
-  const days = item.days_since === 1 ? "1 day" : `${item.days_since} days`;
-  const article = pipelineRow({ ...item, reason: `${days} since it went out, no reply.` }, refresh, { action: false });
-  const button = routeButton(item, {
-    label: "Mark responded", path: "outcome", body: { status: "responded", note: "recorded from the pipeline" }, small: true,
-  }, () => refresh(item.id));
-  article.append(h("div", { class: "list-action" }, button));
-  return article;
 }

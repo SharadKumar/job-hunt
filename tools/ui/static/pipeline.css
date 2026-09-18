@@ -15,23 +15,81 @@
      .pipeline-count  the list header's "Show all" sits on the count's
                    baseline. It is a second class on app.css's `.page-count`,
                    so neither file defines the other's selector.
-     .list .group-heading  a group heading is a scroll target for Today's
+     .pipeline-list .group-heading  a group heading is a scroll target for Today's
                    links, so it keeps clear of the top of the viewport.
-     .mark-sent    the two small forms a row's own control opens, under it.
+     .mark-sent    the small forms a selected row's control opens.
      .job-line     one line of a tool's own verdict, never softened.
 */
 
-/* --- The list ------------------------------------------------------------ */
+/* --- Split application workbench ---------------------------------------- */
+
+.pipeline-workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
+  min-height: 680px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.pipeline-browser {
+  min-width: 0;
+  background: var(--wash);
+  border-right: 1px solid var(--rule);
+}
+
+.pipeline-browser-head { padding: 24px 24px 12px; }
+.pipeline-browser-head .eyebrow { margin-bottom: 4px; }
+.pipeline-browser-head h2 { margin: 0; }
+.pipeline-browser .chips-slot { padding: 0 24px; }
+.pipeline-detail-slot { min-width: 0; }
+.pipeline-detail-slot > .today-detail { min-height: 100%; }
+
+/* Pipeline rows are selection targets, not small forms. The selected
+   application owns the controls in the right pane. */
+.pipeline-list { border-top: 1px solid var(--rule); }
+.pipeline-list .pipeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px 24px;
+  color: inherit;
+  text-decoration: none;
+}
+.pipeline-list .pipeline-item:hover { background: var(--paper); text-decoration: none; }
+.pipeline-list .pipeline-item.selected { background: var(--paper); }
+.pipeline-list .pipeline-item.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--you);
+}
+.pipeline-item-score { color: var(--ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pipeline-item-copy { min-width: 0; display: flex; flex-direction: column; }
+.pipeline-item-title { overflow-wrap: anywhere; }
+.pipeline-item-meta, .pipeline-item-reason, .pipeline-item-when { font-size: 13px; color: var(--muted); }
+.pipeline-item-meta { margin-top: 4px; }
+.pipeline-item-reason { margin-top: 4px; color: var(--ink); }
+.pipeline-item-when { white-space: nowrap; }
+
+.pipeline-list .group-heading {
+  margin: 0;
+  padding: 16px 24px 8px;
+  background: var(--wash);
+}
 
 /* Sections group the Needs you list and the Sent follow-ups. The rhythm
    between two sections is 32 px; inside one, the hairline is the gap. */
-.list > section + section { margin-top: 32px; }
-.list > section:first-child > .group-heading { margin-top: 0; }
+.pipeline-list > section + section { margin-top: 0; }
+.pipeline-list > section:first-child > .group-heading { margin-top: 0; }
 
 /* A heading Today links straight at (#/pipeline/needs#open_portal) must not
    land under the top of the viewport. The selector is scoped to the list
    rather than restated, because app.css owns `.group-heading` itself. */
-.list .group-heading { scroll-margin-top: 24px; }
+.pipeline-list .group-heading { scroll-margin-top: 24px; }
 
 /* The count line carries the way out of a capped list on its own baseline. It
    is the page header's own `.page-count` with one more class, so app.css keeps
@@ -60,3 +118,16 @@
 .mark-sent { display: grid; gap: 8px; padding: 12px 0 0; }
 .mark-sent .action-buttons { margin-bottom: 0; }
 .mark-sent .field { max-width: 420px; }
+
+@media (max-width: 959px) {
+  .pipeline-workbench { grid-template-columns: minmax(0, 1fr); }
+  .pipeline-browser { border-right: 0; border-bottom: 1px solid var(--rule); }
+}
+
+@media (max-width: 719px) {
+  .pipeline-workbench { margin-right: calc(var(--gutter) * -1); margin-left: calc(var(--gutter) * -1); border-right: 0; border-left: 0; }
+  .pipeline-detail-slot { grid-row: 1; }
+  .pipeline-browser { grid-row: 2; }
+  .pipeline-list .pipeline-item { padding-right: 16px; padding-left: 16px; }
+  .pipeline-item-when { display: none; }
+}
