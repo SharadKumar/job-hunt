@@ -106,12 +106,12 @@ function stateFrom(which, query) {
   };
 }
 
-/** The strip: one tab per segment, each carrying the count the list behind it
- * will show, so a count is never a dead end (section 3, principle 1). */
+/** The title-row tabs: one per segment, each carrying the count the list
+ * behind it will show, so a count is never a dead end. */
 function segmentStrip(state) {
   const summary = getSummary();
   const counts = (summary && summary.segments) || {};
-  const strip = h("nav", { class: "segments", "aria-label": "Pipeline segments" });
+  const strip = h("nav", { class: "tabs pipeline-tabs", "aria-label": "Pipeline segments" });
   for (const segment of SEGMENTS) {
     const here = segment.key === state.segment.key;
     const tab = h("a", { href: `#/pipeline/${segment.key}`, text: segment.label });
@@ -197,8 +197,8 @@ export async function viewApplications(view, which, query) {
   await loadReasonHelper();
 
   const count = h("p", { class: "page-count pipeline-count" });
-  const head = pageHeader({ title: "Pipeline", lede: count });
   const strip = segmentStrip(state);
+  const head = pageHeader({ title: "Pipeline", lede: count, aside: strip });
   const chips = h("div", { class: "chips-slot" });
   const list = h("div", { class: "list pipeline-list" });
   list.append(placeholderRows(3));
@@ -208,7 +208,7 @@ export async function viewApplications(view, which, query) {
       h("div", {}, h("p", { class: "eyebrow", text: "Applications" }), h("h2", { text: state.segment.label }))),
     chips, list);
   const workbench = h("div", { class: "pipeline-workbench" }, browser, detail);
-  view.append(head, strip, workbench);
+  view.append(head, workbench);
 
   /** Fetch the segment and repaint the list in place, without moving the page.
    * `acted` is the row an action just landed on, marked for three seconds. */
