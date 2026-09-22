@@ -14,7 +14,7 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 |---|---|---|---|
 | `discovered` | Imported from a channel. Scored, but not in the queue: below the shortlist line, blocked by a red flag, or no resume positioning fits. | `hunt` upsert; `pipeline:rescore` (demotion) | `score`, `classification` (agent) |
 | `shortlisted` | **The apply queue.** An automatic ClassificationV2 decision exists, score ≥ `shortlist_min_score`, no blocker, a resume positioning fits, and the role is doable from the home city. | `pipeline:rescore` only (automatic Jev or bounded agent verification decision required) | `classification.matched_resume_id`, `classification.discipline_fit: core`; saved jobs are exempt |
-| `parked` | Fits the profile but held for a logistics reason the user has ruled on: an interstate role that needs routine onsite attendance, or an interstate role whose ad is a card-only blurb so flexibility is unknown. Not part of the queue. Re-enters `shortlisted` if the ad turns out remote/flexible. | `pipeline:rescore` (when `score.ts` returns `parked_reason`); attended user decision | `parkedReason` |
+| `parked` | Explicit temporary hold, not missing location information or a confirmed eligibility failure. User holds remain protected. Known legacy automatic location holds are re-evaluated against current classification. | Attended user decision or explicit harness hold | `parkedReason`, `parkedBy` for new holds |
 | `awaiting_external` | Waiting on something outside the harness (e.g. a recruiter reply that decides whether to proceed). | attended session | reason in history |
 | `drafted` | Package assembled in `state/pipeline/archive/<id>/`: JD, keyword plan, CV (baseline or tailored), cover letter, metadata. Not yet reviewed. | `/apply`, daily orchestrator | archive dir |
 | `awaiting_approval` | Package complete and shown in the Sheet Tray. An `approve` in the Tray authorises preparation only, never submission. | `/apply`, daily orchestrator | Tray row |
@@ -46,7 +46,7 @@ won                 → (terminal)
 rejected | withdrawn→ discovered   (user reopen only; the row must earn shortlisted again)
 ```
 
-`pipeline:rescore` may only move rows between `discovered`, `shortlisted` and `parked` (and re-score `drafted` / `awaiting_approval` with `--all` without changing status). It never rejects, withdraws or submits.
+`pipeline:rescore` reconciles unsent mutable rows against current eligibility. Confirmed routine interstate attendance closes unsaved rows as `rejected` (`withdrawn` from `approved`); unknown flexibility does not block. Explicit user holds, submitted outcomes and later stages remain protected. It never submits.
 
 ### Expired openings
 
@@ -67,7 +67,7 @@ Computed in `tools/score.ts` and applied by `tools/rescore-pipeline.ts`:
 2. `discipline_fit` caps `profile_relevance`: outside ≤ 25, adjacent ≤ 54, platform_gap ≤ 74.
 3. `score = 0.65 × relevance + 0.35 × base` (base = arrangement, rate, recency, tag overlap, seniority, bonuses, penalties). Relevance < 50 caps the score at 40; any blocker caps it at 30.
 4. Blockers: onsite 5 days, junior/mid, exclusive, PAYG-only, permanent/fixed-term, relevance < 25, or no `matched_resume_id`.
-5. A row with `userSaved: true` (saved by the user on SEEK) is always `shortlisted`; the gate applies only the hard employment blocks at send time. Otherwise `score ≥ 55` and no blocker → `shortlisted`, unless the role is interstate and `location_flexibility` is `onsite` or `unknown`, in which case → `parked` with `parkedReason`.
+5. A user-saved row retains its saved-job override and all package and send gates. Otherwise confirmed routine interstate attendance is ineligible. Unknown flexibility is non-blocking: an automatic core classification, adequate score and no other blockers can shortlist. Other uncertainty still prevents automatic promotion. Explicit user holds remain parked.
 
 ## Autopilot (one-click channels, unattended)
 

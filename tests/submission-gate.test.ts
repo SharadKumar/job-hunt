@@ -287,7 +287,7 @@ const tests: [string, () => Promise<void>][] = [
       "the reason is punctuated with a comma, and the UI reads it to say this is a policy refusal");
   }],
 
-  ["autopilot: interstate onsite core row → gate_failed (belongs in parked)", async () => {
+  ["autopilot: interstate onsite core row → gate_failed (ineligible)", async () => {
     const row = coreRow({ location: "Brisbane QLD", classification: classificationV2({ source: "agent_fallback", discipline_fit: "core", location_flexibility: "onsite" }) });
     const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
     assert.equal(d.action, "gate_failed");
@@ -296,6 +296,12 @@ const tests: [string, () => Promise<void>][] = [
 
   ["autopilot: interstate flexible core row → submit", async () => {
     const row = coreRow({ location: "Melbourne VIC", classification: classificationV2({ source: "agent_fallback", discipline_fit: "core", location_flexibility: "flexible" }) });
+    const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
+    assert.equal(d.action, "submit");
+  }],
+
+  ["autopilot: unknown interstate flexibility is not a blocker", async () => {
+    const row = coreRow({ location: "Melbourne VIC", classification: classificationV2({ source: "agent_fallback", discipline_fit: "core", location_flexibility: "unknown" }) });
     const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
     assert.equal(d.action, "submit");
   }],

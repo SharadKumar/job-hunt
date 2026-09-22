@@ -502,7 +502,19 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
 
   // Tray tab, awaiting_approval (the person qualifies here) plus
   // manual_action_needed (the person unblocks here).
-  const tray = trayRoles(all);
+  const [{ actionResolver, laneFor, needsYou }, { displayReason }, { getPolicy }] = await Promise.all([
+    import("./ui/rows-ext-api.ts"), import("./ui/api.ts"), import("./ui/policy-api.ts"),
+  ]);
+  const resolveAction = await actionResolver();
+  const policy = await getPolicy();
+  const tray = trayRoles(all).filter(row => {
+    // Never discard an unpulled user decision when a blocker resolves.
+    const previous = existingById.get(row.id);
+    const hasDecision = previous && ["Action", "Edits"].some(key =>
+      String(previous[existingHeader.indexOf(key)] ?? "").trim());
+    return hasDecision || row.status !== "manual_action_needed"
+      || needsYou(resolveAction(row, displayReason(row), laneFor(row, policy).lane));
+  });
   const manualCount = tray.filter((r) => r.status === "manual_action_needed").length;
   const droppedUnclassified = tray.filter((r) => r.status === "awaiting_approval" && !isAutomaticallyClassified(r)).length;
   const trayRows: (string | number)[][] = [TRAY_HEADER, ...tray.map((r) => {

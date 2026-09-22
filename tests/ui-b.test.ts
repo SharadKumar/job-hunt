@@ -161,6 +161,46 @@ await test("a retry is offered only where the state machine allows one", () => {
   assert.equal(at("submitted", dup).kind, "none", "and a sent row is done whatever its note says");
 });
 
+await test("resolved screening is run-owned, exact, and never bypasses a portal", () => {
+  const row = { id: "seek-answer", status: "manual_action_needed", channel: "seek" };
+  const reason = 'unknown screening question: "How many years?"';
+  const bank = { unknown: [{ opportunity_id: row.id, question: "How many years?", answer: "0" }], skills_years: {}, answers_count: 0, path: "fixture" } as any;
+  assert.equal(ext.screeningResolved(row.id, reason, bank), true);
+  assert.equal(ext.screeningResolved("other", reason, bank), false);
+  assert.equal(ext.screeningResolved(row.id, 'unknown screening question: "New question?"', bank), false);
+  assert.equal(ext.screeningResolved(row.id, reason, { ...bank, unknown: [...bank.unknown, { ...bank.unknown[0], answer: null }] }), false);
+  const resolved = ext.actionFor(row, reason, "autopilot", true);
+  assert.equal(resolved.kind, "in_flight");
+  assert.equal(ext.needsYou(resolved), false);
+  assert.equal(ext.actionFor(row, reason, "autopilot", false).kind, "answer");
+  assert.equal(ext.actionFor(row, reason, "attended", true).kind, "attended_send");
+  assert.equal(ext.actionFor(row, "external ATS: example.test", "autopilot", true).kind, "portal");
+  for (const status of ["discovered", "parked", "rejected", "withdrawn", "submitted"]) {
+    assert.equal(ext.needsYou(ext.actionFor({ ...row, status }, "external ATS: example.test", "attended", true)), false);
+  }
+});
+
+await test("live answer changes refresh list and detail without a status rewrite", async () => {
+  const file = path.join(profileDir, "screening-answers.yaml");
+  const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  const id = "seek-recovery-fixture";
+  await upsert({ id, channel: "seek", title: "Recovery fixture", company: "Fixture", url: "https://example.test/recovery", status: "manual_action_needed", notes: 'unknown screening question: "Years?"' } as any);
+  try {
+    fs.writeFileSync(file, `unknown_questions:\n  - opportunity_id: ${id}\n    question: "Years?"\n    answer: null\n`);
+    const unresolved = await ext.getRowDetailPlus(id, ctx);
+    assert.equal(unresolved.action.kind, "answer");
+    fs.writeFileSync(file, `unknown_questions:\n  - opportunity_id: ${id}\n    question: "Years?"\n    answer: 0\n`);
+    const detail = await ext.getRowDetailPlus(id, ctx);
+    assert.equal(detail.action.kind, "in_flight");
+    const listing = await ext.getRowsWithActions({ status: "manual_action_needed" }, ctx);
+    assert.equal(listing.rows.find(r => r.id === id)?.needs_you, false);
+    assert.equal((await get(id))?.status, "manual_action_needed", "reading does not rewrite history");
+  } finally {
+    if (before === null) fs.unlinkSync(file); else fs.writeFileSync(file, before);
+    await setStatus(id, "rejected", "fixture cleanup");
+  }
+});
+
 await test("actionFor falls back to the status when the reason says nothing", () => {
   const at = (status: string) => ext.actionFor({ id: "seek-1", status, url: "https://example.test/ad" }, "package drafted");
   assert.equal(at("awaiting_approval").kind, "approve", "the attended lane is the only lane with an approval to give");
@@ -419,7 +459,7 @@ await test("every row carries the Needs you group the screen heads it under", as
   // A letter block is automatic repair work and does not become a user queue.
   assert.equal(byId.get(blockedId)!.needs_you, false);
   assert.equal(byId.get(blockedId)!.needs_you_group, null);
-  assert.equal(byId.get(portalId)!.needs_you_group, "open_portal", "a portal row is work the person opens");
+  assert.equal(byId.get(portalId)!.needs_you_group, null, "an unchecked portal package is harness-owned preparation");
   assert.equal(typeof (result.body as any).total, "number", "and the response says how many matched before the limit");
 
   const capped = await handleApi({
@@ -427,6 +467,18 @@ await test("every row carries the Needs you group the screen heads it under", as
   }, ctx);
   assert.equal((capped.body as any).rows.length, 1, "the limit trims the rows");
   assert.equal((capped.body as any).total, rows.length, "and the total is what the header counts against");
+});
+
+await test("portal readiness requires a passing verdict for the exact current letter", async () => {
+  const dir = path.join(archiveDir, portalId);
+  fs.mkdirSync(dir, { recursive: true });
+  const letter = "Fixture letter";
+  fs.writeFileSync(path.join(dir, "cover-letter.md"), letter);
+  const { sha256Text } = await import("../tools/letter-critic.ts");
+  fs.writeFileSync(path.join(dir, "letter-critic.json"), JSON.stringify({ verdict: "pass", letter_sha256: sha256Text(letter), findings: [] }));
+  assert.equal((await ext.getRowDetailPlus(portalId, ctx)).action.kind, "portal");
+  fs.writeFileSync(path.join(dir, "cover-letter.md"), `${letter} changed`);
+  assert.equal((await ext.getRowDetailPlus(portalId, ctx)).action.kind, "in_flight");
 });
 
 const sentId = await seed("Integration Lead", "Port Authority", ["shortlisted", "drafted", "awaiting_approval", "approved", "submitted"], { score: 70 }, "sent");

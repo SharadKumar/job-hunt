@@ -387,13 +387,14 @@ export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse>
   let needsYouTotal = 0;
   let actionableManual = 0;
   let inFlight = 0;
+  const resolveAction = await rowsExt.actionResolver(ctx);
   // Only the two segments the person actually works. A `discovered` row nobody
   // has looked at yet, and a `parked` one they already ruled out, both derive
   // an action (open the portal, unpark) but neither is waiting on them: taken
   // over the whole store the headline read 320 on a morning with 37 to do.
   for (const row of rows.filter((r) => WORKED.has(r.status))) {
     const { lane } = rowsExt.laneFor(row, policy);
-    const derived = rowsExt.actionFor(row, displayReason(row), lane);
+    const derived = resolveAction(row, displayReason(row), lane);
     if (rowsExt.needsYou(derived)) {
       needsYouTotal += 1;
       if (row.status === "manual_action_needed") actionableManual += 1;

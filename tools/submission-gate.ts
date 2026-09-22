@@ -28,7 +28,7 @@
  *   3. [autopilot only] status is `approved`            → else gate_failed
  *   4. [autopilot only] automatic persisted Jev decision       → else gate_failed
  *   5. [autopilot only] userSaved, OR discipline_fit core and not an
- *      interstate onsite/unknown-flexibility row        → else gate_failed
+ *      confirmed routine interstate attendance         → else gate_failed
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
  *      sha256 matches the current cover-letter.md      → else gate_failed
  *   7. tailored CV explicitly approved when required    → else gate_failed
@@ -176,15 +176,15 @@ async function homeCityFromProfile(): Promise<string | undefined> {
 }
 
 /**
- * Interstate onsite / unknown-flexibility rows are what `pipeline:rescore`
- * parks. Same test as score.ts so the gate and the scorer cannot disagree.
+ * Only confirmed routine interstate attendance fails location eligibility.
+ * Unknown flexibility is non-blocking, consistently with score.ts.
  */
 function isParkedInterstate(opportunity: Opportunity, homeCity: string | undefined): { parked: boolean; detail: string } {
   const loc = opportunity.location ?? "";
   const flex = (opportunity.classification as { location_flexibility?: string } | undefined)?.location_flexibility ?? "unknown";
   const isInterstate = Boolean(homeCity && loc && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(loc));
   if (!isInterstate) return { parked: false, detail: `location '${loc || "unstated"}' is home/NSW/remote` };
-  if (flex === "onsite" || flex === "unknown") return { parked: true, detail: `interstate (${loc}) with location_flexibility '${flex}'` };
+  if (flex === "onsite") return { parked: true, detail: `routine interstate attendance (${loc})` };
   return { parked: false, detail: `interstate (${loc}) but location_flexibility '${flex}'` };
 }
 
@@ -355,7 +355,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       if (ap.core_discipline_only !== false && fit !== "core") return failGate("autopilot_fit", `discipline_fit is '${fit ?? "missing"}' and the row is not user-saved`);
       const homeCity = opts.homeCity ?? (await homeCityFromProfile());
       const parked = isParkedInterstate(opportunity, homeCity);
-      if (parked.parked) return failGate("autopilot_fit", `${parked.detail}; the row belongs in parked, not the autopilot queue`);
+      if (parked.parked) return failGate("autopilot_fit", `${parked.detail}; ineligible for the autopilot queue`);
       checks.push({ gate: "autopilot_fit", ok: true, detail: `discipline_fit core; ${parked.detail}` });
     }
 

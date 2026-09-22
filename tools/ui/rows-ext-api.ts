@@ -54,7 +54,7 @@ import path from "node:path";
 
 import { ApiError, getRowDetail, getRows, toRowSummary, type ApiContext, type ApiRequest, type ApiResult, type RowSummary } from "./api.ts";
 import { get as getOpportunity, list as listOpportunities, patch as patchOpportunity, setStatus, type Opportunity, type PipelineStatus } from "../pipeline.ts";
-import { deterministicFindings, loadProfileRules, requisitionCodesNotInJd, type CriticFinding } from "../letter-critic.ts";
+import { deterministicFindings, loadProfileRules, requisitionCodesNotInJd, readCurrentVerdict, type CriticFinding } from "../letter-critic.ts";
 import { log, type AuditEventType } from "../audit.ts";
 import { writeAtomic } from "../lib/fs.ts";
 import { repoPath } from "../repo-root.ts";
@@ -63,6 +63,35 @@ import { HUNT_SCRIPTS } from "../channels/_interface.ts";
 import { getJob, listJobs, resolveAutopilotCommand, runningJobFor, startJob } from "./jobs.ts";
 import { getPolicy } from "./policy-api.ts";
 import { channelLabel } from "./labels.ts";
+import { getScreening, type ScreeningSnapshot } from "./health-api.ts";
+
+/** Resolve only the exact current blocker, never an older answered question. */
+export function screeningResolved(id: string, reason: string | null, bank: ScreeningSnapshot): boolean {
+  const question = /(?:screening question|unanswered question):\s*["“]([^"”]+)["”]/i.exec(reason ?? "")?.[1];
+  if (!question) return false;
+  const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const matches = bank.unknown.filter(q => q.opportunity_id === id && normalise(q.question) === normalise(question));
+  return matches.length > 0 && matches.every(q => q.answer !== null && q.answer.trim() !== "");
+}
+
+export async function actionResolver(ctx: ApiContext = {}) {
+  const bank = await getScreening({ profileId: ctx.profileId });
+  const preparation = new Map<string, RowAction>();
+  for (const row of await listOpportunities()) {
+    if (row.status !== "manual_action_needed") continue;
+    const dir = await packageDirFor(row, ctx);
+    const letter = dir ? await readTextIfExists(path.join(dir, "cover-letter.md")) : null;
+    const current = dir && letter ? await readCurrentVerdict(path.join(dir, "letter-critic.json"), letter) : null;
+    if (!current?.ok) preparation.set(row.id, action({
+      kind: "in_flight", label: "Application checks needed", also: holdOrReject(),
+      note: "The daily run must prepare and validate this package before an attended portal session. It must also recheck employment terms and advert availability.",
+    }));
+  }
+  return (row: ActionRow, reason: string | null, lane: Lane) => {
+    const derived = actionFor(row, reason, lane, screeningResolved(row.id, reason, bank));
+    return derived.kind === "portal" ? preparation.get(row.id) ?? derived : derived;
+  };
+}
 
 /**
  * A letter edited by hand at the person's own machine. `AuditEventType` is
@@ -356,7 +385,7 @@ export function gateRefusal(row: ActionRow, reason: string): string | null {
  * status it happens to sit in. Status decides the rest, and a row in flight or
  * finished gets nothing rather than a button that would be refused.
  */
-export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "attended"): RowAction {
+export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "attended", answered = false): RowAction {
   const status = String(row.status ?? "");
   const text = String(reason ?? "");
   // A response is a ladder: the only useful button is the next rung.
@@ -377,6 +406,8 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
   }
   if (REOPENABLE.has(status)) return action({ kind: "reopen", label: "Reopen", post: "reopen" });
   if (NO_ACTION.has(status)) return NONE;
+  if (status === "discovered" || status === "awaiting_external") return NONE;
+  if (status === "parked") return action({ kind: "unpark", label: "Unpark" });
   // External first, and whatever the reason says afterwards: there is no button
   // on this machine that can finish someone else's portal.
   if (isExternal(row, text)) {
@@ -399,7 +430,14 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
   }
   // The label names what will happen, not what the person is being asked for:
   // banking the answer is what lets the run finish the row (section 7).
-  if (UNANSWERED_QUESTION.test(text)) return action({ kind: "answer", label: "Answer and retry", primary: true });
+  if (UNANSWERED_QUESTION.test(text)) {
+    if (answered && lane === "autopilot") return action({
+      kind: "in_flight", label: "Answer saved; retry on next run", also: holdOrReject(),
+      note: "The daily run will recheck the application gates before retrying. No further answer needed.",
+    });
+    if (answered) return action({ kind: "attended_send", label: "Continue in an attended session", also: holdOrReject() });
+    return action({ kind: "answer", label: "Answer screening question", primary: true });
+  }
   // Both of these end in a `retry`, so both are offered only where a retry is
   // legal. On any other status the row falls through to its status branch and
   // says what it is actually doing.
@@ -526,7 +564,7 @@ export type RowsCounts = { needs_you: number; in_flight: number };
  * row counts as nothing to do.
  */
 export const needsYou = (action: RowAction): boolean =>
-  action.kind !== "in_flight" && action.kind !== "none";
+  !["in_flight", "none", "unpark", "reopen"].includes(action.kind);
 
 /**
  * Which of the four Needs you groups a row belongs in
@@ -569,9 +607,10 @@ export async function getRowsWithActions(
   // in the response, and re-reading the YAML per row would be a lie waiting to
   // happen if someone flipped a switch mid-request.
   const policy = await getPolicy({ profileId: ctx.profileId ?? null });
+  const resolveAction = await actionResolver(ctx);
   const decorated = rows.map((row) => {
     const { lane, lane_reason } = laneFor(row, policy);
-    const derived = actionFor(row, row.reason, lane);
+    const derived = resolveAction(row, row.reason, lane);
     return {
       ...row,
       action: derived,
@@ -713,7 +752,7 @@ export async function getRowDetailPlus(id: string, ctx: ApiContext = {}) {
   const detail = await getRowDetail(id, ctx);
   const policy = await getPolicy({ profileId: ctx.profileId ?? null });
   const { lane, lane_reason } = laneFor(detail.row, policy);
-  const derived = actionFor(detail.row, detail.reason, lane);
+  const derived = (await actionResolver(ctx))(detail.row, detail.reason, lane);
   const dir = await packageDirFor(detail.row, ctx);
   // api.ts already read the package when the row carries a draftDir. Only the
   // fallback path has more to find.

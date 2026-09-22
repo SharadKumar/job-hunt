@@ -45,7 +45,7 @@ Kill switch, caps and gates are defence in depth on both lanes. `kill_switch: tr
 
 ## 4. Pipeline state machine
 
-Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Rows live in the SQLite store (`state/pipeline/pipeline.db`): read them with `npm run pipeline -- get <id> | list | summary`, mutate them only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue and nothing else: fit, no blocker, a positioning to apply with, doable from the home city. Interstate roles needing routine onsite attendance sit in `parked`.
+Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Rows live in the SQLite store (`state/pipeline/pipeline.db`): read them with `npm run pipeline -- get <id> | list | summary`, mutate them only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue: fit, no blocker and a positioning to apply with. Unknown location flexibility is non-blocking. Confirmed routine interstate attendance is ineligible, except for saved-job overrides. `parked` is reserved for explicit temporary holds; new holds record `parkedBy: user` or `harness` so rescoring does not mistake missing information for a user instruction.
 
 ## 5. Resume pipeline contract
 

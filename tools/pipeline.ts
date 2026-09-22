@@ -94,6 +94,7 @@ export type Opportunity = {
   score?: number;
   /** Why the row sits in `parked` (interstate onsite, blurb-only interstate). */
   parkedReason?: string;
+  parkedBy?: "user" | "harness";
   scoreReasons?: string[];
   red_flag_blocker?: boolean;
   classification?: ClassificationV2;
@@ -129,9 +130,7 @@ const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   discovered: ["shortlisted", "parked", "awaiting_external", "rejected", "manual_action_needed"],
   awaiting_external: ["shortlisted", "rejected", "withdrawn"],
   shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn"],
-  // parked (2026-09-15): fits the profile but held for a logistics reason the
-  // user has ruled on (interstate role needing routine onsite attendance, or
-  // a card-only blurb that cannot be judged). Not part of the apply queue.
+  // Explicit temporary holds, not location uncertainty or known ineligibility.
   parked: ["shortlisted", "discovered", "rejected", "withdrawn"],
   drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn"],
   awaiting_approval: ["approved", "discovered", "rejected", "withdrawn", "manual_action_needed"],
@@ -382,6 +381,10 @@ export async function setStatus(
   const from = role.status;
   const at = new Date().toISOString();
   const extraFields: Partial<Opportunity> = {};
+  if (next === "parked") {
+    extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
+    extraFields.parkedReason = reason ?? role.parkedReason;
+  }
   if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
   if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
 

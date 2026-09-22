@@ -33,16 +33,24 @@ export type RescoreDecision = {
   status: PipelineStatus;
   parkedReason?: string;
   outcome: RescoreOutcome;
+  reason?: string;
 };
+
+/** Only known legacy machine holds are released automatically. Other holds
+ * remain protected, including an explicit user hold overriding a legacy reason. */
+export function isUserHold(row: Opportunity): boolean {
+  if (row.status !== "parked") return false;
+  if (row.parkedBy === "user") return true;
+  if (row.parkedBy === "harness") return false;
+  return !/^interstate (?:onsite\b|\([^\n]*\) with card-only blurb; location flexibility unknown$)/i.test(row.parkedReason ?? "");
+}
 
 /**
  * Decide where a rescored row belongs. Pure: the caller performs the move via
  * `setStatus` so the transition table, history and audit log all apply.
  *
- * - `parked` with a recorded `parkedReason` is a logistics hold the user has
- *   ruled on. The rescore refreshes its score and classification but never
- *   lifts it back into the queue on its own (2026-09-17: a re-promotion out of
- *   parked put an already-judged role back in the apply queue).
+ * - Explicit user holds are protected. Known legacy automatic location holds
+ *   are reconciled, not mistaken for a user instruction.
  * - Any status outside `RESCORE_MUTABLE_STATUSES` is protected: scores may be
  *   refreshed under `--all`, the status is never touched.
  * - Only an automatic core-discipline ClassificationV2 decision from Jev or
@@ -53,26 +61,31 @@ export type RescoreDecision = {
  */
 export function rescoreStatusDecision(
   opportunity: Opportunity,
-  result: Pick<ScoreRoleResult, "score" | "red_flag_blocker" | "parked_reason" | "classification">,
+  result: Pick<ScoreRoleResult, "score" | "red_flag_blocker" | "ineligible_reason" | "classification">,
   shortlistMin: number,
 ): RescoreDecision {
   const current = opportunity.status;
   const keep = (outcome: RescoreOutcome): RescoreDecision => ({ status: current, parkedReason: opportunity.parkedReason, outcome });
 
-  if (current === "parked" && opportunity.parkedReason) return keep("left_parked");
+  if (isUserHold(opportunity)) return keep("left_parked");
   if (!RESCORE_MUTABLE_STATUSES.includes(current)) return keep("skipped_protected");
 
   // A user-saved SEEK job is an order to apply (user, 2026-09-15): it always
   // sits in the queue whatever the score, band or location. The submission
   // gate still enforces the hard employment blocks at send time.
   if (opportunity.userSaved) {
-    if (current === "discovered" || current === "shortlisted") {
+    if (current === "discovered" || current === "shortlisted" || current === "parked") {
       return current === "shortlisted"
         ? keep("unchanged")
         : { status: "shortlisted", outcome: "promoted" };
     }
     return keep("unchanged");
   }
+
+  if (result.ineligible_reason) return {
+    status: current === "approved" ? "withdrawn" : "rejected",
+    outcome: "demoted", reason: result.ineligible_reason,
+  };
 
   const classificationEligible = canPromoteFromClassification(result.classification)
     && result.classification.discipline_fit === "core";
@@ -88,8 +101,8 @@ export function rescoreStatusDecision(
     return keep("skipped_protected");
   }
 
-  const target: PipelineStatus = result.parked_reason ? "parked" : "shortlisted";
-  const parkedReason = target === "parked" ? result.parked_reason : undefined;
+  const target: PipelineStatus = "shortlisted";
+  const parkedReason = undefined;
   if (target === current) return { status: current, parkedReason, outcome: "unchanged" };
   return { status: target, parkedReason, outcome: target === "shortlisted" ? "promoted" : "demoted" };
 }
@@ -115,13 +128,14 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
     classification: result.classification,
     status: decision.status,
     parkedReason: decision.parkedReason,
+    parkedBy: decision.status === "parked" ? opportunity.parkedBy : undefined,
   };
 }
 
 /** Fields a rescore is allowed to write. Status is not one of them: it moves through `setStatus`. */
 const RESCORE_FIELDS = [
   "workArrangement", "dayRate", "score", "scoreReasons", "red_flag_blocker",
-  "classification", "resumeId", "parkedReason",
+  "classification", "resumeId", "parkedReason", "parkedBy",
 ] as const;
 
 export function rescoreFieldPatch(before: Opportunity, after: Opportunity): Partial<Opportunity> {
@@ -171,6 +185,7 @@ export async function applyRescore(
   for (const { before, decision } of decided) {
     if (decision.status === before.status) continue;
     const reason = `rescore: ${before.status} → ${decision.status}`
+      + (decision.reason ? ` (${decision.reason})` : "")
       + (decision.parkedReason ? ` (${decision.parkedReason})` : "");
     try {
       await setStatus(before.id, decision.status, reason, { actor: "rescore" });
