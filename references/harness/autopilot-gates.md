@@ -5,7 +5,7 @@
 An unattended run may submit only through `npm run autopilot:submit`, only on a channel listed in `autopilot.channels` in `state/profile/submission-policy.yaml` (one-click adapters: SEEK Quick Apply via `tools/channels/seek-submit.ts`, LinkedIn Easy Apply via `tools/channels/linkedin-submit.ts`), and only when every gate below passes:
 
 - `autopilot.enabled: true` and `kill_switch: false`
-- status `approved`, agent classification present (`classification._classifier: "agent"`), core discipline **or** a job the person saved on the channel
+- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path; a Jev decision may classify and prioritise a role but never satisfies unattended send authority; core discipline **or** a job the person saved on the channel
 - no `red_flag_blocker` (bypassed for saved jobs)
 - baseline CV approved and unchanged since approval
 - `tools/letter-critic.ts` pass on the exact letter (sha256 matched against `cover-letter.md`)

@@ -31,7 +31,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { log as auditLog, logMany as auditLogMany, loadDedupIndex, fingerprintFor, type AuditEventType } from "./audit.ts";
 import { store, type ListFilter } from "./pipeline-store.ts";
-import type { Classification } from "./classify-jd.ts";
+import type { ClassificationV2 } from "./classification.ts";
 
 // Map pipeline statuses to canonical audit event types so the audit log
 // records meaningful semantic events, not raw status names.
@@ -80,6 +80,10 @@ export type Opportunity = {
   url: string;
   description?: string;             // raw JD; may be truncated on disk
   postedAt?: string;
+  /** Explicit application closing day in the profile timezone (YYYY-MM-DD). */
+  closingDate?: string;
+  /** Where the closing day came from. Inferred age is never an expiry signal. */
+  closingDateSource?: "description" | "channel";
   dayRate?: { min?: number; max?: number; currency?: string; inc_super?: boolean };
   workArrangement?: "remote" | "hybrid" | "onsite" | "unknown";
   /** How the channel expects the application to be lodged; drives the submit adapter choice and the autopilot gate. */
@@ -92,8 +96,7 @@ export type Opportunity = {
   parkedReason?: string;
   scoreReasons?: string[];
   red_flag_blocker?: boolean;
-  classification?: Classification;
-  classificationSource?: "agent" | "regex" | "none";
+  classification?: ClassificationV2;
   resumeId?: string;
   endEmployer?: string;            // resolved buyer when the advertiser is a recruiter
   requisitionId?: string;          // buyer/RFQ identifier shared across recruiter listings
@@ -114,6 +117,8 @@ export type Opportunity = {
   /** True when the user saved this job on the channel (e.g. SEEK "Saved jobs"); a strong interest signal. */
   userSaved?: boolean;
   userSavedAt?: string;             // ISO timestamp of the first time the saved-jobs watcher saw it
+  /** A bounded automatic rewrite is queued for the next daily run. */
+  redraftRequested?: { at: string; reason: string | null } | null;
   submittedAt?: string;
   responseAt?: string;
   notes?: string;
@@ -128,9 +133,9 @@ const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   // user has ruled on (interstate role needing routine onsite attendance, or
   // a card-only blurb that cannot be judged). Not part of the apply queue.
   parked: ["shortlisted", "discovered", "rejected", "withdrawn"],
-  drafted: ["awaiting_approval", "rejected", "withdrawn"],
-  awaiting_approval: ["approved", "rejected", "withdrawn", "manual_action_needed"],
-  approved: ["submission_pending", "submitted", "manual_action_needed", "withdrawn"],
+  drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn"],
+  awaiting_approval: ["approved", "discovered", "rejected", "withdrawn", "manual_action_needed"],
+  approved: ["submission_pending", "submitted", "discovered", "manual_action_needed", "withdrawn"],
   submission_pending: ["submitted", "manual_action_needed", "withdrawn"],
   submitted: ["responded", "rejected", "withdrawn"],
   responded: ["interview", "rejected", "withdrawn"],
@@ -141,7 +146,7 @@ const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   rejected: ["discovered"],
   withdrawn: ["discovered"],
   // retry (2026-09-15): once the blocker is cleared (screening answer banked, letter fixed) the row may re-enter the autopilot path at approved.
-  manual_action_needed: ["approved", "submitted", "rejected", "withdrawn"],
+  manual_action_needed: ["discovered", "approved", "submitted", "rejected", "withdrawn"],
 };
 
 export function opportunityIdFor(channel: string, url: string): string {

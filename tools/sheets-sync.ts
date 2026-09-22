@@ -12,7 +12,7 @@
  * `awaiting_approval` rows come first (approve / reject / hold), then
  * `manual_action_needed` rows (retry / reject / withdraw, user decision
  * 2026-09-17), each block sorted by score descending. An awaiting row without
- * an agent classification is still shown, and counted in
+ * an automatic ClassificationV2 decision is still shown, and counted in
  * `dropped_unclassified` so nobody has to guess why the Tray is short.
  *
  * Pull: reads the Tray's `Action` and `Edits` columns into a queue file
@@ -53,6 +53,7 @@ import path from "node:path";
 import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
 import { resolveProfileContext } from "./profile-context.ts";
+import { canPromoteFromClassification } from "./classification.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
 const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
@@ -63,7 +64,7 @@ export const TRAY_HEADER = [
   "id", "channel", "company", "title", "score", "profileRelevance", "fitReason", "domain",
   "isContract", "workArrangement", "resumeId", "resumeReason", "topReasons", "redFlags",
   "endEmployer", "requisitionId", "duplicateGroup", "duplicateOf",
-  "coverSnippet", "url", "draftDir", "classificationSource", "Reason", "Action", "Edits", "Status",
+  "coverSnippet", "url", "draftDir", "classificationDecision", "Reason", "Action", "Edits", "Status",
   "SubmittedAt", "ConfirmationRef",
 ];
 
@@ -309,9 +310,9 @@ export async function ensureTabs(sheets: any, spreadsheetId: string): Promise<vo
   });
 }
 
-/** True when an agent (not regex triage, not nothing) classified the row. */
-export function isAgentClassified(r: Opportunity): boolean {
-  return (r.classificationSource ?? r.classification?._classifier) === "agent";
+/** True when the row has an automatic ClassificationV2 decision. */
+export function isAutomaticallyClassified(r: Opportunity): boolean {
+  return canPromoteFromClassification(r.classification);
 }
 
 /**
@@ -333,7 +334,9 @@ export function reasonFor(r: Opportunity): string {
 export function trayRoles(all: Opportunity[]): Opportunity[] {
   const rank = new Map(TRAY_STATUSES.map((s, i) => [s, i] as const));
   return all
-    .filter((r) => rank.has(r.status))
+    // A queued automatic redraft is run-owned work. Keep its row and package
+    // in local state, but do not present it as a fresh decision in the Tray.
+    .filter((r) => rank.has(r.status) && !r.redraftRequested)
     .sort((a, b) =>
       (rank.get(a.status)! - rank.get(b.status)!)
       || (b.score ?? -1) - (a.score ?? -1)
@@ -353,7 +356,7 @@ function rowFor(r: Opportunity): (string | number)[] {
     r.id, r.channel, r.company, r.title,
     r.score != null ? r.score : "",         // number, not string, so Sheets can sort
     classification?.profile_relevance ?? "",
-    classification?.profile_relevance_reason ?? "Pending agent classification",
+    classification?.profile_relevance_reason ?? "Pending automatic classification",
     classification?.detected_domain ?? "",
     classification ? (classification.is_contract ? "yes" : "no") : "unknown",
     classification?.work_arrangement ?? r.workArrangement ?? "unknown",
@@ -368,7 +371,7 @@ function rowFor(r: Opportunity): (string | number)[] {
     "",
     r.url,
     r.draftDir ?? "",
-    r.classificationSource ?? classification?._classifier ?? "none",
+    classification ? `${classification.source}/${classification.status}` : "none",
     reasonFor(r),
     "", "", r.status, r.submittedAt ?? "", "",
   ];
@@ -448,7 +451,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
 
   // Pipeline tab, everything. Score is a number (so the user can sort/filter).
   const pipelineHeader = [
-    "id", "channel", "status", "company", "title", "score", "classificationSource",
+    "id", "channel", "status", "company", "title", "score", "classificationDecision",
     "profileRelevance", "disciplineFit", "fitReason", "domain", "isContract", "workArrangement", "location", "locationFlex", "locationFlexQuote", "resumeId",
     "resumeReason", "endEmployer", "requisitionId", "duplicateGroup", "duplicateOf",
     "redFlags", "topReasons", "url", "submittedAt",
@@ -456,10 +459,10 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
   const pipelineRows: (string | number)[][] = [pipelineHeader, ...pipelineView.map((r) => [
     r.id, r.channel, r.status, r.company, r.title,
     r.score != null ? r.score : "",
-    r.classificationSource ?? r.classification?._classifier ?? "none",
+    r.classification ? `${r.classification.source}/${r.classification.status}` : "none",
     r.classification?.profile_relevance ?? "",
     (r.classification as { discipline_fit?: string } | undefined)?.discipline_fit ?? "",
-    r.classification?.profile_relevance_reason ?? "Pending agent classification",
+    r.classification?.profile_relevance_reason ?? "Pending automatic classification",
     r.classification?.detected_domain ?? "",
     r.classification ? (r.classification.is_contract ? "yes" : "no") : "unknown",
     r.classification?.work_arrangement ?? r.workArrangement ?? "unknown",
@@ -501,7 +504,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
   // manual_action_needed (the person unblocks here).
   const tray = trayRoles(all);
   const manualCount = tray.filter((r) => r.status === "manual_action_needed").length;
-  const droppedUnclassified = tray.filter((r) => r.status === "awaiting_approval" && !isAgentClassified(r)).length;
+  const droppedUnclassified = tray.filter((r) => r.status === "awaiting_approval" && !isAutomaticallyClassified(r)).length;
   const trayRows: (string | number)[][] = [TRAY_HEADER, ...tray.map((r) => {
     const row = rowFor(r);
     const prev = existingById.get(r.id);
@@ -550,7 +553,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
 
   console.error(
     `[sheets-sync] pushed and verified ${pipelineView.length} visible Pipeline roles from ${all.length} local roles, `
-    + `${tray.length} in Tray (${manualCount} manual, ${droppedUnclassified} awaiting without agent classification, `
+    + `${tray.length} in Tray (${manualCount} manual, ${droppedUnclassified} awaiting without automatic classification, `
     + `Sheet minimum score ${pipelineSheetMinScore})`,
   );
 
@@ -641,7 +644,7 @@ export async function runPull(deps: SyncDeps): Promise<SyncReport> {
   const actionIdx = header.indexOf("Action");
   const editsIdx = header.indexOf("Edits");
   const statusIdx = header.indexOf("Status");
-  const sourceIdx = header.indexOf("classificationSource");
+  const sourceIdx = header.indexOf("classificationDecision");
 
   const queue: { id: string; action: string; edits: string }[] = [];
   const clearRanges: string[] = [];
@@ -657,7 +660,7 @@ export async function runPull(deps: SyncDeps): Promise<SyncReport> {
     if (!id) continue;
     const status = statusIdx >= 0 ? String(row[statusIdx] ?? "").trim() : "";
     if (status === "manual_action_needed") manualRows++;
-    if (status === "awaiting_approval" && sourceIdx >= 0 && String(row[sourceIdx] ?? "").trim() !== "agent") {
+    if (status === "awaiting_approval" && sourceIdx >= 0 && String(row[sourceIdx] ?? "").trim() !== "jev/automatic") {
       droppedUnclassified++;
     }
 

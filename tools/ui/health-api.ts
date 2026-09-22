@@ -40,6 +40,9 @@ import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath, repoRoot } from "../repo-root.ts";
 import { ApiError, type ApiContext, type ApiRequest, type ApiResult } from "./api.ts";
 import { getPolicy } from "./policy-api.ts";
+import { gatewayCredential } from "../jev/env.ts";
+import { activeDegradations, blockingDegradation, readDegradation } from "../jev/degradation.ts";
+import { loadJevPolicy } from "../jev/policy.ts";
 
 /**
  * The person answering a screening question is a policy-shaped act: it changes
@@ -109,6 +112,23 @@ export type HarnessHealth = {
   channels: ChannelHealth[];
   /** Whether the daily wrapper has somewhere to post its one-line summary. */
   notify_url_set: boolean;
+  jev: {
+    state: "healthy" | "degraded" | "unconfigured";
+    model: string;
+    gateway_route_fingerprint: string | null;
+    resolved_model_version: string | null;
+    model_version_observable: boolean;
+    classification_state_application_enabled: boolean;
+    credential_present: boolean;
+    degradation_reason: string | null;
+    degradation_acknowledged: boolean;
+    degradation_advisories: Array<{ scope: string; reason: string; acknowledged: boolean }>;
+    jev_autopilot_authority_enabled: boolean;
+    benchmark: Record<string, unknown> | null;
+    shadow_benchmark: Record<string, unknown> | null;
+    comparison: Record<string, unknown> | null;
+    correction: Record<string, unknown> | null;
+  };
   generated_at: string;
 };
 
@@ -307,12 +327,19 @@ export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth
   const channelsDir = opts.channelsDir ?? repoPath("state/channels");
   const plistPath = opts.plistPath ?? path.join(os.homedir(), "Library", "LaunchAgents", PLIST_NAME);
 
-  const [lastRun, policy, rows, plist, ids] = await Promise.all([
+  const [lastRun, policy, rows, plist, ids, credential, degradation, jevPolicy, benchmark, shadowBenchmark, comparison, correction] = await Promise.all([
     readLastRun(logDir, now),
     getPolicy({ profileId: opts.profileId ?? null }),
     listOpportunities({}),
     fsp.readFile(plistPath, "utf8").catch(() => null),
     enabledChannels(opts.profileId),
+    gatewayCredential(),
+    readDegradation(),
+    loadJevPolicy(),
+    fsp.readFile(repoPath("docs/benchmarks/jev-after.json"), "utf8").then(JSON.parse).catch(() => null),
+    fsp.readFile(repoPath("docs/benchmarks/jev-shadow-500.json"), "utf8").then(JSON.parse).catch(() => null),
+    fsp.readFile(repoPath("docs/benchmarks/jev-comparison.json"), "utf8").then(JSON.parse).catch(() => null),
+    fsp.readFile(repoPath("docs/benchmarks/jev-confidence-correction-after.json"), "utf8").then(JSON.parse).catch(() => null),
   ]);
 
   const today = now.toLocaleDateString("en-CA");
@@ -324,6 +351,12 @@ export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth
 
   const channels: ChannelHealth[] = [];
   for (const id of ids) channels.push(await channelHealth(id, channelsDir, now));
+  const blocking = blockingDegradation(degradation);
+  const advisories = activeDegradations(degradation).map(({ scope, incident }) => ({
+    scope,
+    reason: incident.reason,
+    acknowledged: Boolean(incident.acknowledged_at),
+  }));
 
   return {
     last_run: lastRun,
@@ -341,6 +374,23 @@ export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth
     },
     channels,
     notify_url_set: Boolean(process.env.HARNESS_NOTIFY_URL),
+    jev: {
+      state: !credential ? "unconfigured" : blocking ? "degraded" : "healthy",
+      model: jevPolicy.policy.model,
+      gateway_route_fingerprint: jevPolicy.policy.expected_gateway_route_fingerprint ?? null,
+      resolved_model_version: benchmark?.model?.resolved_model_versions?.[0] ?? null,
+      model_version_observable: benchmark?.model?.model_version_observable_all === true,
+      classification_state_application_enabled: jevPolicy.policy.classification_state_application_enabled,
+      credential_present: Boolean(credential),
+      degradation_reason: blocking?.incident.reason ?? null,
+      degradation_acknowledged: Boolean(blocking?.incident.acknowledged_at),
+      degradation_advisories: advisories,
+      jev_autopilot_authority_enabled: false,
+      benchmark,
+      shadow_benchmark: shadowBenchmark,
+      comparison,
+      correction,
+    },
     generated_at: now.toISOString(),
   };
 }

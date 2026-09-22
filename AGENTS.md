@@ -16,7 +16,7 @@ There are two lanes, and the lane is decided by the channel, never by who asked.
 **Autopilot lane.** Channels listed in `autopilot.channels` in `state/profile/submission-policy.yaml` (one-click adapters only: SEEK Quick Apply via `tools/channels/seek-submit.ts`, LinkedIn Easy Apply via `tools/channels/linkedin-submit.ts`). An unattended run may import, classify, score, draft, validate and then submit through `npm run autopilot:submit` when the machine gates pass:
 
 - `autopilot.enabled: true` and `kill_switch: false`
-- status `approved`, agent classification present, core discipline **or** a job the person saved on the channel
+- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path; a Jev decision may classify and prioritise a role but never satisfies unattended send authority; core discipline **or** a job the person saved on the channel
 - no `red_flag_blocker` (bypassed for saved jobs)
 - baseline CV approved and unchanged since approval
 - `tools/letter-critic.ts` pass on the exact letter (sha256 matched)
@@ -37,10 +37,11 @@ Kill switch, caps and gates are defence in depth on both lanes. `kill_switch: tr
 4. **Local files in `state/` are the source of truth.** Pipeline rows live in SQLite at `state/pipeline/pipeline.db`; read them with `npm run pipeline -- get <id> | list` and never from `opportunities.json`, which is only an on-demand export. The local UI (`npm run ui`) is the primary approval surface and writes through the same pipeline CLI. The Google Sheet, when enabled, is a one-way mirror except the Tray tab's `Action` and `Edits` columns, which are pulled in on each run; nothing else in the Sheet is authoritative. `sheet.enabled: false` in `state/profile/submission-policy.yaml` retires the mirror altogether, and every Sheet step then skips with `skipped: "sheet.enabled=false"`; a profile with no `sheet:` block keeps mirroring.
 5. **Market narrative first.** Every positioning is written against current keyword clouds (`state/org/keyword-clouds.yaml`, weighted per type in `market_lens.clouds`), researched from the title outward. A cloud is refreshed once and every positioning that references it moves with it. Unmatched but important terms are put to the person, never silently dropped; minor gaps may become familiarity.
 6. **Tool discipline.** Prefer the scripts in `tools/` (cached, dedup-aware, lint-aware) over ad-hoc `curl` or `grep`. The npm scripts in `package.json` are the canonical entry points. Every tool prints one compact JSON object; parse it, do not grep prose.
-7. **Deterministic tools decide mechanical facts; agents decide semantics.** Page fill, line width, ATS structure, term grounding, provenance and the submission gate are tool verdicts and are never argued down. Section soundness, heading choice, duplicate or contradictory bullets, register and unsupported claims are agent judgements (`resume-critic`, `letter-critic`).
+7. **Use the narrowest decision mechanism that fits.** Deterministic tools decide mechanical facts, scoring arithmetic, gates, hashes and explicit JD terms. Jev makes bounded semantic choices for opportunity classification and only after deterministic matching fails for screening-answer and duplicate candidates. Generative agents retain open-ended writing, critique, research and evidence interpretation. No model authorises a send by itself. An unsubmitted active row that no longer has an automatic core-fit decision returns to `discovered`; its history and package remain available, but it must not linger in Queue or Needs you.
 8. **Never narrate a tool `fail` into a pass.** A green report over a red tool exit is a hard stop. The orchestrator re-runs the gates itself after any subagent returns and trusts the exit code, not the summary.
 9. **Update `state/journal/YYYY-MM-DD.md`** at the end of any non-trivial session: what changed, what was sent (full letter text under "Sent unattended"), what was parked and why.
 10. **After any state mutation, invoke `state-syncer`** to validate the pipeline and, while `sheet.enabled` is true, push the Sheet. Do not leave an enabled Sheet stale.
+11. **Keep the working pipeline current.** Before classification, close every unsent active row whose explicit closing date has passed, or whose channel explicitly reports the advert expired. Use `npm run pipeline:expire -- --apply`; never infer expiry from posting age. Submitted and later-stage rows remain untouched, and closed rows retain their audit history.
 
 ## 4. Pipeline state machine
 
@@ -73,7 +74,7 @@ Each user-invokable workflow lives in `.claude/skills/<name>/SKILL.md` and is di
 | Intent | Subagent or tool | Notes |
 |---|---|---|
 | First run on a new machine, connect Sheet / channels, turn on autopilot | `setup` skill (drives `npm run setup:check`) | asks in batches; never logs in for the person |
-| Find opportunities, scan a channel | `opportunity-finder` | discover, classify, score, ingest in one context |
+| Find opportunities, scan a channel | `opportunity-finder` | discover, classify through Jev, score, ingest |
 | Render or re-render a CV baseline or tailored CV | `resume-writer` | owns the quality contract; audits and looks at the pages |
 | Critique a rendered CV before approval | `resume-critique` skill (spawns `resume-critic`) | mandatory before any approval |
 | Cover letter or follow-up nudge | `cover-letter-writer` | never write a production letter inline |
@@ -95,7 +96,7 @@ Ask when: two CV variants score within 0.5; a draft trips slop after four regene
 
 ## 10. Cross-CLI
 
-Claude Code is primary; Codex is best-effort. The quality contract depends on isolated subagents; under Codex expect inline invocation, a heavier main context and lower artefact quality. Skills, agents and tools are shared; `scripts/daily.sh` reads `HARNESS_CLI=claude|codex` for the unattended run.
+The deterministic daily front half, including discovery, Jev classification, scoring and dedup, does not depend on either agent CLI. Claude Code is primary for the agentic back half; Codex is best-effort. The writing quality contract depends on isolated subagents. Skills, agents and tools are shared; `scripts/daily.sh` reads `HARNESS_CLI=claude|codex` for the back half.
 
 ## 11. Never
 

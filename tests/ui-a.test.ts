@@ -364,6 +364,9 @@ await test("health reports the last run, the next one and the logins", async () 
   assert.equal(linkedin?.note, "session file missing");
   assert.ok(!health.channels.some((c) => c.id === "hn"), "a channel that is switched off is not probed");
   assert.equal(health.notify_url_set, false);
+  assert.equal(health.jev.model, "typesafe-ai/jev");
+  assert.ok(["healthy", "degraded", "unconfigured"].includes(health.jev.state));
+  assert.ok("benchmark" in health.jev, "health must carry the benchmark used by the Decision layer tab");
 });
 
 /**

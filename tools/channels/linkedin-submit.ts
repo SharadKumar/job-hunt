@@ -58,7 +58,7 @@ import { repoPath } from "../repo-root.ts";
 import { openChromeContext } from "./_browser.ts";
 import {
   coverLetterToPlainText,
-  decideQuestion,
+  decideQuestionWithJev,
   isPlaceholderOption,
   loadScreeningAnswers,
   normaliseQuestion,
@@ -433,7 +433,7 @@ async function answerStep(page: Page, answers: ScreeningAnswers, phone: string |
     // Already answered (remembered from an earlier application): leave alone.
     if (q.value && q.kind !== "checkbox") continue;
 
-    const decision = decideQuestion(q, answers);
+    const decision = await decideQuestionWithJev(q, answers);
     if (decision.kind === "unmatched") {
       // A numeric field the profile answers in words is still answerable when the words carry a number.
       return { unmatched: q, coverLetterDelivered };

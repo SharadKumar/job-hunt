@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { classificationV2 } from "./fixtures/classification-v2.ts";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -70,8 +71,7 @@ async function seed(id: number, opts: {
   if (opts.status === "shortlisted") await setStatus(row.id, "shortlisted", "fits");
   const fields: Record<string, unknown> = {};
   if (opts.agentClassified) {
-    fields.classification = { discipline: "solution_architecture" };
-    fields.classificationSource = "agent";
+    fields.classification = classificationV2();
   }
   if (opts.score !== undefined) fields.score = opts.score;
   if (Object.keys(fields).length) await patch(row.id, fields as any, "test:seed");
@@ -87,7 +87,7 @@ console.log("flush-discovered");
 const young = await seed(1, { ageDays: 2, score: 10 });
 // old, unclassified discovered — the single intended victim
 const oldUnclassified = await seed(2, { ageDays: 40, score: 12 });
-// old but agent-classified discovered — a judged row is never junk
+// Old but semantically classified discovered row: a judged row is never junk.
 const oldClassified = await seed(3, { ageDays: 40, agentClassified: true, score: 55 });
 // old shortlisted — out of the `discovered` scope entirely
 const oldShortlisted = await seed(4, { ageDays: 40, status: "shortlisted", score: 70 });

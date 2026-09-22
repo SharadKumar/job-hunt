@@ -85,7 +85,7 @@ console.log("ui workspace api");
 
 // ---------- runs ----------
 
-await test("the run list reads the Numbers table and the log's two bracket lines", async () => {
+await test("the run list uses the same operational stops as the detail and reads the log's bracket lines", async () => {
   const res = await call("GET", "/api/runs", undefined, "limit=30");
   assert.equal(res.status, 200);
   const body = res.body as any;
@@ -94,7 +94,7 @@ await test("the run list reads the Numbers table and the log's two bracket lines
 
   const latest = body.runs[0];
   assert.equal(latest.sent, 2, "sent comes from the Sent today column");
-  assert.equal(latest.blocked, 7, "blocked comes from the Manual column");
+  assert.equal(latest.blocked, 1, "stopped is the same parsed operational list the detail shows");
   assert.equal(latest.exit_code, 0);
   // 07:00:05 to 08:13:26 is 1 h 13 m 21 s.
   assert.equal(latest.duration_s, 4401, "the duration is the gap between the two bracket lines");

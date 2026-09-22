@@ -2,41 +2,30 @@
 /**
  * rescore-pipeline.ts — re-score every opportunity in opportunities.json.
  *
- * Architecture: classifications come from the agent (in-agent reasoning).
- * This script applies them deterministically. Two modes:
+ * Applies the ClassificationV2 already persisted on each SQLite row. It never
+ * reads an external classification map and never invents a fallback.
  *
- *   1. --classifications <path>  Read a JSON file of {id: Classification}
- *      pre-computed by the agent. Each role gets scored against its
- *      grounded classification. This is the preferred flow.
- *
- *   2. (no flag)                 Use regex triage classification (fast,
- *      weak). Useful when you've just changed scoring-weights.yaml and
- *      want to see relative shifts without paying for LLM. Surface a
- *      clear warning that profile_relevance is the default neutral 50.
- *
- * Usage: tsx tools/rescore-pipeline.ts [--classifications path] [--ids-file path] [--all] [--limit N] [--dry-run]
+ * Usage: tsx tools/rescore-pipeline.ts [--ids-file path] [--all] [--limit N] [--dry-run]
  */
 
 import { promises as fs } from "node:fs";
 import { load, patchMany, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
 import { scoreRole } from "./score.ts";
-import type { Classification } from "./classify-jd.ts";
+import { canPromoteFromClassification } from "./classification.ts";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
 
 type ScoreRoleResult = Awaited<ReturnType<typeof scoreRole>>;
 
-export function classificationSource(classification: Classification | undefined): Opportunity["classificationSource"] {
-  return classification?._classifier ?? "none";
-}
-
 /**
- * The only statuses a rescore may move a row out of. Everything downstream of
- * `shortlisted` (drafted, awaiting_approval, approved, submitted and the rest)
- * is the product of work a human or an adapter has already done, and rewinding
- * it to `discovered` is both wrong and an invalid transition.
+ * The unsubmitted statuses a rescore may reconcile. Work already done remains
+ * in the archive and history, but it must not pin a role in an operational
+ * queue after the current decision can no longer justify it. Submitted and
+ * later rows are outcomes and are never rewound by classification.
  */
-export const RESCORE_MUTABLE_STATUSES: PipelineStatus[] = ["discovered", "shortlisted", "parked"];
+export const RESCORE_MUTABLE_STATUSES: PipelineStatus[] = [
+  "discovered", "shortlisted", "parked", "drafted", "awaiting_approval", "approved", "manual_action_needed",
+];
 
 export type RescoreOutcome = "promoted" | "demoted" | "unchanged" | "left_parked" | "skipped_protected";
 
@@ -56,7 +45,11 @@ export type RescoreDecision = {
  *   parked put an already-judged role back in the apply queue).
  * - Any status outside `RESCORE_MUTABLE_STATUSES` is protected: scores may be
  *   refreshed under `--all`, the status is never touched.
- * - Regex/absent classification never promotes.
+ * - Only an automatic core-discipline ClassificationV2 decision from Jev or
+ *   the supported in-agent fallback may enter or remain in an active queue.
+ * - An uncertain or no-longer-eligible decision demotes an unsubmitted active
+ *   row to `discovered`. It is retained for audit and can earn its way back.
+ * - A saved job remains an order to apply and is never demoted here.
  */
 export function rescoreStatusDecision(
   opportunity: Opportunity,
@@ -68,16 +61,34 @@ export function rescoreStatusDecision(
 
   if (current === "parked" && opportunity.parkedReason) return keep("left_parked");
   if (!RESCORE_MUTABLE_STATUSES.includes(current)) return keep("skipped_protected");
-  if (classificationSource(result.classification) !== "agent") return keep("unchanged");
 
   // A user-saved SEEK job is an order to apply (user, 2026-09-15): it always
   // sits in the queue whatever the score, band or location. The submission
   // gate still enforces the hard employment blocks at send time.
-  const target: PipelineStatus = opportunity.userSaved
-    ? "shortlisted"
-    : result.red_flag_blocker || result.score < shortlistMin
-      ? "discovered"
-      : result.parked_reason ? "parked" : "shortlisted";
+  if (opportunity.userSaved) {
+    if (current === "discovered" || current === "shortlisted") {
+      return current === "shortlisted"
+        ? keep("unchanged")
+        : { status: "shortlisted", outcome: "promoted" };
+    }
+    return keep("unchanged");
+  }
+
+  const classificationEligible = canPromoteFromClassification(result.classification)
+    && result.classification.discipline_fit === "core";
+  const scoreEligible = !result.red_flag_blocker && result.score >= shortlistMin;
+  if (!classificationEligible || !scoreEligible) {
+    if (current === "discovered") return keep("unchanged");
+    return { status: "discovered", outcome: "demoted" };
+  }
+
+  // Once a still-eligible role has entered package preparation or a genuine
+  // manual blocker, scoring must not erase that work or its next action.
+  if (["drafted", "awaiting_approval", "approved", "manual_action_needed"].includes(current)) {
+    return keep("skipped_protected");
+  }
+
+  const target: PipelineStatus = result.parked_reason ? "parked" : "shortlisted";
   const parkedReason = target === "parked" ? result.parked_reason : undefined;
   if (target === current) return { status: current, parkedReason, outcome: "unchanged" };
   return { status: target, parkedReason, outcome: target === "shortlisted" ? "promoted" : "demoted" };
@@ -102,7 +113,6 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
     scoreReasons: result.reasons,
     red_flag_blocker: result.red_flag_blocker,
     classification: result.classification,
-    classificationSource: classificationSource(result.classification),
     status: decision.status,
     parkedReason: decision.parkedReason,
   };
@@ -111,7 +121,7 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
 /** Fields a rescore is allowed to write. Status is not one of them: it moves through `setStatus`. */
 const RESCORE_FIELDS = [
   "workArrangement", "dayRate", "score", "scoreReasons", "red_flag_blocker",
-  "classification", "classificationSource", "resumeId", "parkedReason",
+  "classification", "resumeId", "parkedReason",
 ] as const;
 
 export function rescoreFieldPatch(before: Opportunity, after: Opportunity): Partial<Opportunity> {
@@ -200,33 +210,18 @@ async function main() {
     throw new Error("--ids-file must contain a JSON array of opportunity ids");
   }
   const targetIds = requestedIds ? new Set(requestedIds) : null;
-  const classIdx = argv.indexOf("--classifications");
-  const classificationsPath = classIdx >= 0 ? argv[classIdx + 1] : null;
-  const classifications: Record<string, Classification> = classificationsPath
-    ? JSON.parse(await fs.readFile(classificationsPath, "utf8"))
-    : {};
-  if (!classificationsPath) {
-    console.error("[rescore] no --classifications provided; using regex triage diagnostics only. profile_relevance defaults to 50 and status will not be promoted.");
-  }
-
   const weights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
   const shortlistMin = weights.thresholds?.shortlist_min_score ?? 55;
 
   const roles = await load();
   const eligibleStatuses: PipelineStatus[] = all
-    ? (["discovered", "shortlisted", "parked", "drafted", "awaiting_approval"] as PipelineStatus[])
-    : (["discovered", "shortlisted", "parked"] as PipelineStatus[]);
+    ? RESCORE_MUTABLE_STATUSES
+    : ["discovered", "shortlisted", "parked"];
   if (targetIds) {
     const pipelineIds = new Set(roles.map((role) => role.id));
     const missingPipelineIds = requestedIds!.filter((id) => !pipelineIds.has(id));
     if (missingPipelineIds.length) {
       throw new Error(`--ids-file contains ${missingPipelineIds.length} ids absent from the pipeline: ${missingPipelineIds.slice(0, 5).join(", ")}`);
-    }
-    if (classificationsPath) {
-      const missingClassificationIds = requestedIds!.filter((id) => !classifications[id]);
-      if (missingClassificationIds.length) {
-        throw new Error(`classification map is missing ${missingClassificationIds.length} targeted ids: ${missingClassificationIds.slice(0, 5).join(", ")}`);
-      }
     }
   }
   const opportunities = selectOpportunitiesForRescore(roles, eligibleStatuses, targetIds, limit);
@@ -254,7 +249,7 @@ async function main() {
           id: r.id, channel: r.channel, title: r.title, company: r.company,
           description: r.description ?? "", url: r.url, workArrangement: r.workArrangement,
           postedAt: r.postedAt, location: r.location, dayRate: r.dayRate,
-        }, classifications[r.id] ?? r.classification);
+        }, r.classification);
         changes.push({ opportunity: r, oldScore: before[r.id], newScore: result.score, newClass: result.classification });
         writeQueue.push({ before: r, result });
       } catch (e) {

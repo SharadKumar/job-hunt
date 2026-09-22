@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { classificationV2 } from "./fixtures/classification-v2.ts";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sheets-sync-"));
 // Both must be set before pipeline.ts is evaluated: the store resolves its file
@@ -82,19 +83,11 @@ const card = (n: number) => ({
   company: `Company ${n}`,
 });
 
-const agentClassification = {
-  profile_relevance: 80,
-  profile_relevance_reason: "Architecture-led delivery",
-  is_contract: true,
-  work_arrangement: "remote",
-  matched_resume_id: "solution-architect",
-  red_flags: [],
-  _classifier: "agent",
-} as any;
+const automaticClassification = classificationV2({ profile_relevance: 80, profile_relevance_reason: "Architecture-led delivery" });
 
 /** discovered → manual_action_needed, with the blocker reason in history. */
 async function seedManual(n: number, score: number, reason: string) {
-  const row = await upsert({ ...card(n), status: "discovered", score, classificationSource: "agent", classification: agentClassification });
+  const row = await upsert({ ...card(n), status: "discovered", score, classification: automaticClassification });
   await setStatus(row.id, "manual_action_needed", reason);
   return row.id;
 }
@@ -103,7 +96,7 @@ async function seedManual(n: number, score: number, reason: string) {
 async function seedAwaiting(n: number, score: number, classified: boolean) {
   const row = await upsert({
     ...card(n), status: "discovered", score,
-    ...(classified ? { classificationSource: "agent" as const, classification: agentClassification } : { classificationSource: "regex" as const }),
+    ...(classified ? { classification: automaticClassification } : {}),
   });
   await setStatus(row.id, "shortlisted", "fits");
   await setStatus(row.id, "drafted", "package assembled");
@@ -124,14 +117,14 @@ try {
     assert.equal(report.ok, true);
     assert.equal(report.tray_rows, 3, "all three actionable rows reach the Tray");
     assert.equal(report.manual_rows, 1);
-    assert.equal(report.dropped_unclassified, 1, "an awaiting row without agent classification is counted");
+    assert.equal(report.dropped_unclassified, 1, "an awaiting row without automatic classification is counted");
 
     const header = tabs.Tray[0] as string[];
     assert.deepEqual(header, TRAY_HEADER);
     const idIdx = header.indexOf("id");
     const statusIdx = header.indexOf("Status");
     const reasonIdx = header.indexOf("Reason");
-    const sourceIdx = header.indexOf("classificationSource");
+    const sourceIdx = header.indexOf("classificationDecision");
     const body = tabs.Tray.slice(1);
 
     assert.deepEqual(
@@ -145,7 +138,7 @@ try {
 
     // The unclassified row is COUNTED, not hidden: it is present in the Tray.
     const unclassifiedRow = body.find((r) => r[idIdx] === unclassifiedId)!;
-    assert.equal(unclassifiedRow[sourceIdx], "regex");
+    assert.equal(unclassifiedRow[sourceIdx], "none");
 
     assert.ok(calls.some((c) => c.method === "values.update" && c.range === "Tray!A1"), "the Tray is rewritten");
   }

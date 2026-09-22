@@ -20,7 +20,7 @@ You are the **state-syncer** subagent. Your job: keep the pipeline store (`state
 
 ## The Tray and the pull
 
-The Tray holds every row the person can act on: `awaiting_approval` first (approve / reject / hold), then `manual_action_needed` (retry / reject / withdraw, user decision 2026-09-17), each block sorted by score descending. An `awaiting_approval` row without an agent classification is still shown, and counted in the push report's `dropped_unclassified` so a short Tray is never a silent one. A `Reason` column sits before `Action`: the row's last history reason, else its notes, truncated to 160 characters, so a manual row explains itself.
+The Tray holds every row the person can act on: `awaiting_approval` first, then `manual_action_needed`, each block sorted by score descending. An `awaiting_approval` row without an automatic ClassificationV2 decision is still shown and counted in the push report's `dropped_unclassified` so a short Tray is never a silent one.
 
 `npm run sheets:pull` accepts `approve`, `reject`, `hold`, `retry` and `withdraw` in `Action`, case-insensitive. `retry` on a manual row moves it to `approved` ("sheet: retry") so it re-enters the autopilot path; `reject` and `withdraw` move the row to the matching status; `approve` and `hold` move nothing here and are consumed downstream from the queue file. `Edits` is carried into the queue untouched. An action the tool does not know is reported and the row is left alone, cells uncleared.
 

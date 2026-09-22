@@ -8,7 +8,7 @@
  *
  * Corpus for one resume type:
  *   - pipeline rows (tools/pipeline.ts, SQLite) whose classification
- *     matched_resume_id (state/pipeline/classifications.json) equals the resume,
+ *     classification.matched_resume_id on the SQLite row equals the resume,
  *     whose pipeline resumeId equals the resume, or whose title matches one of
  *     the type's search_keywords. Full text only when description ≥ 500 chars.
  *   - state/pipeline/archive/<id>/jd.md for those same ids (or for archives
@@ -123,10 +123,8 @@ export async function collectCorpus(opts: {
   resumeId: string;
   searchKeywords: string[];
   pipelinePath?: string;
-  classificationsPath?: string;
   archiveDir?: string;
 }): Promise<{ docs: MinedDoc[]; titles: string[]; matchingRows: number; backgroundDocs: MinedDoc[] }> {
-  const classificationsPath = opts.classificationsPath ?? repoPath("state/pipeline/classifications.json");
   const archiveDir = opts.archiveDir ?? repoPath("state/pipeline/archive");
 
   // The pipeline lives in SQLite. Reading state/pipeline/opportunities.json by
@@ -141,12 +139,10 @@ export async function collectCorpus(opts: {
   } else {
     rows = await listOpportunities({ withDescription: true });
   }
-  const classifications = (await readJson<Record<string, any>>(classificationsPath)) ?? {};
-
   const matching = rows.filter((row) => {
     if (!row) return false;
     if (row.resumeId === opts.resumeId) return true;
-    if (classifications[row.id]?.matched_resume_id === opts.resumeId) return true;
+    if (row.classification?.matched_resume_id === opts.resumeId) return true;
     return titleMatches(String(row.title ?? ""), opts.searchKeywords);
   });
 
@@ -424,7 +420,6 @@ export async function mineLexicon(args: Record<string, string>): Promise<MineRes
     resumeId,
     searchKeywords: resume.search_keywords ?? [],
     pipelinePath: args.pipeline,
-    classificationsPath: args.classifications,
     archiveDir: args.archive,
   });
   const fullDocs = docs.filter((d) => d.text);
