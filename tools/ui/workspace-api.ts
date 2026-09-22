@@ -195,6 +195,8 @@ export type RunDetail = {
   log_truncated: boolean;
   log_path: string | null;
   letters_sent: { title: string; letter: string }[];
+  /** Deterministic pre-agent work for this date, when the new front half ran. */
+  front_half: Record<string, unknown> | null;
 };
 
 /**
@@ -239,8 +241,11 @@ function leadingNumber(value: string | undefined): number | null {
 export function runTally(markdown: string): { sent: number | null; blocked: number | null } {
   const numbers = parseNumbersTable(markdown);
   const sent = leadingNumber(numbers["Sent today"]);
-  const blocked = leadingNumber(numbers["Manual"]);
-  if (sent !== null || blocked !== null) return { sent, blocked };
+  // The detail page lists parsed operational escalations. Use that exact list
+  // for the browser tally too, rather than a legacy "Manual" table cell whose
+  // meaning changed over time.
+  const blocked = parseEscalations(markdown).length;
+  if (sent !== null || blocked > 0) return { sent, blocked };
   const headline = /Sent\s+(\d+),\s*escalations\s+(\d+)/i.exec(markdown);
   return headline ? { sent: Number(headline[1]), blocked: Number(headline[2]) } : { sent: null, blocked: null };
 }
@@ -582,7 +587,10 @@ export function parseEscalations(markdown: string): RunStoppedRow[] {
     .map((line) => parseEscalationLine(plainTitle(`- ${line}`)))
     .filter((row): row is RunStoppedRow => row !== null)
     // "Nothing needs you." is the empty state of that section, not a stop.
-    .filter((row) => !/^nothing needs you$/i.test(row.reason));
+    .filter((row) => !/^nothing needs you$/i.test(row.reason))
+    // Schema migrations are retained in the raw summary, but they are not
+    // work and must not inflate the operational Stopped count.
+    .filter((row) => !/field_update:\s*classification|\[jev-migration\]/i.test(`${row.reason} ${row.next ?? ""}`));
 }
 
 /** The Numbers table in the order the run wrote it, for the detail page. */
@@ -669,6 +677,7 @@ export async function getRun(date: string, ctx: ApiContext = {}): Promise<RunDet
   if (!DATE_RE.test(date)) throw new ApiError(400, `date must be YYYY-MM-DD, got '${date}'`);
   const { run, markdown, log, log_truncated, log_path } = await readRun(date, ctx);
   const journal = await readTextIfExists(path.join(journalRootOf(ctx), `${date}.md`));
+  const frontHalf = await readTextIfExists(path.join(journalRootOf(ctx), "front-half", `${date}.json`));
 
   const fromSummary = markdown !== null;
   const raw = fromSummary
@@ -687,6 +696,7 @@ export async function getRun(date: string, ctx: ApiContext = {}): Promise<RunDet
     log_truncated,
     log_path,
     letters_sent: journal ? parseSentUnattended(journal) : [],
+    front_half: frontHalf ? JSON.parse(frontHalf) : null,
   };
 }
 

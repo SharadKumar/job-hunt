@@ -39,7 +39,7 @@ These terms are used with exactly these meanings throughout the code, the skills
 | **Channel** | A source of opportunities (Seek, LinkedIn, Hays, HN, etc.). `tools/channels/<id>.ts`. Pluggable per the `HuntChannel` interface. |
 | **Opportunity** | A specific job posting being tracked. Lives in the pipeline store `state/pipeline/pipeline.db`. Has a status (discovered → shortlisted → drafted → awaiting_approval → approved → submission_pending → submitted → responded → interview → offered → won). |
 | **Application** | The CV + cover letter package submitted for one opportunity. Archived at `state/pipeline/archive/<opportunity-id>/`. |
-| **Classification** | The agent's structured judgement about an opportunity: red flags, bonuses, matched_resume_id, profile_relevance, requires_tailoring. Schema at `npm run classify:schema`. |
+| **Classification** | A persisted ClassificationV2 decision: deterministic JD facts plus bounded Jev choices, probabilities, model identity, hashes, latency and cost. |
 
 ### Conceptual flow
 
@@ -69,7 +69,7 @@ Profile  →  picks several  →  Resumes
 ### Key design choices (and why)
 
 1. **Cross-CLI via skills** (`.claude/skills/<name>/SKILL.md`, mirrored to `.agents/skills/`). Both Claude Code and Codex CLI consume skills natively. Custom prompts/commands are deprecated in both. *Why:* one user-invokable surface, both auto-triggered (by description match) and explicit (`/<name>`).
-2. **Reasoning runs in-agent, not via paid SDK.** The harness has no Anthropic API key. The agent (Claude Code or Codex CLI session) does classification, drafting, resume proposals using its own LLM context (your subscription). Tools provide deterministic utilities + schemas only. *Why:* no separate billing, no API setup; fork-friendly.
+2. **Use the narrowest decision mechanism that fits.** Deterministic tools own extraction, scoring, transitions and gates. Jev is used only for bounded semantic classification questions where probability distributions are useful. The existing Claude Code or Codex agent remains the supported fallback for classification and owns open-ended drafting, composition, critique and research. *Why:* specialised evaluation should improve measurable decisions without replacing deterministic facts or broad generative work.
 3. **Profile is the human, resumes are the positionings.** A profile has many resumes (most senior people are multi-positioned). Don't confuse a "desired role family" with a "played role" or an "opportunity". The vocabulary holds the line. Optional org mode can centralise resume types, but the default remains one profile with free-form resumes.
 4. **`resumes.yaml` is the single source of truth** for what the harness hunts and drafts for. Channels derive search keywords from active resumes. Classifier grounds `matched_resume_id` in active resumes. Drafter routes to the matched resume's CV variant + cover-letter angle. *Why:* changing your positioning is a one-file edit; everything downstream adapts.
 5. **Templates are renderers, not styles.** A template is code that takes canonical content and produces artefacts. Different templates can use entirely different rendering engines (HTML+CSS via Playwright Chromium, the `docx` library). Each profile-facing template carries a profile-neutral sample resume so "good output" is visible without using the active profile. *Why:* visual / layout / structural variation needs code; a docx-reference can only carry typography.
@@ -566,7 +566,7 @@ For production baselines, use the audited skill flow rather than calling the ren
 
 - **CV content** — edit your master `.docx` (the path recorded in `state/profile/cv/meta.yaml`), then `/refresh-cv`. The harness re-parses and shows you a diff before saving.
 - **Add a new bullet** — edit the master CV in `cv_source_dir`, then run `/refresh-cv`; for a surgical local change, edit `state/profile/cv-source.md` and re-render the affected baseline so provenance is regenerated.
-- **Tune scoring** — edit `state/profile/scoring-weights.yaml`. Re-score the pipeline with `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`.
+- **Tune scoring:** edit `state/profile/scoring-weights.yaml`. Re-score the pipeline with `npm run pipeline:rescore` using the ClassificationV2 already stored on each SQLite row.
 - **Tune voice** — your edits in `/review-drafts` and the Sheet's `Edits` column feed back automatically. You can also hand-edit `state/profile/{voice-rules.md, slop-banlist.md}` directly.
 
 ## Submission policy & guardrails
@@ -593,7 +593,7 @@ What the gate checks before any send (`tools/submission-gate.ts`, covered by `te
 
 - provenance token: `autopilot:<run-id>` is accepted only while `autopilot.enabled` is true and the channel is in `autopilot.channels`; anything else needs an attended approval token
 - kill switch off; daily caps not reached (attended and autopilot counted separately)
-- status `approved`, agent classification present, no `red_flag_blocker` (bypassed for user-saved rows)
+- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path; Jev may classify and prioritise but never satisfies unattended send authority; no `red_flag_blocker` (bypassed for user-saved rows)
 - baseline CV approved and its content hash unchanged since approval
 - letter-critic pass whose sha256 matches the exact `cover-letter.md`
 - `resume-lint-ats` pass on the CV, `slop-killer` and `voice-check` pass on the letter
@@ -653,6 +653,8 @@ Terminal/diverted: `rejected`, `withdrawn`, `manual_action_needed`.
 
 Full meanings, who may move a row, and the allowed transitions are in `docs/pipeline-state-machine.md` (`VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them).
 
+The daily front half keeps this working set current. After channel ingestion and before classification, `npm run pipeline:expire -- --apply` closes every active, unsent opening whose explicit closing date has passed, or whose channel reports the advert expired. It re-reads the current advert so a stated extension replaces an older stored deadline. It never guesses from posting age, and it never removes submitted or later-stage application history. Closed rows leave actionable queues and remain available under Closed with their reason and audit trail.
+
 ### Pipeline store
 
 Rows live in SQLite at `state/pipeline/pipeline.db` (`tools/pipeline-store.ts`, WAL). Read and mutate them only through the CLI: `npm run pipeline -- get <id> | list | summary | export | migrate`, plus `upsert` and `set-status` for writes. `state/pipeline/opportunities.md` is the human digest regenerated by `state-syncer`; `state/pipeline/opportunities.json` is an on-demand export produced by `npm run pipeline -- export`, never a source to read from or edit.
@@ -661,21 +663,19 @@ Rows live in SQLite at `state/pipeline/pipeline.db` (`tools/pipeline-store.ts`, 
 
 This is the canonical lifecycle an opportunity passes through. The `/daily` skill orchestrates the whole thing; you can also invoke individual stages.
 
-### 1. Hunt (channel scrapers → discovered/shortlisted)
+### 1. Hunt (channel scrapers to discovered)
 
 `opportunity-finder` runs `npm run hunt:<channel> -- --upsert` for each enabled channel (the scripts that exist are `hunt:seek`, `hunt:linkedin-jobs` and its `hunt:linkedin_jobs` alias, `hunt:linkedin-posts` and `hunt:hn`). Each scraper returns raw opportunity data (title, company, URL, full JD body). `pipeline.upsert()` writes them with `status: discovered`, audit-logs a `discovered` event, and runs the cross-channel dedup check (same company + role-family within 60 days?).
 
-### 2. Classify (agent reasoning → structured signals + profile_relevance + matched_resume_id)
+### 2. Classify (deterministic extraction plus Jev evaluation)
 
-All meaningful reasoning happens IN-AGENT. The agent (Claude Code or Codex CLI running interactively, or via `claude -p` from the launchd daily job) reads the JD plus `resumes.yaml` plus profile context, then produces a structured `Classification` conforming to the schema at `npm run classify:schema`.
+`npm run jev:classify` records the sole ClassificationV2 contract in SQLite. Deterministic code extracts explicit rates, dates, employment terms and work-arrangement wording. Jev answers bounded choice, score and boolean questions for primary discipline, evidence strength, resume match and genuinely ambiguous terms. The response retains complete probability distributions, the requested and effective model, a pinned route fingerprint, content and policy hashes, latency, tokens and estimated cost.
 
-The classification covers: red flags, bonuses, work arrangement, day-rate (extracted from JD), seniority, contract length, exclusivity, PAYG status, industry, **profile_relevance (0-100)**, detected domain, **matched_resume_id** (which active resume this opportunity best fits), and a 1-sentence explanation.
+Low-confidence results are `uncertain` and cannot enter or remain in an active queue. Reconciliation returns an unsubmitted row to `discovered`, except for a saved job. Gateway failure, timeout, missing replay fixture or the local daily spend cap is `degraded`, is audited, and blocks state application for the affected classification batch. No fallback provider or fallback model is configured. Every call site uses the same audited gateway wrapper, which records the typed question set and full returned probability distributions. The agent CLI is not required for the normal front half. Before an unattended application can proceed, the bounded in-agent verification path must persist an automatic ClassificationV2 decision with source `agent_fallback`. `npm run jev:verification-queue` selects saved jobs regardless of Jev certainty, Jev-positive candidates, and a small set of high-scoring adjacent or platform-gap near misses. It includes interrupted one-click rows that must regain verification. The near-miss path is a measured false-rejection parachute, not a second pass over all Jev rejections.
 
-For high-volume hunts (50-200 opportunities) the agent spawns subagents in parallel via the Agent tool — each subagent classifies a subset in its own context window.
+`state/profile/jev-policy.yaml` enables live classification state application and sets the local spend cap. There is no production rollout percentage or canary path. `JEV_MODE=live|record|replay` controls the provider seam. Recorded typed responses are local under ignored `state/jev/fixtures/`; replay refuses network when a fixture is missing. `npm run jev:classify -- --shadow --replay-only` remains a read-only diagnostic command, while `npm run jev:backtest` recomputes the frozen cohort from recorded responses. `npm run jev:agent-comparator` measures the retained generic-agent verification path on that same cohort without mutating pipeline state. `npm run jev:benchmark` and `jev:report` retain the historical before and after evidence under `docs/benchmarks/`.
 
-No Anthropic API key needed. Tools don't call the SDK. The agent uses its own LLM context (your Claude Code subscription credits).
-
-A regex-only diagnostic classifier exists at `npm run classify:diagnostic` for cases where the agent isn't in the loop. The regex output defaults `profile_relevance` to 50 — a neutral middle — because regex genuinely can't judge fit; the agent must re-classify before shortlist, drafting, or submission.
+Calibration review remains available locally under Guardrails, Decision layer as operational monitoring. Labels are audited and bound to the exact JD content and Jev decision, and they change no application state. `npm run jev:adjudicate -- list` prints a compact queue summary. Delegated assistant labels, independent human labels, proxy labels and model agreement remain separate evidence classes. See `docs/jev-integration.md` for the operating contract.
 
 ### 3. Score (weighted + relevance-gated → updated status)
 
@@ -687,7 +687,7 @@ base = (skills_overlap × 0.30) + (work_arrangement × 0.25) + (seniority × 0.2
 final = base × max(0.15, profile_relevance / 100) + bonuses - penalties
 ```
 
-**profile_relevance is a multiplier, not an additive.** A GPU/datacenter role for an enterprise IT consultant gets ~10/100 from the agent → base × 0.10 → crushed regardless of remote/fractional bonuses. A wholly-relevant role gets ~85-100 → base × 0.85+ → full credit. Adjacent roles (40-65) get proportional weighting. The hard floor of 0.15 means very-niche roles still appear at the bottom of the list rather than being invisible.
+**profile_relevance is a multiplier, not an additive.** A GPU/datacenter role for an enterprise IT consultant gets a low relevance band from ClassificationV2, so the deterministic multiplier crushes it regardless of remote or fractional bonuses. A wholly relevant role gets 75 to 100 and keeps most or all of its base score. Adjacent roles get proportional weighting. The hard floor of 0.15 means very niche roles still appear at the bottom of the list rather than becoming invisible.
 
 Opportunities with `profile_relevance < 25` are flagged `red_flag_blocker: true` and cannot pass the submission validation gate.
 
@@ -697,7 +697,7 @@ Opportunities scoring ≥ `shortlist_min_score` (default 55) get promoted `disco
 
 For each `shortlisted` opportunity with score ≥ `draft_min_score` (default 70) and no red-flag blocker:
 
-1. The classifier picks the matched resume positioning from `state/profile/resumes.yaml` and decides whether the approved baseline is enough or whether a high-fit JD needs tailoring.
+1. ClassificationV2 provides the bounded resume-positioning match from `state/profile/resumes.yaml`; the resume agent decides whether the approved baseline is enough or whether a high-fit JD needs tailoring.
 2. `resume-writer` composes a resume/template-specific `ResumeContent` from the holistic CV source, the positioning brief, the selected template rubric, and optional JD context. It does not pre-bake generic content outside the template.
 3. `resume-renderer` materialises only the composed JSON: presentation PDF via the active template and a shared ATS-safe docx for portals.
 4. `resume:evaluate`, `resume-lint-ats`, PDF page-image inspection, and the template quality checks gate the CV. Auto-fixable density/page-fit issues iterate inside `resume-writer`.
@@ -779,7 +779,7 @@ For someone changing the harness rather than running it. Read `AGENTS.md` first;
 
 ### Mental model in five lines
 
-1. **Agents reason, tools verify.** Judgement (classification, composition, drafting, critique) runs inside the CLI session as subagents under `agents/`. Everything mechanical (rendering, linting, gating, syncing, submitting) is a TypeScript tool under `tools/` with an `npm run` entry in `package.json`. If a check can be expressed as a rule, it is a tool and it has a test.
+1. **Use specialised judgement only where it helps; tools retain authority.** Jev handles bounded semantic classification questions. Existing agents handle the supported classification fallback plus composition, drafting, critique and research. Everything mechanical (extraction, scoring, rendering, linting, gating, syncing and submitting) is a TypeScript tool under `tools/` with an `npm run` entry in `package.json`. If a check can be expressed as a rule, it is a tool and it has a test.
 2. **`cv-source.md` is the only evidence.** CVs, letters and the critic may claim nothing that is not in it. `resume:term-grounding` and `letter-critic` enforce this; `market-confirmations.yaml` records what the user confirmed as familiarity versus delivered.
 3. **Skills orchestrate, subagents produce, tools gate.** `.claude/skills/<name>/SKILL.md` is the user-facing workflow; it spawns subagents and calls tools in a fixed order. A skill never writes a production artefact inline.
 4. **State is local; the Sheet is a mirror.** The SQLite store `state/pipeline/pipeline.db` and `state/audit/audit-log.jsonl` are the record (`opportunities.json` is only an export). `VALID_TRANSITIONS` in `tools/pipeline.ts` is the state machine (`docs/pipeline-state-machine.md`).

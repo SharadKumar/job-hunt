@@ -145,7 +145,16 @@ function stoppedSection(groups) {
     section.append(h("h3", { class: "group-heading" },
       h("span", {}, group.label, h("span", { class: "tally", text: ` ${group.rows.length}` }))));
     const list = h("div", { class: "list" });
-    for (const entry of group.rows) list.append(rowFor(entry, entry.next ? `next: ${entry.next}` : null));
+    const next = {
+      question: "Answer the screening question in Needs you.",
+      letter: "The daily run will rewrite and recheck the letter.",
+      portal: "Open the advert and complete the application on the employer's portal.",
+      duplicate: "Review the row and choose whether to continue or close it.",
+      gate: "Review the row and choose whether to continue or close it.",
+      channel: "Sign in to the channel before the next run.",
+      sending: "Check whether the channel recorded the application before retrying.",
+    }[group.kind] || null;
+    for (const entry of group.rows) list.append(rowFor(entry, next));
     section.append(list);
     box.append(section);
   }
@@ -218,8 +227,30 @@ function runOverview(data, date) {
       text: "No summary was written for this day, so what follows is read from the audit log.",
     }));
   }
+  if (!run.running) {
+    panel.append(h("p", {
+      class: "empty",
+      text: "Historical snapshot from this run. Today and Pipeline show the work that is current now.",
+    }));
+  }
   panel.append(sentSection(data.sent || [], data.from_audit === true));
   panel.append(stoppedSection(data.stopped || []));
+  if (data.front_half) {
+    const front = data.front_half;
+    const step = (front.steps || []).find((entry) => entry.name === "jev_classify_score");
+    const result = step && step.result ? step.result : {};
+    const box = h("section", { class: "run-section" });
+    box.append(sectionHead("Decision layer", null));
+    box.append(h("p", { class: "list-meta", text: [
+      front.degraded ? "Jev degraded" : "Jev healthy",
+      `${result.requested ?? 0} calls`,
+      `${result.cache_hits ?? 0} cache hits`,
+      `${result.automatic ?? 0} automatic`,
+      `${result.uncertain ?? 0} uncertain`,
+      `$${Number(result.estimated_cost_usd ?? 0).toFixed(4)}`,
+    ].join(", ") }));
+    panel.append(box);
+  }
   const numbers = numbersSection(data.numbers || []);
   if (numbers) panel.append(numbers);
   return panel;
@@ -253,15 +284,11 @@ function runSelected(data, date, query) {
       body.append(h("p", { class: "grey small", text: "The middle of this log is not read: only the two ends are." }));
     }
     body.append(h("pre", { class: "run-log", text: data.log }));
-    if (data.log_path) body.append(h("p", { class: "grey small", text: data.log_path }));
     }
   } else if (data.markdown) {
     body.append(h("div", { class: "prose" }, richMarkdown(data.markdown)));
   } else {
     body.append(h("p", { class: "empty", text: "This run has no written summary." }));
-  }
-  if (data.summary_path || (data.run || {}).summary_path) {
-    body.append(h("p", { class: "grey small", text: data.summary_path || data.run.summary_path }));
   }
   panel.append(head, tabs, body);
   return panel;
@@ -281,7 +308,7 @@ export async function viewRuns(view, id, query) {
     ? `${total > runs.length ? `Last ${runs.length} of ${total} runs` : plural(runs.length, "run")}, newest first.`
     : "";
   if (!runs.length) {
-    host.append(h("p", { class: "empty", text: "No runs yet. Start one with npm run daily." }));
+    host.append(h("p", { class: "empty", text: "No runs yet. The first scheduled run will appear here." }));
     return;
   }
   const selected = runs.find((run) => run.date === id) || runs[0];

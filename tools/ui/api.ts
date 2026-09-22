@@ -20,6 +20,7 @@
  */
 
 import * as healthExt from "./health-api.ts";
+import * as jevExt from "./jev-api.ts";
 import * as rowsExt from "./rows-ext-api.ts";
 import * as workspaceExt from "./workspace-api.ts";
 import { promises as fsp } from "node:fs";
@@ -100,6 +101,8 @@ export type ApiContext = {
   archiveDir?: string;
   /** Defaults to state/journal/summary under the repo root. */
   journalDir?: string;
+  /** Defaults to ignored state/jev/adjudications.json. Tests override it. */
+  adjudicationsPath?: string;
 };
 
 /**
@@ -168,6 +171,11 @@ export type RowSummary = {
   reason: string | null;
   updated_at: string | null;
   first_seen_at: string | null;
+  /** Real workflow instants. Never substitute a migration/update timestamp. */
+  submitted_at: string | null;
+  response_at: string | null;
+  status_at: string | null;
+  closing_date: string | null;
   draftDir: string | null;
   url: string;
 };
@@ -249,9 +257,10 @@ function resolveDraftDir(draftDir: string): string {
  * first and last history instants, so derive them rather than reach past the
  * pipeline API into SQL.
  */
-function timestampsOf(row: Opportunity): { first_seen_at: string | null; updated_at: string | null } {
+function timestampsOf(row: Opportunity): { first_seen_at: string | null; updated_at: string | null; status_at: string | null } {
   const stamps = (row.history ?? []).map((h) => h?.at).filter((at): at is string => Boolean(at)).sort();
-  return { first_seen_at: stamps[0] ?? null, updated_at: stamps[stamps.length - 1] ?? null };
+  const statusAt = [...(row.history ?? [])].reverse().find((h) => h.to === row.status && h.from !== h.to)?.at ?? null;
+  return { first_seen_at: stamps[0] ?? null, updated_at: stamps[stamps.length - 1] ?? null, status_at: statusAt };
 }
 
 /**
@@ -376,6 +385,7 @@ export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse>
 
   const needs_you_groups: NeedsYouGroups = { answer_question: 0, decide: 0, open_portal: 0, waiting_redraft: 0 };
   let needsYouTotal = 0;
+  let actionableManual = 0;
   let inFlight = 0;
   // Only the two segments the person actually works. A `discovered` row nobody
   // has looked at yet, and a `parked` one they already ruled out, both derive
@@ -384,11 +394,18 @@ export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse>
   for (const row of rows.filter((r) => WORKED.has(r.status))) {
     const { lane } = rowsExt.laneFor(row, policy);
     const derived = rowsExt.actionFor(row, displayReason(row), lane);
-    if (rowsExt.needsYou(derived)) needsYouTotal += 1;
+    if (rowsExt.needsYou(derived)) {
+      needsYouTotal += 1;
+      if (row.status === "manual_action_needed") actionableManual += 1;
+    }
     if (derived.kind === "in_flight") inFlight += 1;
     const group = rowsExt.needsYouGroup(derived);
     if (group) needs_you_groups[group] += 1;
   }
+
+  // The raw status is retained for audit, but the Needs you segment is an
+  // operational view. A run-owned redraft must not inflate its count.
+  segments.needs = actionableManual;
 
   return {
     counts,
@@ -409,8 +426,8 @@ export async function getSummary(ctx: ApiContext = {}): Promise<SummaryResponse>
 // GET /api/rows
 // ---------------------------------------------------------------------------
 
-function toRowSummary(row: Opportunity): RowSummary {
-  const { first_seen_at, updated_at } = timestampsOf(row);
+export function toRowSummary(row: Opportunity): RowSummary {
+  const { first_seen_at, updated_at, status_at } = timestampsOf(row);
   return {
     id: row.id,
     channel: row.channel,
@@ -426,6 +443,10 @@ function toRowSummary(row: Opportunity): RowSummary {
     reason: displayReason(row),
     updated_at,
     first_seen_at,
+    submitted_at: row.submittedAt ?? null,
+    response_at: row.responseAt ?? null,
+    status_at,
+    closing_date: row.closingDate ?? null,
     draftDir: row.draftDir ?? null,
     url: row.url,
   };
@@ -687,7 +708,16 @@ export async function getCriticDigest(query: { since?: string | null } = {}, ctx
   const since = (query.since ?? "").trim() || "14d";
   const archiveDir = archiveDirOf(ctx);
   try {
-    return await buildDigest({ archiveDir, since, now: nowOf(ctx) });
+    const digest = await buildDigest({ archiveDir, since, now: nowOf(ctx) });
+    const operational = new Set(["shortlisted", "drafted", "awaiting_approval", "approved", "manual_action_needed"]);
+    const currentBlocks = new Set((await listOpportunities({})).filter((row) =>
+      operational.has(row.status) && /letter[-\s]?critic/i.test(displayReason(row) ?? ""),
+    ).map((row) => row.id));
+    const themes = digest.themes.map((theme) => {
+      const opportunity_ids = theme.opportunity_ids.filter((id) => currentBlocks.has(id));
+      return { ...theme, count: opportunity_ids.length, opportunity_ids };
+    }).filter((theme) => theme.count >= 2);
+    return { ...digest, blocked: currentBlocks.size, themes };
   } catch (error: any) {
     const message = String(error?.message ?? error);
     // A missing archive is an empty digest, not a failure: nothing has been
@@ -731,7 +761,7 @@ export type ApiResult = {
  */
 export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<ApiResult> {
   // Extension modules (one per work package) get first refusal; see *-api.ts.
-  for (const ext of [healthExt, rowsExt, workspaceExt]) {
+  for (const ext of [healthExt, jevExt, rowsExt, workspaceExt]) {
     const hit = await ext.handle(req, ctx).catch((e: unknown) => (e instanceof ApiError ? { status: e.status, body: { error: e.message } } : { status: 500, body: { error: String((e as Error)?.message ?? e) } }));
     if (hit) return hit;
   }

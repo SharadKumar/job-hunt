@@ -37,7 +37,7 @@ const GROUP_OF_KIND = {
   gate_refused: "decide",
   portal: "open_portal",
   mark_sent: "open_portal",
-  retry: "waiting_redraft",
+  retry: "decide",
 };
 
 export function needsYouGroup(action) {
@@ -191,7 +191,7 @@ export function needsYouSection(rows, health) {
 // ---------------------------------------------------------------------------
 
 /** When a row was actually sent. `updated_at` is the last touch of any kind. */
-const sentAt = (row) => row.submittedAt || row.submitted_at || row.updated_at;
+const sentAt = (row) => row.submittedAt || row.submitted_at || null;
 
 /** The instant the last run started, which is what "overnight" means. With no
  * run on file the day is the person's own calendar day. */

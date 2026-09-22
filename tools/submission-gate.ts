@@ -26,7 +26,7 @@
  *   1. provenance present and, for autopilot, enabled in policy → else needs_approval
  *   2. kill_switch off                                  → else blocked  (+ audit policy_kill_switch_blocked)
  *   3. [autopilot only] status is `approved`            → else gate_failed
- *   4. [autopilot only] classification._classifier is "agent" → else gate_failed
+ *   4. [autopilot only] automatic persisted Jev decision       → else gate_failed
  *   5. [autopilot only] userSaved, OR discipline_fit core and not an
  *      interstate onsite/unknown-flexibility row        → else gate_failed
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
@@ -66,6 +66,8 @@ import { log as auditLog, query as auditQuery, checkDuplicate } from "./audit.ts
 import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
 import { sha256 } from "./lib/hash.ts";
+import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
+import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
 
 const exec = promisify(execFile);
 
@@ -197,6 +199,7 @@ export type EvaluateOpts = {
   policy?: Policy;           // injectable for tests
   archiveDir?: string;       // injectable for tests; default state/pipeline/archive/<id>
   homeCity?: string;         // injectable for tests; default from profile.md
+  jevDegradation?: JevDegradation | null;
 };
 
 export function parseProvenance(approvedBy: string | undefined): { kind: Provenance; ref: string } | null {
@@ -291,6 +294,13 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       return decide("needs_approval", false, "autopilot provenance supplied but autopilot.enabled is not true in submission-policy.yaml");
     }
     checks.push({ gate: "autopilot_enabled", ok: true, detail: `run ${prov.ref}` });
+    const degradation = opts.jevDegradation === undefined ? await readDegradation() : opts.jevDegradation;
+    if (degradationBlocksAutopilot(degradation)) {
+      const blocking = blockingDegradation(degradation)!;
+      checks.push({ gate: "jev_health", ok: false, detail: `${blocking.scope}: ${blocking.incident.reason}` });
+      return decide("blocked", false, "Jev is degraded and the incident has not been acknowledged");
+    }
+    checks.push({ gate: "jev_health", ok: true, detail: "classification healthy" });
   }
 
   // 2. Kill switch: never bypass.
@@ -324,12 +334,20 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     if (opportunity.status !== "approved") return failGate("autopilot_status_approved", `status is '${opportunity.status}', expected 'approved'`);
     checks.push({ gate: "autopilot_status_approved", ok: true, detail: "approved" });
 
-    // (b) agent classification; regex triage never authorises a send.
-    const classifier = opportunity.classification?._classifier;
-    if (classifier !== "agent") return failGate("autopilot_agent_classified", `classification._classifier is '${classifier ?? "missing"}'`);
-    checks.push({ gate: "autopilot_agent_classified", ok: true, detail: "agent" });
+    // (b) Classification rollout and send authority are separate. The latter
+    // remains false until the 30-day outcome gate and explicit human decision.
+    if (!canSatisfyAutopilotClassificationGate(opportunity.classification)) {
+      const detail = opportunity.classification ? `${opportunity.classification.source}/${opportunity.classification.status}` : "missing";
+      return failGate("autopilot_classified", `classification is '${detail}'`);
+    }
+    checks.push({ gate: "autopilot_classified", ok: true, detail: `${opportunity.classification!.source}/automatic` });
+    if (opportunity.classification!.source === "jev") {
+      return failGate("jev_autopilot_authority", "Jev can classify and prioritise, but cannot authorise an unattended send");
+    } else {
+      checks.push({ gate: "jev_autopilot_authority", ok: true, detail: "not applicable to agent_fallback" });
+    }
 
-    // (c) user-saved (an order to apply) OR core discipline and not parked interstate.
+    // (d) user-saved (an order to apply) OR core discipline and not parked interstate.
     if (userSaved) {
       checks.push({ gate: "autopilot_fit", ok: true, detail: `userSaved at ${opportunity.userSavedAt ?? "unknown"}; fit gates bypassed` });
     } else {

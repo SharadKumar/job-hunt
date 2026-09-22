@@ -8,7 +8,7 @@
  * axis and defaults to dry-run:
  *
  *   --older-than <Nd>   only rows first seen more than N days ago (also Nh, Nw)
- *   --unclassified      only rows with no agent classification
+ *   --unclassified      only rows with no automatic ClassificationV2 decision
  *   --below-score <n>   only rows scored under n (rows with no score never match)
  *   --all-unsubmitted   widen the base scope from `discovered` to every status
  *                       that has not reached submission
@@ -40,9 +40,9 @@ export function parseAge(spec: string): number {
   return Number(match[1]) * UNITS[(match[2] || "d").toLowerCase()];
 }
 
-/** True when nothing but the regex fallback (or nothing at all) has judged the row. */
+/** True when no automatic Jev decision is persisted on the row. */
 export function isUnclassified(role: Opportunity): boolean {
-  return !role.classification || role.classificationSource !== "agent";
+  return !role.classification || role.classification.source !== "jev" || role.classification.status !== "automatic";
 }
 
 function num(value: string | boolean | undefined, flag: string): number {

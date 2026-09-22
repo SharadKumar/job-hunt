@@ -237,7 +237,10 @@ export async function viewApplications(view, which, query) {
     // disappears because today's rows happen not to use that channel.
     clear(chips);
     chips.append(filterChips(state, [...new Set([...data.rows.map((r) => r.channel), ...state.channels])].filter(Boolean).sort()));
-    const rows = visibleRows(data.rows, state);
+    const operationalRows = state.segment.key === "needs"
+      ? data.rows.filter((row) => row.needs_you)
+      : data.rows;
+    const rows = visibleRows(operationalRows, state);
     const summary = getSummary();
     const total = (summary && summary.segments && summary.segments[state.segment.key]) ?? data.total ?? rows.length;
     writeCount(count, rows.length, total, data);
@@ -288,14 +291,18 @@ function browserRow(state, row, selected) {
     href: selectionHref(state, row.id), dataset: { row: row.id },
     "aria-current": row.id === selected ? "true" : null,
   });
+  const occurredAt = state.segment.key === "sent" ? row.submitted_at
+    : state.segment.key === "replies" ? (row.response_at || row.status_at)
+    : state.segment.key === "closed" ? row.status_at
+    : row.updated_at;
   article.append(
     h("span", { class: "pipeline-item-score", text: typeof row.score === "number" ? String(Math.round(row.score)) : "-" }),
     h("span", { class: "pipeline-item-copy" },
       h("strong", { class: "pipeline-item-title", text: row.title || "Untitled role" }),
       meta ? h("span", { class: "pipeline-item-meta", text: meta }) : null,
       reason ? h("span", { class: "pipeline-item-reason", text: reason }) : null),
-    row.updated_at ? h("span", { class: "pipeline-item-when", text: when(row.updated_at), title: row.updated_at }) : null,
   );
+  if (occurredAt) article.append(h("span", { class: "pipeline-item-when", text: when(occurredAt), title: occurredAt }));
   return article;
 }
 

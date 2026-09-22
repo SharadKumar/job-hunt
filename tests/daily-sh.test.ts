@@ -40,7 +40,10 @@ function makeFakeRepo(): string {
   fs.copyFileSync(path.join(ROOT, "scripts/daily.sh"), path.join(root, "scripts/daily.sh"));
   fs.copyFileSync(path.join(ROOT, ".claude/hooks/repo-root.sh"), path.join(root, ".claude/hooks/repo-root.sh"));
   fs.writeFileSync(path.join(root, "CLAUDE.md"), "# fake harness\n");
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "job-hunt-career-harness" }));
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+    name: "job-hunt-career-harness",
+    scripts: { "daily:front-half": "sh -c 'mkdir -p state && echo completed > state/front-half-marker'" },
+  }));
   return root;
 }
 
@@ -103,6 +106,19 @@ test("a nonzero CLI exit propagates and writes a failure summary", () => {
     assert.match(run.log, /finished daily run \(exit 3\)/);
     assert.ok(run.summary, "a failed run must leave a failure summary");
     assert.match(run.summary!, /Run failed \(exit 3\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the deterministic front half completes before an unavailable agent CLI fails", () => {
+  const root = makeFakeRepo();
+  try {
+    const missing = path.join(root, "agent-cli-does-not-exist");
+    const run = runDaily(root, { HARNESS_CLI_BIN: missing, HARNESS_TIMEOUT_SEC: "30" });
+    assert.notEqual(run.status, 0, "the absent agent CLI must still fail the back half");
+    assert.equal(fs.readFileSync(path.join(root, "state/front-half-marker"), "utf8").trim(), "completed");
+    assert.match(run.log, /deterministic front half exit 0/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

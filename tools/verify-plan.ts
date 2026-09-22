@@ -102,7 +102,7 @@ async function checkArtefacts(checks: Check[]): Promise<void> {
     "state/profile/cv/meta.yaml", "state/profile/cv-source.md",
     // Tools
     "tools/score.ts", "tools/slop-killer.ts", "tools/voice-check.ts",
-    "tools/pipeline.ts", "tools/sheets-sync.ts", "tools/audit.ts", "tools/classify-jd.ts",
+    "tools/pipeline.ts", "tools/sheets-sync.ts", "tools/audit.ts", "tools/classification.ts",
     "tools/onboarding.ts", "tools/resumes.ts", "tools/rescore-pipeline.ts",
     "tools/sync-codex-agents.ts",
     "tools/cv/markdownify-cv.ts", "tools/resume/resume-renderer.ts", "tools/resume/resume-to-images.ts",
@@ -459,11 +459,10 @@ async function smokeAudit(checks: Check[]): Promise<void> {
 }
 
 async function smokeClassifierFallback(checks: Check[]): Promise<void> {
-  // Test the regex fallback (no API key needed) so this works offline
-  const obj = { title: "Senior Solutions Architect — NSW Gov", description: "6-month contract, fully remote, $1400/day inc super. Strong ServiceNow background required. ABN preferred." };
-  const r = await runCmd("bash", ["-c", `echo '${JSON.stringify(obj).replace(/'/g, "'\\''")}' | tsx tools/classify-jd.ts --stdin`]);
-  const ok = r.ok && /"work_arrangement":\s*"remote"/.test(r.stdout) && /"_classifier":/.test(r.stdout);
-  checks.push({ id: "smoke:classifier", verdict: ok ? "pass" : "fail", detail: ok ? "classifier produced structured output" : `code=${r.code}` });
+  // Test deterministic extraction without a network dependency.
+  const r = await runCmd("npx", ["tsx", "tools/jev/check.ts", "--offline"]);
+  const ok = r.ok && /"mechanical_ok":true/.test(r.stdout);
+  checks.push({ id: "smoke:classifier", verdict: ok ? "pass" : "fail", detail: ok ? "ClassificationV2 offline checks passed" : `code=${r.code}` });
 }
 
 async function main() {

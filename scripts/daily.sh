@@ -46,7 +46,7 @@ esac
 
 TIMEOUT_SEC="${HARNESS_TIMEOUT_SEC:-$(( ${HARNESS_TIMEOUT_MIN:-150} * 60 ))}"
 KILL_GRACE_SEC="${HARNESS_KILL_GRACE_SEC:-30}"
-PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and follow it end-to-end. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
+PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in state/journal/front-half/$DATE.json. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
 EXIT=0
 TIMED_OUT=0
 
@@ -85,6 +85,10 @@ run_cli() {
 
 {
   echo "=== $(date -Iseconds) starting daily run via $CLI (timeout ${TIMEOUT_SEC}s) ==="
+
+  FRONT_EXIT=0
+  npm run -s daily:front-half || FRONT_EXIT=$?
+  echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
 
   run_cli &
   CLI_PID=$!

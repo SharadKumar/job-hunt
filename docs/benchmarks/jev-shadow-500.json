@@ -1,0 +1,2977 @@
+{
+  "schema_version": 1,
+  "measurement_schema": "jev-decision-replay-v1",
+  "generated_at": "2026-09-22T06:43:28.750Z",
+  "context": {
+    "policy_hash": "ebc21b0f5d5b079d0ead9c5b1e8bf95a88b77b30b8cdd5320f480a89d9966ee5",
+    "profile_hash": "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f",
+    "resume_set_hash": "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c",
+    "question_schema_hash": "a266b766fc72b554ba8b6b87236b2b795273e64d221d6e1fd56da248517dd4a3",
+    "content_set_hash": "f88b12390798ba11df324353f475dac43d7970861bd7e897eefcf3942103bcb0"
+  },
+  "execution": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.18.0",
+    "concurrency": 2
+  },
+  "metrics": {
+    "cohort_size": 500,
+    "measured_decisions": 314,
+    "automatic_decisions": 82,
+    "uncertain_decisions": 232,
+    "degraded_decisions": 0,
+    "input_tokens": 1460250,
+    "output_tokens": 86048,
+    "classification_latency_ms": 384205,
+    "classification_cost_usd": 0.05841,
+    "generic_agent_classification_tokens": 0,
+    "generic_agent_classification_cost_usd": 0
+  },
+  "cohort": {
+    "requested": 500,
+    "measured": 314,
+    "labelled": 92,
+    "consequential": 92
+  },
+  "model": {
+    "requested": "typesafe-ai/jev",
+    "effective": [
+      "typesafe-ai/jev"
+    ],
+    "gateway_route_fingerprints": [
+      "049a4eb005ca3240d98d7e78"
+    ],
+    "resolved_model_versions": [],
+    "model_version_observable_all": false,
+    "zero_data_retention_all": true
+  },
+  "coverage": {
+    "automatic": 82,
+    "automatic_rate": 0.261146,
+    "uncertain": 232,
+    "degraded": 0,
+    "matched_resume_rate_automatic_non_outside": 1
+  },
+  "operational_quality": {
+    "automatic_labelled": 19,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_low_apply_worthy_error_rate": 0,
+    "automatic_high_known_negative_errors": 0,
+    "automatic_high_known_negative_error_ids": [],
+    "consequential_errors": [],
+    "calibration_ece": 0.0179,
+    "calibration_curve": [
+      {
+        "low": 0.9,
+        "high": 1,
+        "count": 19,
+        "mean_confidence": 0.982105,
+        "accuracy": 1
+      }
+    ],
+    "calibration_monotonic": true,
+    "label_basis": "submitted-or-later is apply-worthy; legacy outside at relevance <=25 in discovered/rejected is not-apply-worthy"
+  },
+  "human_quality": {
+    "adjudication": {
+      "required": 115,
+      "complete_count": 0,
+      "complete": false,
+      "shadow_review_required": 0,
+      "shadow_review_complete": 0,
+      "delegated_decisions": 0,
+      "stale": 115
+    },
+    "apply_labels": 0,
+    "automatic_apply_labels": 0,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_low_apply_worthy_error_rate": null,
+    "automatic_high_not_apply_worthy_errors": 0,
+    "automatic_high_not_apply_worthy_error_ids": [],
+    "consequential_errors": [],
+    "matched_resume_labels": 0,
+    "matched_resume_exact_agreement": null,
+    "discipline_labels": 0,
+    "discipline_exact_agreement": null,
+    "calibration_ece": null,
+    "calibration_curve": [],
+    "calibration_monotonic": null,
+    "calibration_basis": "automatic selected-discipline confidence versus exact adjudicated discipline",
+    "label_basis": "attended human labels bound to exact role content and Jev decision id; insufficient-evidence labels are excluded from the corresponding metric"
+  },
+  "delegated_quality": {
+    "adjudication": {
+      "required": 115,
+      "complete_count": 0,
+      "complete": false,
+      "shadow_review_required": 0,
+      "shadow_review_complete": 0,
+      "delegated_decisions": 0,
+      "independently_human_verified": 0,
+      "stale": 115
+    },
+    "apply_labels": 0,
+    "automatic_apply_labels": 0,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_low_apply_worthy_error_rate": null,
+    "automatic_high_not_apply_worthy_errors": 0,
+    "automatic_high_not_apply_worthy_error_ids": [],
+    "consequential_errors": [],
+    "matched_resume_labels": 0,
+    "matched_resume_exact_agreement": null,
+    "discipline_labels": 0,
+    "discipline_exact_agreement": null,
+    "calibration_ece": null,
+    "calibration_curve": [],
+    "calibration_monotonic": null,
+    "calibration_basis": "automatic selected-discipline confidence versus exact delegated discipline",
+    "label_basis": "user-delegated assistant decisions grounded in the profile, CV evidence and job description; reported separately from independent human validation"
+  },
+  "legacy_comparison": {
+    "discipline_agreement": 0.558036,
+    "resume_agreement": 0.632727,
+    "note": "Agreement is diagnostic, not ground truth."
+  },
+  "decisions": [
+    {
+      "id": "recruiter-06eae7f65091",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.13,
+      "resume_confidence": 0.59
+    },
+    {
+      "id": "seek-6d2632d3a215",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.51,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "seek-488c4362235d",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.48,
+      "resume_confidence": 0.22
+    },
+    {
+      "id": "seek-a6991550cfea",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.98,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-c22e5cf59a57",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.38,
+      "resume_confidence": 0.51
+    },
+    {
+      "id": "seek-72bfe3fe6484",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-3a97d3081d0f",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.86,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-dd6303c792d1",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.57,
+      "resume_confidence": 0.53
+    },
+    {
+      "id": "seek-8a3f78d7a293",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.7,
+      "resume_confidence": 0.49
+    },
+    {
+      "id": "seek-2ba4759c3830",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-bae77f790962",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.73,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-c943c83b52a9",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.92,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-ba7c6b2a1267",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.96,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-8b7b3013addd",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-8cf74389f90f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.23,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-e44c941fb3eb",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-a5a253504df1",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.97,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-1697b178294b",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.56
+    },
+    {
+      "id": "seek-67efbd6b9854",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.27,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-f8682708d963",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-bed2ed9a02b9",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.32,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-ad85c143c43e",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-b71198421fff",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-0df549e3a27c",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-6930257d995a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.3,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-ffc370433cb2",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.26,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-84f5c5109b93",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.29,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-783c7fc2c7cd",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.12,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-5fa1318038d7",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.3,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-d6897974e7e6",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-ed10f0747a2f",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.51,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-e227851c8fc7",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.26,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-6aff93ac471a",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.42,
+      "resume_confidence": 0.5
+    },
+    {
+      "id": "seek-c193993c0fb3",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.69,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-b0e47f17bee2",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.37,
+      "resume_confidence": 0.86
+    },
+    {
+      "id": "seek-eb408c77ca6f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-0964ac2c4053",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-870f1bc9230f",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.05,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-abccef293cfd",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.22,
+      "resume_confidence": 0.18
+    },
+    {
+      "id": "seek-6f2a8e58bb9c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.62,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-988238332844",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.17,
+      "resume_confidence": 0.81
+    },
+    {
+      "id": "seek-5bbd77b00bc2",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.27,
+      "resume_confidence": 0.5
+    },
+    {
+      "id": "seek-22740a554382",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.81
+    },
+    {
+      "id": "seek-a86435b3b594",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.42
+    },
+    {
+      "id": "seek-d2edd1c147c7",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.9,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "seek-710991c07bfe",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.9,
+      "resume_confidence": 0.75
+    },
+    {
+      "id": "seek-888d55ebc0d2",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.73
+    },
+    {
+      "id": "seek-d8743d76c92c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.57,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-fb66f213681a",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.27
+    },
+    {
+      "id": "seek-7ab86ce18176",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.35
+    },
+    {
+      "id": "seek-5cbbdcc89b38",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.74
+    },
+    {
+      "id": "seek-9919b937c1dc",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.68,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-ddec18eff64e",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.43,
+      "resume_confidence": 0.81
+    },
+    {
+      "id": "seek-7693796a60b1",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.47
+    },
+    {
+      "id": "seek-d9e73363db96",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-0ab02498632c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.72,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-624fe41d8fbc",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.9,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "seek-8f8e699b5866",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.64,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-531ba419b5ce",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.88,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-786adedbd933",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.25,
+      "resume_confidence": 0.65
+    },
+    {
+      "id": "seek-89287b97cfcf",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.7,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-e1d0022d2913",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.37,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-568b92adfdad",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.82,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-d7593d13ffaf",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-d50b9092f264",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.89,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-3dd78d8d9ffc",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.12
+    },
+    {
+      "id": "seek-d48f3a86a6f4",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.29,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-21a7172264c0",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.83,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-af549076fc61",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-c815c70c2f7d",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.62,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-014e590c5033",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.75,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-68786692f2b0",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.19,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-655f40c956e2",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-213ae30aae38",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.74,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-9bdd9b7c88d1",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.18,
+      "resume_confidence": 0.66
+    },
+    {
+      "id": "seek-dedc260a60cf",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.27,
+      "resume_confidence": 0.78
+    },
+    {
+      "id": "seek-4a8b235adb80",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.69,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-9ecbc86fd8b5",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.21,
+      "resume_confidence": 0.24
+    },
+    {
+      "id": "seek-a29f7946919c",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.66,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-dec528b47b83",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.38,
+      "resume_confidence": 0.48
+    },
+    {
+      "id": "seek-12083acb8872",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.34
+    },
+    {
+      "id": "seek-68928e8906ff",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.2
+    },
+    {
+      "id": "seek-3e03cf809361",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.21,
+      "resume_confidence": 0.21
+    },
+    {
+      "id": "seek-19195d1a562f",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.21,
+      "resume_confidence": 0.21
+    },
+    {
+      "id": "seek-2e54eb5b73f7",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.2,
+      "resume_confidence": 0.27
+    },
+    {
+      "id": "seek-195afa0e16b4",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.67,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-da46d6d8111e",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.84,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-3b53ce991d9a",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.62
+    },
+    {
+      "id": "seek-676f1f068952",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.59,
+      "resume_confidence": 0.85
+    },
+    {
+      "id": "seek-893ce926900a",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.81,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-b32333bfa8f8",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.87,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-63493809e71b",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.61
+    },
+    {
+      "id": "seek-b58722fbc180",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.85,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-4d418acc9f0a",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.57,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-5a2a8278ec87",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.51
+    },
+    {
+      "id": "seek-4753c4f61f31",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.41,
+      "resume_confidence": 0.86
+    },
+    {
+      "id": "seek-fe490a973501",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.95,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-734055fdc83d",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.25,
+      "resume_confidence": 0.81
+    },
+    {
+      "id": "seek-9128e305447f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.43,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-7018c8c9f658",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.4,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-d548c20a03b4",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.66
+    },
+    {
+      "id": "seek-e9a79387a74a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.86
+    },
+    {
+      "id": "seek-c798e21b658e",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.2,
+      "resume_confidence": 0.46
+    },
+    {
+      "id": "seek-178452d7bf47",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.73,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-55ce5e945de1",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "orchestrator-92d2dc51ef78",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.29,
+      "resume_confidence": 0.4
+    },
+    {
+      "id": "seek-ef7009ee4d06",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.94,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-203137aae58d",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.43,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-57500c1a7892",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.85,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-1e00300373e8",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-751ecf33d82a",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.6,
+      "resume_confidence": 0.32
+    },
+    {
+      "id": "seek-cd0cc1b3f0a8",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.58,
+      "resume_confidence": 0.26
+    },
+    {
+      "id": "seek-7d902fba9627",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.9,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-4370e7bcdc02",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.62,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-c5960f05a85c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.41,
+      "resume_confidence": 0.86
+    },
+    {
+      "id": "seek-fbad540d0686",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.84,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-4ed20b5ef616",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.82,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-c3a08bb99404",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.29,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "seek-9835d20e18bb",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.76
+    },
+    {
+      "id": "seek-8b22d53a8c7b",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.92,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-881b3b4c8840",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-f3976f1a19a8",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.84,
+      "resume_confidence": 0.85
+    },
+    {
+      "id": "seek-56206fc42d64",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.41,
+      "resume_confidence": 0.69
+    },
+    {
+      "id": "seek-c43adafeaa4a",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "seek-618889bcb6a9",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.89,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-66d0ed0c81e6",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.25
+    },
+    {
+      "id": "seek-968ba70c105c",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.4,
+      "resume_confidence": 0.64
+    },
+    {
+      "id": "seek-731375199125",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.35,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-d0c36e1551a7",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.95,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-74e436a90594",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.28,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-d5a96e0ed5b4",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.38,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-71afa3a0aff2",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.64,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-61373a23f8c4",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.86,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-22468a22e32e",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.4,
+      "resume_confidence": 0.13
+    },
+    {
+      "id": "seek-f4df600037f2",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.28
+    },
+    {
+      "id": "seek-cd4b41411184",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.32
+    },
+    {
+      "id": "seek-73fd70f199ae",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.33
+    },
+    {
+      "id": "seek-eb5b64043da2",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.34,
+      "resume_confidence": 0.35
+    },
+    {
+      "id": "seek-9f52f6859b0b",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.23,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-a3a710bd5624",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.53,
+      "resume_confidence": 0.24
+    },
+    {
+      "id": "seek-d0df48a556ae",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.51,
+      "resume_confidence": 0.2
+    },
+    {
+      "id": "seek-096720183bc5",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.06,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-96d3fa49bb52",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.82,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-34d055da3344",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-942a95526c0c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.66,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-51b26ac65fd7",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.79,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-f5d9798cf57c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.62,
+      "resume_confidence": 0.85
+    },
+    {
+      "id": "seek-950bf39bf482",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.7,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-e6ca26101c6a",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.91,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-a164620503dc",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-43c28f9de63f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-e23afe132ab8",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.37,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-2d380072f984",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.94,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-80d0a9b712cf",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.54,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-bc3fa1990b0c",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.88,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "seek-ae1018f63e16",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.38,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-4639b0a4b174",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.96,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-050cbacdd0d1",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.65,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-a7261a5b50a9",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.87,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-4a21bade3ef0",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.52,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-587b84b912dc",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.48,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-a8d2fe64db94",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.88,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-1bdec65b9ae1",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.89,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-ef7d71bfb12c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.41,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-e91405777b5b",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "seek-6e9f54d33d54",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.95,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-4bf7ab8df5f8",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.58,
+      "resume_confidence": 0.37
+    },
+    {
+      "id": "seek-5d96937123b0",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.91,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-e112220b10ed",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-d4dace46c66b",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-6c699252fc4e",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.89,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-dac379611e9f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.74,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-391ab32ec519",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.12,
+      "resume_confidence": 0.62
+    },
+    {
+      "id": "seek-9a1989147b42",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.66,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "seek-242ba05fd2d3",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.51
+    },
+    {
+      "id": "seek-cd497e37130d",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.92,
+      "resume_confidence": 0.63
+    },
+    {
+      "id": "seek-e467f6db6a1d",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.3,
+      "resume_confidence": 0.44
+    },
+    {
+      "id": "seek-1e1e7b48837b",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-8c393c02d2db",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.89,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-92b0754521a2",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.27,
+      "resume_confidence": 0.52
+    },
+    {
+      "id": "seek-5335637b6de6",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.74
+    },
+    {
+      "id": "seek-521c32722aee",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.94,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-65ad6feea0e1",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-b3132229bf11",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.58,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-327b1a4838bb",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.66,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "seek-40e388a0adb8",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.28,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "seek-464828f3f75e",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.92,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-c5aaf4b40a81",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "seek-49b6e76a4171",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.91,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "seek-5176dc6141ce",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-db8689945928",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": null,
+      "profile_relevance": 55,
+      "discipline_confidence": 0.79,
+      "resume_confidence": 0.61
+    },
+    {
+      "id": "seek-38e91514d943",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.73,
+      "resume_confidence": 0.41
+    },
+    {
+      "id": "seek-fadac63242ce",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.74,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-7f7fd958cd2c",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.2,
+      "resume_confidence": 0.79
+    },
+    {
+      "id": "seek-a84838bcd86a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": null,
+      "profile_relevance": 75,
+      "discipline_confidence": 0.3,
+      "resume_confidence": 0.75
+    },
+    {
+      "id": "seek-219d240bb664",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.64,
+      "resume_confidence": 0.65
+    },
+    {
+      "id": "seek-a8f33242e8ee",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.56
+    },
+    {
+      "id": "seek-63b342cd21da",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.85
+    },
+    {
+      "id": "seek-f21f2738dcf2",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.22
+    },
+    {
+      "id": "seek-dee54a2c3927",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.38
+    },
+    {
+      "id": "seek-6dbf43bc613e",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.38
+    },
+    {
+      "id": "seek-334a67fe7115",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.18
+    },
+    {
+      "id": "seek-c34234663d5f",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.91,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-4609b9278dc2",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.4
+    },
+    {
+      "id": "seek-3e7c600bc40d",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "seek-19ecba30b634",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.15,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "linkedin_jobs-dcfebb34ab7a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.39,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "linkedin_jobs-abde38bfdda9",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.81,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "linkedin_jobs-06a068b1048c",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.91,
+      "resume_confidence": 0.91
+    },
+    {
+      "id": "linkedin_jobs-a6d059b11283",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.85,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "linkedin_jobs-e72d160a8623",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.68,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-10442549b078",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.85,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "linkedin_jobs-fddfd0367d64",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.35,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "linkedin_jobs-30538a79e3c6",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "linkedin_jobs-f22e2a7aebaf",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.67,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "linkedin_jobs-e3aa5ae4f382",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.94,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "linkedin_jobs-9299f0b95ece",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.52,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "linkedin_jobs-7fc184edb8fb",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-ebe79a441e4a",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.9,
+      "resume_confidence": 0.41
+    },
+    {
+      "id": "linkedin_jobs-7e3f3484aeb3",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.81,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "linkedin_jobs-c500878abad0",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.43,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "linkedin_jobs-9c91a61081c7",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "linkedin_jobs-4d026ca65a5e",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.84,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-616ee52ad680",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.28,
+      "resume_confidence": 0.53
+    },
+    {
+      "id": "linkedin_jobs-77b03fea89a9",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": null,
+      "profile_relevance": 55,
+      "discipline_confidence": 0.15,
+      "resume_confidence": 0.4
+    },
+    {
+      "id": "linkedin_jobs-5c25b9fb10fd",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.19,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "linkedin_jobs-71281109defe",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.18,
+      "resume_confidence": 0.16
+    },
+    {
+      "id": "linkedin_jobs-84bb13c49787",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.67,
+      "resume_confidence": 0.52
+    },
+    {
+      "id": "linkedin_jobs-7505b99326d4",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.57,
+      "resume_confidence": 0.85
+    },
+    {
+      "id": "linkedin_jobs-41368b795a2c",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.17,
+      "resume_confidence": 0.27
+    },
+    {
+      "id": "linkedin_jobs-19521b920dfe",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.81,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "linkedin_jobs-5952c66e547a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.55,
+      "resume_confidence": 0.89
+    },
+    {
+      "id": "linkedin_jobs-06bbed098df3",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.47,
+      "resume_confidence": 0.4
+    },
+    {
+      "id": "linkedin_jobs-3d40ebebe343",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.8,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "linkedin_jobs-db9988e8c07a",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.75,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "linkedin_jobs-0c5f9946a2f3",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.57,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "linkedin_jobs-0e8898cec8f7",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.73,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-0096e08661d2",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.43
+    },
+    {
+      "id": "linkedin_jobs-cfe27d32bde4",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.6
+    },
+    {
+      "id": "linkedin_jobs-8d7d372c9c99",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.75,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "linkedin_jobs-1ba87cc2a69a",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.51,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "linkedin_jobs-a216566105cf",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 42,
+      "discipline_confidence": 0.24,
+      "resume_confidence": 0.37
+    },
+    {
+      "id": "seek-4cb1a55c76c1",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.95,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-896a5c4b0c7d",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.34,
+      "resume_confidence": 0.15
+    },
+    {
+      "id": "seek-fe95e99981e5",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.97,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "seek-876a61ea5d8c",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "seek-af2a81966ce4",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-05040c7083d2",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.77,
+      "resume_confidence": 0.94
+    },
+    {
+      "id": "seek-6aff2611099f",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.44
+    },
+    {
+      "id": "seek-db58f84202d0",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.96,
+      "resume_confidence": 0.98
+    },
+    {
+      "id": "seek-aaf8c9e9255e",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.83
+    },
+    {
+      "id": "seek-5fd5b18617e4",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "seek-308fb93a0691",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.3,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "seek-b41e027753d9",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.34,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "seek-07557442843b",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.49,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "seek-cdfdfc4099b2",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.93,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-e7c71c81354f",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.85,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "linkedin_jobs-8c800d25db94",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.48,
+      "resume_confidence": 0.41
+    },
+    {
+      "id": "linkedin_jobs-04c658e15a49",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.47,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "linkedin_jobs-943ca0c376f3",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.16,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "linkedin_jobs-a5b303b42be5",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "linkedin_jobs-65fc2bf577c4",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.67,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "linkedin_jobs-149df41226c5",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.81,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "linkedin_jobs-289b6e9c7bf5",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.73
+    },
+    {
+      "id": "linkedin_jobs-b81b9c1116b3",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": null,
+      "profile_relevance": 55,
+      "discipline_confidence": 0.07,
+      "resume_confidence": 0.44
+    },
+    {
+      "id": "linkedin_jobs-349693dcdefd",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.19,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "seek-47f3309a6571",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.29,
+      "resume_confidence": 0.86
+    },
+    {
+      "id": "seek-cfeb2fcb8791",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.78,
+      "resume_confidence": 0.88
+    },
+    {
+      "id": "seek-fb525df2bed3",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.37,
+      "resume_confidence": 0.92
+    },
+    {
+      "id": "seek-d39fa6c6a237",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.58,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "seek-b749167c65ed",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.96,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "seek-992ca1a886e2",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.86,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-4924f1cc8bd3",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.13,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-38a859f52d53",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.7,
+      "resume_confidence": 0.79
+    },
+    {
+      "id": "linkedin_jobs-fc167f0e48f0",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.53,
+      "resume_confidence": 0.67
+    },
+    {
+      "id": "linkedin_jobs-6b1da496a513",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.72,
+      "resume_confidence": 0.78
+    },
+    {
+      "id": "linkedin_jobs-62661d38b22c",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "linkedin_jobs-bda7d09ee0d0",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.63,
+      "resume_confidence": 0.81
+    },
+    {
+      "id": "linkedin_jobs-6c51a13b4cc7",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.77,
+      "resume_confidence": 0.76
+    },
+    {
+      "id": "linkedin_jobs-1e6016c92247",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.77,
+      "resume_confidence": 0.76
+    },
+    {
+      "id": "linkedin_jobs-ccc0ec9510dd",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.73,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-199aea4d4df7",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.61,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-22e13893056d",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.69,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "linkedin_jobs-9fe1d041dd28",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.19,
+      "resume_confidence": 0.87
+    },
+    {
+      "id": "linkedin_jobs-2ff2bc7ab106",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.7,
+      "resume_confidence": 0.82
+    },
+    {
+      "id": "linkedin_jobs-8d43bf1b69e3",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.71,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "linkedin_jobs-2b48c2c7df9a",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.27,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-2251e2ea0593",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.14,
+      "resume_confidence": 0.23
+    },
+    {
+      "id": "linkedin_jobs-d52e369ad107",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.31,
+      "resume_confidence": 0.21
+    },
+    {
+      "id": "linkedin_jobs-4d61cc3e1d01",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.44,
+      "resume_confidence": 0.56
+    },
+    {
+      "id": "linkedin_jobs-ba00e598bc78",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.8,
+      "resume_confidence": 0.97
+    },
+    {
+      "id": "linkedin_jobs-d4f02b627a1e",
+      "status": "uncertain",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 64,
+      "discipline_confidence": 0.68,
+      "resume_confidence": 0.84
+    },
+    {
+      "id": "linkedin_jobs-8c5c5495559d",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.58
+    },
+    {
+      "id": "linkedin_jobs-e93c6355e130",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.86,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "linkedin_jobs-8856d90ae757",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.92,
+      "resume_confidence": 0.95
+    },
+    {
+      "id": "linkedin_jobs-234b6dc4c5b5",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.6,
+      "resume_confidence": 0.7
+    },
+    {
+      "id": "linkedin_jobs-86f7f62e932d",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.58,
+      "resume_confidence": 0.77
+    },
+    {
+      "id": "linkedin_jobs-f61c097bd3df",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.62,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "recruiter-michael-page-udm-2026-09",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.42,
+      "resume_confidence": 0.42
+    },
+    {
+      "id": "seek-545ab8115b78",
+      "status": "automatic",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.82,
+      "resume_confidence": 0.96
+    },
+    {
+      "id": "seek-fe61f420a3f7",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": null,
+      "profile_relevance": 30,
+      "discipline_confidence": 0.5,
+      "resume_confidence": 0.27
+    },
+    {
+      "id": "seek-4f1b93062b40",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.13,
+      "resume_confidence": 0.67
+    },
+    {
+      "id": "seek-757cca1c0e61",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.35,
+      "resume_confidence": 0.38
+    },
+    {
+      "id": "seek-cc44a3c83923",
+      "status": "uncertain",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "discipline_confidence": 0.45,
+      "resume_confidence": 0.43
+    },
+    {
+      "id": "seek-f73521dc01f6",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.46,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-0fe451dc30d5",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 87,
+      "discipline_confidence": 0.31,
+      "resume_confidence": 0.9
+    },
+    {
+      "id": "linkedin_jobs-11b6d480a68b",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.2,
+      "resume_confidence": 0.42
+    },
+    {
+      "id": "linkedin_jobs-38d10aebe437",
+      "status": "automatic",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 55,
+      "discipline_confidence": 0.84,
+      "resume_confidence": 0.76
+    },
+    {
+      "id": "linkedin_jobs-57275420a23b",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.33,
+      "resume_confidence": 0.71
+    },
+    {
+      "id": "linkedin_jobs-7baf58b5c168",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.36,
+      "resume_confidence": 0.93
+    },
+    {
+      "id": "linkedin_jobs-7da0f919e0b3",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.22,
+      "resume_confidence": 0.38
+    },
+    {
+      "id": "linkedin_jobs-a2d88ff77a88",
+      "status": "uncertain",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 75,
+      "discipline_confidence": 0.4,
+      "resume_confidence": 0.8
+    },
+    {
+      "id": "linkedin_jobs-dc2b7f74af65",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.43,
+      "resume_confidence": 0.55
+    },
+    {
+      "id": "seek-ca09f6a43d7e",
+      "status": "uncertain",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 30,
+      "discipline_confidence": 0.53,
+      "resume_confidence": 0.44
+    }
+  ],
+  "runtime": {
+    "input_tokens": 1460250,
+    "estimated_cost_usd": 0.05841,
+    "mean_latency_ms": 1223.582803,
+    "p95_latency_ms": 3381,
+    "unchanged_calls_on_cached_rerun_target": 0
+  },
+  "thresholds": {
+    "automatic_low_apply_worthy_error_rate_max": 0.02,
+    "consequential_errors_max": 0,
+    "matched_resume_rate_min": 0.85,
+    "calibration_ece_max": 0.1
+  }
+}

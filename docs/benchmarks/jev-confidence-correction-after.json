@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T06:45:00.070Z",
+  "purpose": "Measured result after adopting TypeSafe provider confidence, a versioned question contract, scoped degradation and truthful Vercel route identity.",
+  "source_files": [
+    "jev-confidence-correction-before.json",
+    "jev-after.json",
+    "jev-shadow-500.json",
+    "jev-repeatability.json",
+    "jev-comparison.json"
+  ],
+  "cohort": {
+    "historical_requested": 120,
+    "currently_available": 115,
+    "removed_from_pipeline": 5,
+    "measured": 115
+  },
+  "contract_after": {
+    "confidence_source": "providerMetadata.typesafe.confidence for Choice and Score",
+    "question_schema_bound_to_cache": true,
+    "job_description_treated_as_untrusted_data": true,
+    "degradation_scope": "classification blocks; screening-match and fuzzy-dedup incidents are advisory",
+    "model_identity_claim": "Gateway route identity only; resolved model version is not observable through the current Vercel response",
+    "resolved_model_version_observable": false
+  },
+  "before_after_same_active_subset": {
+    "automatic": { "before": 57, "after": 33, "delta": -24 },
+    "automatic_rate": { "before": 0.495652, "after": 0.286957, "delta": -0.208695 },
+    "uncertain": { "before": 58, "after": 82, "delta": 24 },
+    "delegated_discipline_exact_agreement": { "before": 0.565217, "after": 0.547826, "delta": -0.017391 },
+    "delegated_matched_resume_exact_agreement": { "before": 0.852174, "after": 0.817391, "delta": -0.034783 },
+    "delegated_calibration_ece": { "before": 0.124, "after": 0.1033, "delta": -0.0207, "target": 0.1, "pass": false },
+    "delegated_calibration_monotonic": { "before": true, "after": true },
+    "automatic_low_apply_worthy_errors": { "before": 0, "after": 0, "delta": 0 },
+    "automatic_high_not_apply_worthy_errors": { "before": 9, "after": 4, "delta": -5 },
+    "consequential_errors": { "before": 0, "after": 0, "delta": 0 }
+  },
+  "runtime_normalised_per_decision": {
+    "input_tokens": { "before": 4526.6, "after": 4609.556522, "relative_change": 0.018326 },
+    "estimated_cost_usd": { "before": 0.000181067, "after": 0.000184383, "relative_change": 0.018313 },
+    "mean_latency_ms": { "before": 677.791667, "after": 1180.982609, "relative_change": 0.742398 },
+    "p95_latency_ms": { "before": 825, "after": 3370, "relative_change": 3.084848 },
+    "note": "The corrected contract is slightly more expensive per role and was slower during this run because provider capacity faults required retries."
+  },
+  "generic_agent_comparator": {
+    "agent_cost_usd": 4.936999,
+    "jev_cost_usd": 0.021204,
+    "cost_reduction": 0.995518,
+    "agent_wall_ms": 608687,
+    "jev_wall_ms": 76178,
+    "runtime_ratio": 0.130593
+  },
+  "repeatability": {
+    "repeated": 115,
+    "discipline_stability": 0.965217,
+    "resume_stability": 0.965217,
+    "status_stability": 1,
+    "target": 0.98,
+    "pass": false
+  },
+  "larger_shadow": {
+    "historical_requested": 500,
+    "currently_available": 314,
+    "automatic": 82,
+    "automatic_rate": 0.261146,
+    "uncertain": 232,
+    "degraded_after_retry": 0,
+    "automatic_labelled_by_operational_proxy": 19,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_high_known_negative_errors": 0,
+    "estimated_cost_usd": 0.05841
+  },
+  "promotion": {
+    "ready": false,
+    "rollout_percent": 0,
+    "jev_autopilot_authority_enabled": false,
+    "blocking_reasons": [
+      "Vercel does not expose the resolved Jev model version",
+      "fresh adjudications are required because the decision and question contract changed",
+      "discipline and resume repeatability are below the 0.98 target",
+      "fixed-label calibration ECE remains above 0.10",
+      "fixed-label matched-resume agreement is below 0.85"
+    ]
+  },
+  "label_caveat": "The same-content before and after diagnostic reuses the prior delegated semantic labels as a fixed reference. Those labels are intentionally stale for promotion because they are bound to the previous Jev decision IDs."
+}

@@ -23,6 +23,7 @@
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
@@ -168,11 +169,10 @@ export async function enrichSeekRoles(options: {
   const status = options.status ?? "shortlisted";
   const minScore = options.minScore ?? 20;
   const concurrency = Math.max(1, Math.min(6, options.concurrency ?? 4));
-  const classifiedResume = options.resume ? await loadClassifiedResumeIds() : null;
   const candidates = roles
     .filter((role) => role.channel === "seek")
     .filter((role) => !options.id || role.id === options.id)
-    .filter((role) => !options.resume || role.resumeId === options.resume || classifiedResume?.get(role.id) === options.resume)
+    .filter((role) => !options.resume || role.resumeId === options.resume || role.classification?.matched_resume_id === options.resume)
     .filter((role) => status === "any" || role.status === status)
     .filter((role) => (role.score ?? 0) >= minScore)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
@@ -262,20 +262,6 @@ export async function enrichSeekRoles(options: {
   return { selected: candidates.length, enriched, unchanged, failed };
 }
 
-/** id → matched_resume_id from state/pipeline/classifications.json (absent file → empty map). */
-async function loadClassifiedResumeIds(): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  try {
-    const raw = JSON.parse(await fs.readFile("state/pipeline/classifications.json", "utf8"));
-    for (const [id, entry] of Object.entries(raw as Record<string, any>)) {
-      if (entry?.matched_resume_id) out.set(id, String(entry.matched_resume_id));
-    }
-  } catch {
-    // no classifications yet
-  }
-  return out;
-}
-
 export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichment): boolean {
   let changed = false;
   const fields = {
@@ -296,7 +282,7 @@ export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichmen
 /**
  * SEEK sometimes returns construction/commercial roles for broad words such as
  * "manager" and "lead". Keep this deliberately cheap: it is only a pre-ingest
- * noise gate; agent classification remains the authoritative fit decision.
+ * noise gate; ClassificationV2 remains the authoritative fit decision.
  */
 export function looksTechnicallyRelevant(title: string, description: string): boolean {
   const heading = title.toLowerCase();
@@ -515,6 +501,7 @@ async function main() {
     let created = 0;
     let alreadyKnown = 0;
     let expired = 0;
+    let expiredClosed = 0;
     if (upsertFlag) {
       const known = new Map((await listPipeline()).map((r) => [r.id, r]));
       const now = new Date().toISOString();
@@ -522,6 +509,8 @@ async function main() {
       for (const job of jobs) {
         if (job.expired) {
           expired++;
+          const id = opportunityIdFor("seek", job.url);
+          if (known.has(id) && await closeOpportunityAsExpired(id, { source: "channel", channelName: "SEEK" }, { apply: true })) expiredClosed++;
           continue;
         }
         const id = opportunityIdFor("seek", job.url);
@@ -544,7 +533,7 @@ async function main() {
         ids.push(id);
       }
       await upsertMany(batch);
-      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, ids }, null, 2));
+      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, expiredClosed, ids }, null, 2));
     } else {
       const known = new Set((await listPipeline()).map((r) => r.id));
       for (const job of jobs) {

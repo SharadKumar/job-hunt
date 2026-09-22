@@ -52,7 +52,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 
-import { ApiError, getRowDetail, getRows, type ApiContext, type ApiRequest, type ApiResult, type RowSummary } from "./api.ts";
+import { ApiError, getRowDetail, getRows, toRowSummary, type ApiContext, type ApiRequest, type ApiResult, type RowSummary } from "./api.ts";
 import { get as getOpportunity, list as listOpportunities, patch as patchOpportunity, setStatus, type Opportunity, type PipelineStatus } from "../pipeline.ts";
 import { deterministicFindings, loadProfileRules, requisitionCodesNotInJd, type CriticFinding } from "../letter-critic.ts";
 import { log, type AuditEventType } from "../audit.ts";
@@ -149,6 +149,7 @@ const UNANSWERED_QUESTION = /screening question|unanswered question|question is 
 const EXTERNAL_PORTAL = /external ats|external portal|external application|external\/unknown|external or unknown|apply on (the )?company|not quick apply|non-quick-apply|redirect(ed)? to/i;
 const LETTER_BLOCKED = /letter[-\s]?critic|letter critic/i;
 const DUPLICATE = /duplicate|already submitted .{0,60}within \d+ days|needs a user decision/i;
+const UNKNOWN_SUBMISSION = /probably already sent|next best action|unknown submission outcome/i;
 
 export type ActionRow = {
   id: string; status: string; url?: string | null; applyMethod?: string | null; channel?: string | null;
@@ -405,7 +406,22 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
   if (DUPLICATE.test(text) && RETRY_LEGAL_FROM.has(status)) {
     return action({ kind: "decide", label: "", also: duplicateButtons() });
   }
-  if (LETTER_BLOCKED.test(text) && RETRY_LEGAL_FROM.has(status)) return action({ kind: "retry", label: "Retry", post: "retry" });
+  if (UNKNOWN_SUBMISSION.test(text) && status === "manual_action_needed") {
+    return action({
+      kind: "decide",
+      label: "",
+      also: [markSentButton(), action({ kind: "reject", label: "Reject", post: "reject", danger: true })],
+      note: "Confirm whether the channel already recorded the application before retrying.",
+    });
+  }
+  if (LETTER_BLOCKED.test(text) && RETRY_LEGAL_FROM.has(status)) {
+    return action({
+      kind: "in_flight",
+      label: "Redraft queued",
+      also: holdOrReject(),
+      note: "The daily run owns this letter repair. Nothing needed from you unless it fails again.",
+    });
+  }
   // Only here is an approval a real decision: on this lane nothing goes out
   // until the person is present and sends it themselves.
   if (status === "awaiting_approval") {
@@ -509,7 +525,8 @@ export type RowsCounts = { needs_you: number; in_flight: number };
  * whole point of the lane: `GET /api/rows?status=awaiting_approval` on a SEEK
  * row counts as nothing to do.
  */
-export const needsYou = (action: RowAction): boolean => action.kind !== "in_flight" && action.kind !== "none";
+export const needsYou = (action: RowAction): boolean =>
+  action.kind !== "in_flight" && action.kind !== "none";
 
 /**
  * Which of the four Needs you groups a row belongs in
@@ -533,9 +550,9 @@ const NEEDS_YOU_GROUPS: Partial<Record<RowAction["kind"], NeedsYouGroup>> = {
   gate_refused: "decide",
   portal: "open_portal",
   mark_sent: "open_portal",
-  // A retry is the run being asked for another letter, which is what the
-  // person is waiting on rather than something they do.
-  retry: "waiting_redraft",
+  // Automatic letter repairs are `in_flight`. A remaining retry is a real
+  // manual intervention and belongs with decisions.
+  retry: "decide",
 };
 
 export function needsYouGroup(action: RowAction): NeedsYouGroup | null {
@@ -740,6 +757,13 @@ export type FollowUpRow = {
   days_since: number;
   nudge: string | null;
   nudge_file: string | null;
+  score: number | null;
+  location: string | null;
+  status: PipelineStatus;
+  reason: string | null;
+  updated_at: string | null;
+  response_at: string | null;
+  status_at: string | null;
 };
 
 /** The nudge draft for a row, from the package directory or the outreach tray. */
@@ -780,6 +804,7 @@ export async function getFollowUps(
     const sent = new Date(row.submittedAt);
     if (Number.isNaN(sent.getTime()) || sent > cutoff) continue;
     const nudge = await nudgeFor(row, ctx);
+    const summary = toRowSummary(row);
     rows.push({
       id: row.id,
       title: row.title,
@@ -790,6 +815,13 @@ export async function getFollowUps(
       days_since: Math.floor((now.getTime() - sent.getTime()) / DAY_MS),
       nudge: nudge.text,
       nudge_file: nudge.file,
+      score: summary.score,
+      location: summary.location,
+      status: summary.status,
+      reason: summary.reason,
+      updated_at: summary.updated_at,
+      response_at: summary.response_at,
+      status_at: summary.status_at,
     });
   }
   rows.sort((a, b) => b.days_since - a.days_since || a.company.localeCompare(b.company));

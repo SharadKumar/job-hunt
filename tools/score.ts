@@ -7,7 +7,8 @@
  *   state/profile/skills-taxonomy.yaml
  *   state/profile/profile.md (frontmatter for target rate, location, arrangement)
  *
- * Inputs: a Role object (or JSON via --role-json or --role-file).
+ * Inputs: a pipeline-style object carrying both role fields and a current
+ * ClassificationV2, or { role, classification }.
  *
  * Output: {score: 0-100, reasons: string[], red_flag_blocker: bool, breakdown: {...}}
  *
@@ -19,7 +20,7 @@
 import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
-import { classifyJdRegex, type Classification } from "./classify-jd.ts";
+import type { ClassificationV2 } from "./classification.ts";
 
 export type Role = {
   id: string;
@@ -189,7 +190,7 @@ function recencyFit(role: Role): { score: number; reason: string } {
   return { score: 0.2, reason: `posted ${days.toFixed(0)} days ago — likely stale` };
 }
 
-function contractFlexibility(classification: Classification): { score: number; reason: string } {
+function contractFlexibility(classification: ClassificationV2): { score: number; reason: string } {
   const signals: string[] = [];
   if (classification.bonuses.includes("fully_remote")) signals.push("fully_remote");
   if (classification.bonuses.includes("fractional_or_part_time_explicit")) signals.push("fractional_or_part_time");
@@ -274,20 +275,15 @@ export function computeFitVerdict(input: {
   };
 }
 
-export async function scoreRole(role: Role, providedClassification?: Classification): Promise<ScoreResult & { classification: Classification }> {
+export async function scoreRole(role: Role, providedClassification?: ClassificationV2): Promise<ScoreResult & { classification: ClassificationV2 }> {
   const weights = await readYaml<Weights>(repoPath("state/profile/scoring-weights.yaml"));
   const taxonomy = await readYaml<SkillTaxonomy>(repoPath("state/profile/skills-taxonomy.yaml"));
   const profile = await loadProfile();
 
-  // Classification policy:
-  //   - If the caller (typically the agent running a skill) supplies a
-  //     classification, use it. The agent has already reasoned about
-  //     profile_relevance against the active targets and red flags using
-  //     its own LLM context.
-  //   - Otherwise, fall back to the regex triage classifier. This is fast
-  //     and weak — appropriate for pre-filtering a large hunt batch before
-  //     the agent does grounded reclassification on the subset.
-  const classification = providedClassification ?? await classifyJdRegex(role.title, role.description);
+  if (!providedClassification) {
+    throw new Error(`Opportunity ${role.id} has no ClassificationV2; classify it before scoring`);
+  }
+  const classification = providedClassification;
 
   // Merge classifier-derived day_rate into the role (channel scrape may not have it)
   if (classification.day_rate.stated_explicitly && classification.day_rate.min) {
@@ -304,7 +300,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   }
 
   const breakdown: Record<string, number> = {};
-  const reasons: string[] = [`classifier: ${classification._classifier}`];
+  const reasons: string[] = [`classification: ${classification.source}/${classification.status}`];
 
   // Skills overlap (still keyword-based — the taxonomy is finite + explicit)
   const so = skillOverlap(`${role.title} ${role.description}`, taxonomy);
@@ -398,11 +394,11 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
 
   // A role with no credible resume positioning cannot be applied to, so it
   // can never be a shortlist candidate whatever the numbers say.
-  const noPositioning = classification._classifier === "agent" && !classification.matched_resume_id;
+  const noPositioning = !classification.matched_resume_id;
   if (noPositioning) reasons.push("blocker: no active resume positioning fits (matched_resume_id null)");
 
   const red_flag_blocker =
-    classification.red_flags.some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time")
+    classification.red_flags.some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time" || f === "clearance_required")
     || relevance < 25   // wholly-irrelevant roles are also blockers
     || noPositioning;
 
@@ -441,18 +437,18 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   }
 
   // SEEK cards frequently omit rate, posting timestamp and detailed skill text.
-  // Keep a guarded floor for a blocker-free contract the agent has explicitly
-  // judged an excellent match. The floor only applies to production agent
-  // classifications, never regex triage.
-  const highRelevanceMin = weights.thresholds?.high_agent_relevance_min ?? 90;
+  // Keep a guarded floor for a blocker-free contract with a high-confidence
+  // automatic Jev decision.
+  const highRelevanceMin = weights.thresholds?.high_automatic_relevance_min ?? 90;
   if (
-    classification._classifier === "agent"
+    classification.source === "jev"
+    && classification.status === "automatic"
     && classification.is_contract
     && !red_flag_blocker
     && classification.matched_resume_id
     && relevance >= highRelevanceMin
   ) {
-    const generalFloor = weights.thresholds?.high_agent_relevance_score_floor ?? 60;
+    const generalFloor = weights.thresholds?.high_automatic_relevance_score_floor ?? 60;
     const appliedAiFloor = weights.thresholds?.applied_ai_high_relevance_score_floor ?? generalFloor;
     const floor = classification.matched_resume_id === "applied-ai" ? appliedAiFloor : generalFloor;
     if (score < floor) {
@@ -495,8 +491,13 @@ async function main() {
     console.error("Usage: tsx tools/score.ts (--role-file <path> | --stdin)");
     process.exit(2);
   }
-  const role: Role = JSON.parse(roleJson);
-  const result = await scoreRole(role);
+  const parsed = JSON.parse(roleJson) as Role & { role?: Role; classification?: ClassificationV2 };
+  const role = parsed.role ?? parsed;
+  const classification = parsed.classification;
+  if (!classification || classification.schema_version !== 2) {
+    throw new Error("score:diagnostic requires a current ClassificationV2 in `classification`");
+  }
+  const result = await scoreRole(role, classification);
   console.log(JSON.stringify(result, null, 2));
 }
 

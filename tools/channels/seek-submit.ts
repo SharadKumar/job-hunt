@@ -63,6 +63,7 @@ import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
 import { repoPath } from "../repo-root.ts";
 import { openChromeContext } from "./_browser.ts";
+import { fuzzyScreeningMatch } from "../jev/screening.ts";
 
 export type SubmitSeekOptions = {
   dryRun?: boolean;
@@ -279,10 +280,14 @@ export function isPlaceholderOption(label: string): boolean {
  * Pure decision: what to do for one question given the YAML entries.
  * Exported so the matching logic can be unit tested without a browser.
  */
-export function decideQuestion(question: PageQuestion, answers: ScreeningEntry[] | ScreeningAnswers): QuestionDecision {
+export function decideQuestion(
+  question: PageQuestion,
+  answers: ScreeningEntry[] | ScreeningAnswers,
+  forcedEntry?: ScreeningEntry,
+): QuestionDecision {
   const entries = Array.isArray(answers) ? answers : answers.entries;
   const skillsYears = Array.isArray(answers) ? [] : answers.skillsYears;
-  const entry = matchScreeningEntry(question.label, entries);
+  const entry = forcedEntry ?? matchScreeningEntry(question.label, entries);
   const subject = yearsQuestionSubject(question.label);
   const skillYears = subject ? lookupSkillYears(subject, skillsYears) : undefined;
 
@@ -364,6 +369,15 @@ export function decideQuestion(question: PageQuestion, answers: ScreeningEntry[]
     if (willing) return { kind: "option", option: willing };
   }
   return { kind: "unmatched" };
+}
+
+/** Deterministic bank matching first, Jev only for an otherwise unknown paraphrase. */
+export async function decideQuestionWithJev(question: PageQuestion, answers: ScreeningEntry[] | ScreeningAnswers): Promise<QuestionDecision> {
+  const deterministic = decideQuestion(question, answers);
+  if (deterministic.kind !== "unmatched") return deterministic;
+  const entries = Array.isArray(answers) ? answers : answers.entries;
+  const matched = await fuzzyScreeningMatch(question.label, entries);
+  return matched ? decideQuestion(question, answers, matched) : deterministic;
 }
 
 // ---------------------------------------------------------------------------
@@ -609,7 +623,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           const questions = await discoverQuestions(page);
           console.error(`[seek-submit] ${opportunity.id}: ${questions.length} employer question(s)`);
           for (const q of questions) {
-            const decision = decideQuestion(q, answers);
+            const decision = await decideQuestionWithJev(q, answers);
             if (decision.kind === "unmatched") {
               const context = q.options.filter((o) => !isPlaceholderOption(o.label)).map((o) => o.label).join(" | ");
               await screenshot(page, shotDir, `${opportunity.id}-error.png`);

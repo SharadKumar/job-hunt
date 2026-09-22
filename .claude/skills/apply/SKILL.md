@@ -25,9 +25,9 @@ Read the opportunity with `npm run pipeline -- get <opportunity-id>`, which prin
 - `classification.requires_tailoring` (bool): whether to take the tailor path
 - `classification.profile_relevance` (number 0-100): gate for tailoring
 
-If classification is missing or `classification._classifier != "agent"` → halt and surface: "Opportunity not classified by the agent; run `/hunt` / opportunity-finder re-classification, then `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`; don't apply from regex/default scoring."
+If classification is missing or not `status: automatic`, halt and surface: "Opportunity lacks an automatic ClassificationV2 decision; run `npm run jev:classify`, then review any uncertain result. An individual bounded verification may be adopted through `npm run jev:agent-fallback`."
 
-Before assembling a package, validate the loaded opportunity using `assertAgentClassificationForApplication()` from `tools/classification-policy.ts` or perform the same inline checks: persisted agent classification, non-null `matched_resume_id`, and no regex/default source.
+Before assembling a package, validate the loaded opportunity using `assertAutomaticClassificationForApplication()` from `tools/classification-policy.ts` or perform the same inline checks: persisted automatic ClassificationV2 decision from Jev or the attended fallback, plus a non-null `matched_resume_id`. Attended preparation may use either source. Unattended submission requires the bounded in-agent verification source because Jev never supplies send authority.
 
 If status isn't `awaiting_approval` or `approved`: ask via `AskUserQuestion`: "Currently in `<status>`: proceed anyway / move to awaiting_approval first / cancel?"
 

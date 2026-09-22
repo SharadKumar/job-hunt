@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "migrated_at": "2026-09-18T23:22:12.726Z",
+  "pipeline_rows": 2198,
+  "classifications_migrated": 1502,
+  "explicit_unclassified_rows": 696,
+  "historical_rows_cleared_without_discipline": 693,
+  "historical_rows_completed_with_deterministic_location_fields": 365,
+  "invalid_location_enum_rows_repaired": 4,
+  "legacy_source_fields_remaining": 0,
+  "invalid_classifications": 0,
+  "backup": "/var/folders/k8/7y0rs3gx5x3_xcdtpl478qdw0000gn/T/job-hunt-pipeline-before-jev-2026-09-18T23-22-12-726Z.db",
+  "repair_backup": "/tmp/job-hunt-pipeline-before-v2-repair-2026-09-19.db",
+  "location_enum_repair_backup": "/tmp/job-hunt-pipeline-before-location-enum-repair-2026-09-19.db",
+  "note": "The migration and repair utilities were deleted after the one-way migration. Historical rows with complete semantic evidence are transparent ClassificationV2 migrated_agent records with status uncertain and cannot promote or authorise a send. Rows without a historical discipline are explicitly unclassified."
+}
