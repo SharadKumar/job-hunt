@@ -105,7 +105,7 @@ async function seedAwaiting(n: number, score: number, classified: boolean) {
 }
 
 try {
-  const manualId = await seedManual(1, 90, "letter-critic blocked: unsupported claim about the lender engagement");
+  const manualId = await seedManual(1, 90, 'unknown screening question: "Years of experience?"');
   const awaitingId = await seedAwaiting(2, 80, true);
   const unclassifiedId = await seedAwaiting(3, 60, false);
 
@@ -134,7 +134,7 @@ try {
     );
     const manualRow = body.find((r) => r[idIdx] === manualId)!;
     assert.equal(manualRow[statusIdx], "manual_action_needed");
-    assert.match(String(manualRow[reasonIdx]), /letter-critic blocked/, "the Tray explains why the row is stuck");
+    assert.match(String(manualRow[reasonIdx]), /screening question/, "the Tray explains why the row is stuck");
 
     // The unclassified row is COUNTED, not hidden: it is present in the Tray.
     const unclassifiedRow = body.find((r) => r[idIdx] === unclassifiedId)!;
@@ -249,6 +249,22 @@ try {
     assert.match(report.errors?.[0] ?? "", /invalid transition rejected → approved/);
     assert.equal((await get(rejectedId))!.status, "rejected");
     assert.equal(calls.filter((c) => c.method === "values.batchClear").length, 0, "a failed action leaves its cells for the person");
+  }
+
+  // Run-owned repairs disappear, but an unpulled user edit must survive.
+  {
+    const id = await seedManual(99, 90, "letter-critic blocked: repair required");
+    const { sheets, tabs } = fakeSheets();
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
+    const header = tabs.Tray[0] as string[];
+    assert.equal(tabs.Tray.slice(1).some(r => r[header.indexOf("id")] === id), false);
+    const pending = header.map(() => "");
+    pending[header.indexOf("id")] = id;
+    pending[header.indexOf("Edits")] = "Keep my requested edit";
+    tabs.Tray.push(pending);
+    await runPush({ sheets, spreadsheetId: "sheet-1", queuePath: QUEUE_PATH, enabled: true });
+    const retained = tabs.Tray.slice(1).find(r => r[header.indexOf("id")] === id);
+    assert.equal(retained?.[header.indexOf("Edits")], "Keep my requested edit");
   }
 
   // --- helpers --------------------------------------------------------------

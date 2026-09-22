@@ -21,7 +21,7 @@ process.env.AUDIT_DIR = path.join(tempRoot, "audit");
 
 // Every runtime import happens after those are set: a static import would
 // evaluate audit.ts first, which pins AUDIT_DIR at module load.
-const { selectOpportunitiesForRescore, applyRescore } = await import("../tools/rescore-pipeline.ts");
+const { selectOpportunitiesForRescore, applyRescore, rescoreStatusDecision } = await import("../tools/rescore-pipeline.ts");
 const { upsertMany, patch, setStatus, get } = await import("../tools/pipeline.ts");
 
 // --- selection --------------------------------------------------------------
@@ -59,16 +59,24 @@ const automaticClassification = classificationV2();
 
 const SHORTLIST_MIN = 55;
 
-function scoreResult(score: number, extra: { parked_reason?: string; red_flag_blocker?: boolean; classification?: typeof automaticClassification } = {}) {
+function scoreResult(score: number, extra: { ineligible_reason?: string; red_flag_blocker?: boolean; classification?: typeof automaticClassification } = {}) {
   return {
     score,
     reasons: [`classification: ${automaticClassification.source}/${automaticClassification.status}`],
     red_flag_blocker: extra.red_flag_blocker ?? false,
     breakdown: {} as any,
     classification: extra.classification ?? automaticClassification,
-    parked_reason: extra.parked_reason,
+    ineligible_reason: extra.ineligible_reason,
   } as Awaited<ReturnType<typeof import("../tools/score.ts").scoreRole>>;
 }
+
+const oldHold = { ...role("old-hold", "parked"), parkedReason: "interstate onsite (Example city)" };
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "rejected");
+assert.equal(rescoreStatusDecision({ ...oldHold, userSaved: true }, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision({ ...oldHold, parkedBy: "user" }, scoreResult(80), 55).status, "parked");
+assert.equal(rescoreStatusDecision({ ...oldHold, parkedReason: "Waiting for an agreed start date" }, scoreResult(80), 55).status, "parked");
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80, { classification: classificationV2({ status: "uncertain" }) }), 55).status, "discovered");
 
 const card = (n: number, title: string) => ({
   channel: "seek",
@@ -93,7 +101,7 @@ try {
   ]);
 
   await setStatus(parkedRow.id, "parked", "interstate onsite; user ruled on it");
-  await patch(parkedRow.id, { parkedReason: "interstate onsite (Melbourne VIC)" }, "seed");
+  await patch(parkedRow.id, { parkedReason: "interstate onsite (Melbourne VIC)", parkedBy: "user" }, "seed");
 
   await setStatus(awaitingRow.id, "shortlisted", "fits");
   await setStatus(awaitingRow.id, "drafted", "package assembled");

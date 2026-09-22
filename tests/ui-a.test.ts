@@ -520,8 +520,8 @@ await test("a time reads as one format, whichever screen asks", () => {
   // screen. `when()` is now the only one (section 6, Global components).
   const now = new Date("2026-09-18T09:00:00+10:00");
   const at = (iso: string) => labels.when(iso, now);
-  assert.equal(at("2026-09-18T08:19:00+10:00"), "08:19", "today is the clock alone");
-  assert.equal(at("2026-09-15T08:19:00+10:00"), "Tue 08:19", "this week is the weekday and the clock");
+  assert.equal(at("2026-09-18T08:19:00+10:00"), "8:19 am", "today is the clock alone");
+  assert.equal(at("2026-09-15T08:19:00+10:00"), "Tue 8:19 am", "this week is the weekday and the clock");
   assert.equal(at("2026-02-17T08:19:00+11:00"), "17 Feb", "earlier this year is the day and the month");
   assert.equal(at("2025-09-17T08:19:00+10:00"), "17 Sep 2025", "anything older carries its year");
   assert.equal(at(""), "", "nothing is said about nothing");

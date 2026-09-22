@@ -74,8 +74,8 @@ export type ScoreResult = {
    * existing constructors of a bare ScoreResult (tests, fixtures) still typecheck.
    */
   fit_verdict?: FitVerdict;
-  /** Set when the role fits but is held for a logistics reason the user has ruled on (e.g. interstate onsite). */
-  parked_reason?: string;
+  /** A confirmed logistics mismatch, not a temporary hold. */
+  ineligible_reason?: string;
 };
 
 export type SkillTaxonomy = {
@@ -410,21 +410,18 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     score = lowRelevanceCap;
   }
 
-  // Interstate roles (2026-09-15): the user applies to roles outside the
-  // home city only when the ad is remote or reads as location-flexible. An
-  // interstate role that requires routine onsite attendance keeps its fit
-  // score but is reported with a parked_reason, and the rescore moves it to
-  // the `parked` status so the shortlist stays the actionable queue.
+  // Unknown flexibility is not a blocker. Only confirmed routine attendance
+  // outside the home location fails eligibility; saved-job policy is applied
+  // by the lifecycle and submission gate.
   const homeCity = profile.homeCity;
   const locFlex = (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
-  let parked_reason: string | undefined;
+  let ineligible_reason: string | undefined;
   if (isInterstate && locFlex === "onsite") {
-    parked_reason = `interstate onsite (${role.location}); apply only if remote or flexible`;
-    reasons.push(`parked: ${parked_reason}`);
-  } else if (isInterstate && locFlex === "unknown") {
-    parked_reason = `interstate (${role.location}) with card-only blurb; location flexibility unknown`;
-    reasons.push(`parked: ${parked_reason}`);
+    ineligible_reason = `routine interstate attendance (${role.location})`;
+    reasons.push(`ineligible: ${ineligible_reason}`);
+  } else if (isInterstate && (!locFlex || locFlex === "unknown")) {
+    reasons.push("location flexibility unknown; proceed subject to other eligibility gates");
   } else if (isInterstate && (locFlex === "remote" || locFlex === "flexible")) {
     reasons.push(`interstate but ${locFlex}: ${(classification as { location_flexibility_quote?: string }).location_flexibility_quote ?? ""}`.trim());
   }
@@ -468,7 +465,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     overallOverlapPct: skillsNorm * 100,
   });
 
-  return { score, reasons, red_flag_blocker, breakdown, classification, fit_verdict, parked_reason };
+  return { score, reasons, red_flag_blocker, breakdown, classification, fit_verdict, ineligible_reason };
 }
 
 async function main() {

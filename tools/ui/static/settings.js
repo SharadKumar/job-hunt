@@ -16,6 +16,7 @@ import {
   api, channelLabel, clear, confirmButton, duration, getPolicy, guarded, h, isPolicyAvailable, loadPolicy,
   pageHeader, panel, readToken, render, toast, TOKEN_FOCUS_KEY, when, whenFull, writeToken,
 } from "./app.js";
+import { scheduleClock } from "./labels.js";
 
 /**
  * The ways to run this UI, best first. The portless way is the one to use day
@@ -179,7 +180,7 @@ function harnessCard() {
       bad: !health.next_run, title: whenFull(health.next_run),
     });
     reading(list, "Schedule", health.schedule.installed
-      ? `installed, ${health.schedule.at || "no time in the plist"}`
+      ? `installed, ${scheduleClock(health.schedule.at) || "no time in the plist"}`
       : "not installed; run bash scripts/install-launchd.sh", { bad: !health.schedule.installed });
 
     const cap = typeof health.caps.max_per_day === "number" ? ` of ${health.caps.max_per_day}` : "";
