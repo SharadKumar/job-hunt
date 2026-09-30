@@ -1706,7 +1706,7 @@ test("the Resumes screen renders nothing, and approves only through the tool", (
   assert.ok(!/text:\s*"Render\b/.test(resumesJs), "resumes.js must not offer a Render button");
   // The resume is visible in the third layer. Its formats share the tab row
   // with Quality rather than becoming a separate footer or another pane.
-  assert.match(resumesJs, /text: "PDF"/, "PDF is the default third-panel tab");
+  assert.match(resumesJs, /text: "PDF in Chrome"/, "PDF is handed to desktop Chrome rather than embedded in the app browser");
   assert.match(resumesJs, /fileLink\("DOCX", files\.docx\)/, "DOCX remains available");
   assert.match(resumesJs, /fileLink\("Markdown", files\.md\)/, "and so does Markdown");
   assert.match(resumesJs, /class: "resume-file-link"/, "file formats are links, not primary buttons");
@@ -1945,14 +1945,14 @@ test("Resumes uses the app sidebar, resume list and one tabbed selected resume",
     "the resume list uses the plain Versions label");
   assert.ok(!resumesJs.includes('text: "Selected resume"'), "the selected pane must not spend vertical space on a redundant eyebrow");
   assert.ok(!resumesJs.includes('class: "resume-meta"'), "the selected pane must not spend vertical space on a subtitle");
-  assert.match(resumesJs, /tabs\.append\(overview, pdf, fileLink\("DOCX", files\.docx\), fileLink\("Markdown", files\.md\), quality\)/,
-    "Overview, PDF, DOCX, Markdown and Quality share the selected resume's tab row");
-  assert.match(resumesJs, /const pdfUrl = readToken\(\) \? await artefactUrl\(files\.pdf\) : files\.pdf/,
-    "the native viewer gets the local PDF directly while a protected PDF uses the authenticated artefact path");
-  assert.match(resumesJs, /frame\.src = `\$\{pdfUrl\}#view=FitH&toolbar=1&navpanes=0`/,
-    "the embedded viewer opens the PDF at the panel width with its own controls");
-  assert.match(resumesJs, /h\("iframe", \{ class: "resume-pdf", title:/,
-    "the PDF tab embeds the PDF in the selected resume pane");
+  assert.match(resumesJs, /tabs\.append\(overview, chromePdfLink\(item\), fileLink\("DOCX", files\.docx\), fileLink\("Markdown", files\.md\), quality\)/,
+    "Overview, the Chrome PDF action, DOCX, Markdown and Quality share the selected resume's tab row");
+  assert.match(resumesJs, /api\(`resumes\/\$\{encodeURIComponent\(item\.id\)\}\/open-pdf`, \{ method: "POST", body: \{ name \} \}\)/,
+    "the PDF action asks the local server to hand the real file to Chrome");
+  assert.match(resumesJs, /class: "resume-file-link resume-chrome-link"/,
+    "the Chrome handoff is an action button, not an in-app navigation link");
+  assert.ok(!resumesJs.includes('class: "resume-pdf-page"'), "the app must not substitute page images for the PDF");
+  assert.ok(!resumesJs.includes('h("iframe"'), "the app browser must not embed Chromium's blank PDF viewer");
   assert.ok(!resumesJs.includes("resume-page-tabs"), "static page-image tabs must not create a fourth level");
   assert.ok(!resumesJs.includes('class: "resume-files"'), "file formats are not repeated in a footer below the third pane");
   assert.match(resumesCss, /\.view\[data-route="resumes"\] \{[\s\S]*?height: 100vh;[\s\S]*?overflow: hidden;/,
@@ -1961,10 +1961,6 @@ test("Resumes uses the app sidebar, resume list and one tabbed selected resume",
     "the selected resume stays within the fixed workspace");
   assert.match(resumesCss, /\.resume-overview \{[^}]*overflow: auto;/,
     "the overview scrolls inside the selected resume pane");
-  assert.match(resumesCss, /\.resume-preview \{[^}]*overflow: hidden;[^}]*\}/,
-    "the PDF surface fills the third panel rather than becoming an inset fourth pane");
-  assert.ok(!/\.resume-pdf-shell \{[^}]*border:/.test(resumesCss),
-    "the PDF surface has no extra panel border inside the inspector");
   assert.match(resumesJs, /q\.set\("selected", id\)/, "selection is preserved in the address");
   assert.match(resumesCss, /\.resume-browser-item\.selected::before[\s\S]*?background: var\(--you\);/,
     "the selected positioning carries the same person-colour rail as Pipeline");

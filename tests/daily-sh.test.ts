@@ -333,23 +333,30 @@ test("HARNESS_CLI defaults to claude", () => {
   assert.match(text, /CLI="\$\{HARNESS_CLI:-claude\}"/);
 });
 
-test("the installer preserves weekday scheduling and a pinned Codex binary", () => {
+test("the installer schedules weekday queue retries every two or four hours and pins the Codex binary", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "daily-install-"));
   try {
     const binDir = path.join(root, "bin");
     fs.mkdirSync(binDir);
     fs.writeFileSync(path.join(binDir, "launchctl"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     const codexBin = fakeCli(root, "exit 0");
-    const result = spawnSync("bash", [path.join(ROOT, "scripts/install-launchd.sh")], {
-      cwd: os.tmpdir(),
-      env: { ...process.env, HOME: root, PATH: `${binDir}:${process.env.PATH}`, HARNESS_CLI: "codex", HARNESS_CLI_BIN: codexBin },
-      encoding: "utf8",
-    });
-    assert.equal(result.status, 0, result.stderr);
-    const plist = fs.readFileSync(path.join(root, "Library/LaunchAgents/com.job-hunt-harness.daily.plist"), "utf8");
-    assert.ok(plist.includes(`<string>${codexBin}</string>`));
-    assert.equal((plist.match(/<key>Weekday<\/key>/g) ?? []).length, 5);
-    assert.match(plist, /<string>codex<\/string>/);
+    for (const interval of [2, 4]) {
+      const result = spawnSync("bash", [path.join(ROOT, "scripts/install-launchd.sh")], {
+        cwd: os.tmpdir(),
+        env: { ...process.env, HOME: root, PATH: `${binDir}:${process.env.PATH}`, HARNESS_CLI: "codex", HARNESS_CLI_BIN: codexBin,
+          HARNESS_START_HOUR: "7", HARNESS_END_HOUR: "17", HARNESS_INTERVAL_HOURS: String(interval) },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const plist = fs.readFileSync(path.join(root, "Library/LaunchAgents/com.job-hunt-harness.daily.plist"), "utf8");
+      assert.ok(plist.includes(`<string>${codexBin}</string>`));
+      const hours = [...plist.matchAll(/<key>Hour<\/key><integer>(\d+)<\/integer>/g)].map(match => Number(match[1]));
+      const expectedHours = interval === 2 ? [7, 9, 11, 13, 15, 17] : [7, 11, 15];
+      assert.deepEqual(hours, Array.from({ length: 5 }, () => expectedHours).flat());
+      const weekdays = [...plist.matchAll(/<key>Weekday<\/key><integer>(\d+)<\/integer>/g)].map(match => Number(match[1]));
+      assert.deepEqual(weekdays, [1, 2, 3, 4, 5].flatMap(day => expectedHours.map(() => day)));
+      assert.match(plist, /<string>codex<\/string>/);
+    }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

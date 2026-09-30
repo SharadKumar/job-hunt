@@ -553,6 +553,22 @@ clouds:
   assert.match(card.files.docx, /\/file\/.+\.docx$/);
   assert.match(card.files.md, /\/file\/.+\.md$/);
 
+  let openedPdf = "";
+  const pdfName = decodeURIComponent(String(card.files.pdf).split("/").pop() || "");
+  const opened = await api.handleApi(
+    { method: "POST", pathname: "/api/resumes/example-resume/open-pdf", body: { name: pdfName } },
+    { ...ctx, openInChrome: async (file: string) => { openedPdf = file; } },
+  );
+  assert.equal(opened.status, 200);
+  assert.equal((opened.body as any).browser, "Google Chrome");
+  assert.match(openedPdf, /Fixture-Person_Example-Consultant\.pdf$/, "the resolved local PDF is handed to Chrome");
+
+  const refusedChromeFile = await api.handleApi(
+    { method: "POST", pathname: "/api/resumes/example-resume/open-pdf", body: { name: "Fixture-Person_Example-Consultant.md" } },
+    { ...ctx, openInChrome: async () => { throw new Error("must not launch"); } },
+  );
+  assert.equal(refusedChromeFile.status, 403, "the Chrome handoff is PDF only");
+
   // The urls the card hands out must resolve through the file route itself.
   const page = await api.handleApi({ method: "GET", pathname: card.pages[0].src }, ctx);
   assert.equal(page.status, 200);

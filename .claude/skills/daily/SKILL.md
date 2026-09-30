@@ -6,9 +6,11 @@ description: "Run the daily job-hunt workflow or a preparation pass. Continue de
 
 # /daily: unattended orchestrator
 
-The cornerstone workflow. Runs unattended via launchd at 07:00 local time, also invokable on demand. Pulls the user's overnight Sheet decisions, reconciles the manual queue, imports the jobs the user saved on SEEK, hunts fresh roles across enabled channels, drafts application packages and outreach, submits SEEK Quick Apply and LinkedIn Easy Apply applications on autopilot, mirrors everything back to the Sheet, and writes a journal digest.
+The cornerstone workflow. Runs unattended via launchd every two hours on weekdays from 07:00 through 17:00 local time, also invokable on demand. Pulls the user's Sheet decisions, reconciles the manual queue, imports the jobs the user saved on SEEK, hunts fresh roles across enabled channels, drafts application packages and outreach, submits SEEK Quick Apply and LinkedIn Easy Apply applications on autopilot, mirrors everything back to the Sheet, and writes a journal digest.
 
 **Autopilot contract (user decision 2026-09-15; LinkedIn added 2026-09-16).** This run may submit SEEK Quick Apply and LinkedIn Easy Apply applications (the channels listed in `autopilot.channels`) without a human reading the package first. Authority comes from the machine gates, not from this skill: see `AGENTS.md` section 2 and `references/harness/autopilot-gates.md` for the gate list. Never call `npm run submit:seek` or `npm run submit:linkedin` directly from this skill; always go through `npm run autopilot:submit`, which dispatches to the channel adapter. LinkedIn "Apply on company website" ads (`applyMethod` other than `easy_apply`), every other portal, and every recruiter or hiring-manager message remain attended or draft-only.
+
+The default weekday schedule is every two hours from 07:00 through 17:00 local time. Every trigger starts with the prepared-package priority pass and continues through discovery and preparation. After the front half, finish existing queued work before drafting newly discovered opportunities, with saved jobs first within each group. A confirmed send is never retried.
 
 ## Sequence
 
