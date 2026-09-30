@@ -5,8 +5,8 @@
  * once linkedin_jobs is in autopilot.channels). Invoked by /daily for each prepared package whose letter passed
  * slop and voice. Nobody reads the package first: the machine gates are the
  * authority, so this tool does nothing that the gate has not explicitly
- * cleared, and every outcome other than a confirmed send lands the row in
- * `manual_action_needed` with the reason for the Tray.
+ * cleared. Repairable failures go to `manual_action_needed`; an advert that
+ * the channel explicitly says is closed exits to Closed with an audit reason.
  *
  * Steps:
  *   1. Load the opportunity and its archive (state/pipeline/archive/<id>/):
@@ -18,8 +18,9 @@
  *   3. Walk status to `approved` through the valid transitions
  *      (drafted → awaiting_approval → approved as needed).
  *   4. Run tools/submission-gate.ts with --approved-by autopilot:<run-id>.
- *      action != submit → manual_action_needed (blocked / capped leave the
- *      status alone, the row is still fine, it just waits); exit 1.
+ *      A stale or Jev-only classification returns to discovered for bounded
+ *      agent verification. Other failures go to manual_action_needed, while
+ *      blocked / capped leave the approved package waiting; exit 1.
  *   5. submission_pending → the channel's one-click adapter (ADAPTERS below:
  *      seek → seek-submit.ts submitSeek, linkedin_jobs → linkedin-submit.ts
  *      submitLinkedIn; the gate has already required applyMethod easy_apply).
@@ -28,6 +29,7 @@
  *      `npm run seek:unsave` when the row was user-saved.
  *      needsManual / newScreeningQuestion / other → manual_action_needed with
  *      the reason; unknown questions appended to screening-answers.yaml.
+ *      Explicit closed-advert notice before opening the form → withdrawn.
  *
  * CLI:
  *   tsx tools/autopilot-submit.ts --id <opportunityId> [--dry-run] [--run-id <id>] [--model <critic-model>]
@@ -43,7 +45,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import YAML from "yaml";
-import { load as loadPipeline, patch as patchPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
+import { get as getPipeline, load as loadPipeline, patch as patchPipeline, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
 import { normaliseQuestion } from "./channels/seek-submit.ts";
 import { evaluateSubmission, type GateDecision } from "./submission-gate.ts";
 import { critiqueLetter, readCurrentVerdict, sha256Text, type CriticResult } from "./letter-critic.ts";
@@ -53,6 +55,12 @@ import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
 
 const exec = promisify(execFile);
+
+export function classificationReverificationRequired(decision: Pick<GateDecision, "checks">): boolean {
+  return decision.checks.some(check => !check.ok && [
+    "autopilot_classified", "jev_autopilot_authority", "autopilot_classification_current",
+  ].includes(check.gate));
+}
 
 type Summary = {
   id: string;
@@ -79,6 +87,35 @@ function parseArgs(argv: string[]): Record<string, string> {
 
 function seekJobId(url: string): string | null {
   return url.match(/\/job\/(\d+)/)?.[1] ?? null;
+}
+
+function frontHalfReportPath(runId: string): string | null {
+  const date = runId.match(/^daily-(\d{4}-\d{2}-\d{2})(?:$|[-_])/)?.[1];
+  return date ? repoPath(`state/journal/front-half/${date}.json`) : null;
+}
+
+/** The front-half report is also the run's channel-health checkpoint. Once a
+ * SEEK challenge is seen, later packages in this run must not re-hit it. */
+export async function seekVerificationRequiredForRun(runId: string, reportPath = frontHalfReportPath(runId)): Promise<boolean> {
+  if (!reportPath) return false;
+  try {
+    const report = JSON.parse(await fs.readFile(reportPath, "utf8"));
+    return report?.channel_health?.seek?.verification_required === true;
+  } catch { return false; }
+}
+
+export async function markSeekVerificationRequired(runId: string, reportPath = frontHalfReportPath(runId)): Promise<boolean> {
+  if (!reportPath) return false;
+  let report: Record<string, any>;
+  try { report = JSON.parse(await fs.readFile(reportPath, "utf8")); }
+  catch { return false; }
+  report.channel_health = { ...report.channel_health, seek: { ...report.channel_health?.seek, verification_required: true, observed_at: new Date().toISOString(), source: "autopilot_submit" } };
+  report.partial = true;
+  report.updated_at = new Date().toISOString();
+  const temporary = `${reportPath}.${process.pid}.tmp`;
+  await fs.writeFile(temporary, JSON.stringify(report, null, 2) + "\n");
+  await fs.rename(temporary, reportPath);
+  return true;
 }
 
 /** Resolve the resume docx for this package: metadata.json first, else the approved baseline. */
@@ -115,43 +152,78 @@ async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): 
 }
 
 /** Move a row to `approved` along the valid path, or throw. */
-async function walkToApproved(id: string, runId: string, notes: string[]): Promise<Opportunity> {
+export async function walkToApproved(id: string, runId: string, notes: string[]): Promise<Opportunity> {
   const path_: Partial<Record<PipelineStatus, PipelineStatus>> = {
     shortlisted: "drafted",
     drafted: "awaiting_approval",
     awaiting_approval: "approved",
     manual_action_needed: "approved",   // retry after the blocker was cleared
   };
-  let all = await loadPipeline();
-  let row = all.find((r) => r.id === id);
+  let row = await getPipeline(id);
   if (!row) throw new Error(`opportunity not found: ${id}`);
   let guard = 0;
-  while (row.status !== "approved" && guard++ < 4) {
+  while (row.status !== "approved" && guard++ < 8) {
     const next = path_[row.status];
     if (!next) throw new Error(`cannot walk status '${row.status}' to approved; autopilot only advances shortlisted (with a package) / drafted / awaiting_approval rows`);
-    row = await setStatus(id, next, `autopilot ${runId}: package prepared unattended`, { actor: "autopilot" });
-    notes.push(`status → ${next}`);
+    try {
+      row = await setStatus(id, next, `autopilot ${runId}: package prepared unattended`, { actor: "autopilot" });
+      notes.push(`status → ${next}`);
+    } catch (error) {
+      // Another runner may have advanced the row after our read. Follow its
+      // current status rather than calling the failed transition a bad package.
+      const current = await getPipeline(id);
+      if (!current || current.status === row.status) throw error;
+      row = current;
+    }
   }
-  all = await loadPipeline();
-  row = all.find((r) => r.id === id)!;
-  return row;
+  const current = await getPipeline(id);
+  if (!current || current.status !== "approved") throw new Error(`status changed during approval walk: ${current?.status ?? "missing"}`);
+  return current;
 }
 
-async function park(id: string, reason: string, runId: string, notes: string[]): Promise<PipelineStatus> {
-  const all = await loadPipeline();
-  const row = all.find((r) => r.id === id);
+async function park(id: string, reason: string, runId: string, notes: string[], claimedByThisRun = false): Promise<PipelineStatus> {
+  const row = await getPipeline(id);
   if (!row) throw new Error(`opportunity not found: ${id}`);
+  if (row.status === "submitted" || (row.status === "submission_pending" && !claimedByThisRun)) {
+    notes.push(`not parked: another run owns status '${row.status}'`);
+    return row.status;
+  }
   const stamped = `[autopilot ${runId}] ${reason}`;
-  await patchPipeline(id, { notes: row.notes ? `${row.notes}\n${stamped}` : stamped }, "autopilot", "park note");
-  if (row.status === "manual_action_needed") return row.status;
+  if (row.status === "manual_action_needed") {
+    await patchPipeline(id, { notes: row.notes ? `${row.notes}\n${stamped}` : stamped }, "autopilot", "park note");
+    return row.status;
+  }
   try {
-    const r = await setStatus(id, "manual_action_needed", stamped, { actor: "autopilot" });
+    const r = await setStatus(id, "manual_action_needed", stamped, { actor: "autopilot", expectedStatus: row.status });
+    await patchPipeline(id, { notes: row.notes ? `${row.notes}\n${stamped}` : stamped }, "autopilot", "park note");
     notes.push("status → manual_action_needed");
     return r.status;
   } catch (e: any) {
-    notes.push(`could not move '${row.status}' to manual_action_needed: ${e.message}; note recorded only`);
-    return row.status;
+    const current = await getPipeline(id);
+    notes.push(`could not move '${row.status}' to manual_action_needed: ${e.message}; current '${current?.status ?? "missing"}' left intact`);
+    return current?.status ?? row.status;
   }
+}
+
+/** Close only a pre-form, explicitly closed advert. Unknown send outcomes must
+ * stay in submission_pending for reconciliation and never call this helper. */
+export async function closeAdvertAfterAdapterNotice(id: string, reason: string, runId: string): Promise<PipelineStatus> {
+  const row = (await loadPipeline()).find((candidate) => candidate.id === id);
+  if (!row || row.status !== "submission_pending") throw new Error(`cannot close ${id}: expected submission_pending`);
+  const auditedReason = `${reason}; no application form was opened`;
+  await patchPipeline(id, { channelExpiredAt: new Date().toISOString() }, "autopilot", auditedReason);
+  const closed = await setStatus(id, "withdrawn", auditedReason, { actor: "autopilot", details: { run_id: runId, expiry_source: "channel" } });
+  return closed.status;
+}
+
+/** A verification page seen before Submit is a channel-wide retry condition,
+ * not an opportunity that needs a new personal decision. */
+export async function deferForChannelVerification(id: string, reason: string, runId: string): Promise<PipelineStatus> {
+  const row = (await loadPipeline()).find((candidate) => candidate.id === id);
+  if (!row || row.status !== "submission_pending") throw new Error(`cannot defer ${id}: expected submission_pending`);
+  await patchPipeline(id, { notes: [row.notes, `[autopilot ${runId}] ${reason}`].filter(Boolean).join("\n") }, "autopilot", "SEEK channel verification before submit");
+  const retryable = await setStatus(id, "approved", `autopilot ${runId}: channel verification before Submit; approved package retained for next run`, { actor: "autopilot" });
+  return retryable.status;
 }
 
 /**
@@ -226,6 +298,16 @@ async function main() {
   const runId = a["run-id"] ?? `daily-${new Date().toISOString().slice(0, 10)}`;
   const summary: Summary = { id, runId, dryRun, outcome: "error", status: null, notes: [] };
   const finish: (code: number) => never = (code) => {
+    // A concurrent runner may have claimed or completed the row while this
+    // process was preparing it. Report the authoritative status, not the
+    // stale local package failure that happened to finish second.
+    if (summary.status === "submission_pending") {
+      summary.outcome = "submission_unconfirmed";
+      summary.reason = "Another submission is in progress or unresolved; reconcile before retrying";
+    } else if (summary.status === "submitted" && summary.outcome !== "submitted") {
+      summary.outcome = "already_submitted";
+      summary.reason = "Another runner has already confirmed this application";
+    }
     console.log(JSON.stringify(summary, null, 2));
     process.exit(code);
   };
@@ -237,6 +319,11 @@ async function main() {
   if (opportunity!.status === "submission_pending") {
     summary.outcome = "submission_unconfirmed";
     summary.reason = "Previous submission is unresolved; reconcile its outcome before retrying";
+    finish(1);
+  }
+  if (opportunity!.channel === "seek" && await seekVerificationRequiredForRun(runId)) {
+    summary.outcome = "channel_verification_required";
+    summary.reason = "SEEK human verification already recorded for this daily run; no further SEEK form attempt";
     finish(1);
   }
 
@@ -304,9 +391,16 @@ async function main() {
     row = await walkToApproved(id, runId, summary.notes);
     summary.status = row.status;
   } catch (e: any) {
-    summary.outcome = "status_walk_failed";
-    summary.reason = String(e.message);
-    summary.status = await park(id, String(e.message), runId, summary.notes);
+    const current = await getPipeline(id);
+    if (current?.status === "submission_pending" || current?.status === "submitted") {
+      summary.outcome = current.status === "submitted" ? "already_submitted" : "submission_unconfirmed";
+      summary.reason = "Another runner advanced this application; do not retry without reconciling its outcome";
+      summary.status = current.status;
+    } else {
+      summary.outcome = "status_walk_failed";
+      summary.reason = String(e.message);
+      summary.status = await park(id, String(e.message), runId, summary.notes);
+    }
     finish(1);
   }
 
@@ -323,7 +417,13 @@ async function main() {
   if (decision.action !== "submit") {
     summary.outcome = `gate_${decision.action}`;
     summary.reason = decision.reason;
-    if (decision.action === "blocked" || decision.action === "capped") {
+    if (classificationReverificationRequired(decision)) {
+      // A stale or Jev-only decision is run-owned re-verification work, not a
+      // question for the person. Retain the package but remove it from Queue.
+      summary.outcome = "classification_reverification_required";
+      const moved = await setStatus(id, "discovered", `autopilot ${runId}: ${decision.reason}; bounded agent verification required`, { actor: "autopilot" });
+      summary.status = moved.status;
+    } else if (decision.action === "blocked" || decision.action === "capped") {
       // Not a package fault: leave the row at approved for a later run.
       const r2 = (await loadPipeline()).find((r) => r.id === id)!;
       const stamped = `[autopilot ${runId}] ${decision.reason}`;
@@ -345,7 +445,18 @@ async function main() {
   }
   const { submit, label: adapterLabel } = adapter as { submit: SubmitAdapter; label: string };
   if (!dryRun) {
-    await setStatus(id, "submission_pending", `autopilot ${runId}: gate cleared, invoking ${adapterLabel}`, { actor: "autopilot" });
+    try {
+      await setStatus(id, "submission_pending", `autopilot ${runId}: gate cleared, invoking ${adapterLabel}`, { actor: "autopilot" });
+    } catch (error: any) {
+      const current = await getPipeline(id);
+      summary.status = current?.status ?? null;
+      summary.outcome = current?.status === "submission_pending" ? "submission_unconfirmed"
+        : current?.status === "submitted" ? "already_submitted" : "tool_error";
+      summary.reason = current?.status === "submission_pending" || current?.status === "submitted"
+        ? "Another runner claimed this application; do not retry without reconciling its outcome"
+        : `could not claim application before portal: ${error?.message ?? error}`;
+      finish(1);
+    }
     summary.notes.push("status → submission_pending");
   }
   const pkg: SubmitPackage = { cvDocxPath: resume!.docx, coverLetterMd: letterText, screeningAnswers: [] };
@@ -445,6 +556,23 @@ async function main() {
     summary.status = current.status;
     finish(1);
   }
+  if (result.channelVerificationRequired && !dryRun) {
+    summary.outcome = "channel_verification_required";
+    summary.reason = result.reason;
+    summary.status = await deferForChannelVerification(id, result.reason, runId);
+    if (row!.channel === "seek") await markSeekVerificationRequired(runId);
+    finish(1);
+  }
+  // This signal is emitted only from LinkedIn's explicit closed-advert notice,
+  // before Easy Apply is opened. It is terminal, unlike a screening question,
+  // login failure or external ATS redirect. Keep the audited row under Closed.
+  if (result.advertClosed && !dryRun) {
+    const reason = `${result.reason}; no application form was opened`;
+    summary.outcome = "advert_expired";
+    summary.reason = reason;
+    summary.status = await closeAdvertAfterAdapterNotice(id, result.reason, runId);
+    finish(1);
+  }
   if (result.newScreeningQuestion) {
     const appended = await appendUnknownQuestion(row!, result.newScreeningQuestion);
     await auditLog({
@@ -466,7 +594,7 @@ async function main() {
       provenance: { url: row!.url, channel: row!.channel },
     });
   }
-  summary.status = dryRun ? (await loadPipeline()).find((r) => r.id === id)!.status : await park(id, summary.reason!, runId, summary.notes);
+  summary.status = dryRun ? (await loadPipeline()).find((r) => r.id === id)!.status : await park(id, summary.reason!, runId, summary.notes, true);
   finish(1);
 }
 

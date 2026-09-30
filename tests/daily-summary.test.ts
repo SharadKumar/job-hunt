@@ -32,8 +32,23 @@ process.env.PIPELINE_DB = path.join(root, "pipeline.db");
 process.env.AUDIT_DIR = path.join(root, "audit");
 
 const { upsert, setStatus, patch } = await import("../tools/pipeline.ts");
-const { buildSummary, renderMarkdown, journalObservations } = await import("../tools/daily-summary.ts");
+const { buildSummary, renderMarkdown, journalObservations, manualEscalation } = await import("../tools/daily-summary.ts");
 assert.deepEqual(journalObservations("- unrelated\n## Observations for the user\n- Review repeated critic finding\n## Sent unattended\n- Not a review item"), ["Review repeated critic finding"]);
+const unpreparedPortal = await manualEscalation({
+  id: "synthetic-external", title: "Architect", company: "Example", url: "https://example.test/job",
+  notes: "LinkedIn opens an external application portal. Package is not prepared yet; review eligibility, prepare it, then complete the portal in an attended session.",
+  history: [],
+} as any);
+assert.match(unpreparedPortal?.action ?? "", /Prepare the package with \/manual-applications/);
+const seekChallenge = await manualEscalation({
+  id: "synthetic-seek-challenge", channel: "seek", title: "Architect", company: "Example", url: "https://www.seek.com.au/job/123",
+  notes: "[autopilot daily-test] SEEK human verification required; open npm run login:seek and complete verification before retrying",
+  history: [],
+} as any);
+assert.equal(seekChallenge?.kind, "channel");
+assert.match(seekChallenge?.reason ?? "", /before the application form opened/);
+assert.match(seekChallenge?.action ?? "", /retry this package through autopilot:submit/);
+assert.doesNotMatch(seekChallenge?.action ?? "", /submit yourself|rejected\/withdrawn/);
 
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
 const SCREENING = path.join(root, "state/profile/screening-answers.yaml");
@@ -155,7 +170,55 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   console.log("  ✓ markdown shape unchanged");
 }
 
+{
+  await seed("Prepared Platform Lead", "Ready Example", ["shortlisted", "drafted", "awaiting_approval", "approved"]);
+  const report = write(`state/journal/front-half/${today}.json`, JSON.stringify({
+    channel_health: { seek: { verification_required: true } },
+  }));
+  const s = await buildSummary(today);
+  assert.match(s.automation?.blocker ?? "", /SEEK challenged the harness browser/);
+  assert.ok(s.escalations.some(e => e.kind === "channel" && /advert enrichment/.test(e.reason)),
+    "a front-half challenge is visible even without a manual submission row");
+  fs.rmSync(report);
+  console.log("  ✓ front-half SEEK challenge reaches the daily summary");
+}
+
+{
+  const report = write(`state/journal/priority/${today}.json`, JSON.stringify({
+    ok: true, selected: 3, attempts: [{ outcome: "channel_verification_required" }, { outcome: "submitted" }],
+    telemetry: { submitted: 1, time_to_first_send_ms: 87_000 },
+  }));
+  const s = await buildSummary(today);
+  assert.deepEqual(s.priority, { ok: true, ready: 3, attempted: 2, submitted: 1, firstSendMs: 87_000 });
+  assert.match(renderMarkdown(s), /First confirmed send: 87 seconds from pass start/);
+  fs.rmSync(report);
+  console.log("  ✓ priority throughput is visible without inferring sends from attempts");
+}
+
+{
+  await seed("Saved Architect", "Challenge Example", ["manual_action_needed"], {
+    notes: "[autopilot daily-test] SEEK human verification required; open npm run login:seek and complete verification before retrying",
+  });
+  await seed("Prepared Integration Lead", "Ready Example", ["shortlisted", "drafted", "awaiting_approval", "approved"]);
+  const s = await buildSummary(today);
+  assert.match(s.automation?.blocker ?? "", /SEEK challenged the harness browser/);
+  const md = renderMarkdown(s);
+  assert.match(md, /Submission paused: SEEK challenged the harness browser/);
+  assert.doesNotMatch(md, /The next run will validate and submit eligible packages/, "do not promise a send while the channel is challenged");
+  console.log("  ✓ SEEK verification is a channel blocker, not an individual approval request");
+}
+
 // ---------- missing files are allowed ----------
+
+{
+  const original = fs.readFileSync(SCREENING, "utf8");
+  fs.appendFileSync(SCREENING, `\n  - opportunity_id: ${manualScreeningId}\n    question: Do you hold a current NV1 clearance?\n    answer: "No."\n`);
+  const s = await buildSummary(today);
+  assert.equal(s.escalations.some((e) => e.id === manualScreeningId), false, "a banked exact answer is run-owned retry work, not a user escalation");
+  assert.equal(s.numbers.unansweredQuestions, 1);
+  fs.writeFileSync(SCREENING, original);
+  console.log("  ✓ banked answers leave Needs you without erasing the row");
+}
 
 {
   const original = fs.readFileSync(SCREENING, "utf8");

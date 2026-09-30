@@ -14,6 +14,18 @@ import { writeAtomic } from "./lib/fs.ts";
 
 type Step = { name: string; ok: boolean; partial?: boolean; exit_code: number; duration_ms: number; result?: unknown; error?: string; timed_out?: boolean };
 
+export function seekVerificationRequired(step: Pick<Step, "result" | "error"> | undefined): boolean {
+  if (!step) return false;
+  if (typeof step.result === "object" && step.result !== null && "challenge" in step.result && step.result.challenge === true) return true;
+  return /confirm you are human|verify you are human|human verification required|help us keep SEEK secure|performing security verification/i.test(step.error ?? "");
+}
+
+/** Daily enrichment is a separate, scored and bounded pass. Do not let the
+ * LinkedIn search adapter also open up to 60 new advert pages first. */
+export function huntArgsFor(channelId: string): string[] {
+  return channelId === "linkedin_jobs" ? ["--upsert", "--no-enrich"] : ["--upsert"];
+}
+
 async function npmStep(name: string, script: string, args: string[] = []): Promise<Step> {
   const started = Date.now();
   try {
@@ -61,25 +73,59 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
   heartbeat.unref();
   try {
   await runStep("sheet_pull", "sheets:pull");
-  await runStep("seek_saved", "seek:saved", ["--upsert"]);
+  let seekChallenge = process.env.HARNESS_SEEK_VERIFICATION_REQUIRED === "1";
+  if (seekChallenge) {
+    steps.push({ name: "seek_saved", ok: true, partial: true, exit_code: 0, duration_ms: 0,
+      result: { skipped: "seek_human_verification_required_in_priority_pass" } });
+  } else {
+    await runStep("seek_saved", "seek:saved", ["--upsert"]);
+    seekChallenge = seekVerificationRequired(steps.at(-1));
+  }
   // Saved-job import provides search-card text, sometimes none at all. Fetch
   // the actual advert before classification, regardless of score or status.
-  await runStep("seek_saved_enrichment", "seek:enrich", ["--saved-pending", "--concurrency", "1"]);
+  if (seekChallenge) {
+    steps.push({ name: "seek_saved_enrichment", ok: true, partial: true, exit_code: 0, duration_ms: 0,
+      result: { skipped: "seek_human_verification_required" } });
+  } else {
+    await runStep("seek_saved_enrichment", "seek:enrich", ["--saved-pending", "--concurrency", "1"]);
+    seekChallenge ||= seekVerificationRequired(steps.at(-1));
+  }
 
   const channels = YAML.parse(await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8"))?.channels ?? {};
   for (const [id, config] of Object.entries(channels) as [string, { enabled?: boolean }][]) {
     if (!config?.enabled) continue;
+    if (id === "seek" && seekChallenge) {
+      steps.push({ name: "hunt:seek", ok: true, partial: true, exit_code: 0, duration_ms: 0,
+        result: { skipped: "seek_human_verification_required" } });
+      continue;
+    }
     const adapter = huntScriptFor(id);
     if (!adapter.ok) {
       steps.push({ name: `hunt:${id}`, ok: false, exit_code: 2, duration_ms: 0, error: adapter.reason });
       continue;
     }
-    await runStep(`hunt:${id}`, adapter.script, ["--upsert"]);
+    await runStep(`hunt:${id}`, adapter.script, huntArgsFor(id));
+    if (id === "seek") seekChallenge ||= seekVerificationRequired(steps.at(-1));
   }
 
   // Recover full adverts and channel closure signals for the existing queue.
   // Search cards alone omit eligibility constraints and closing dates.
-  await runStep("seek_shortlist_enrichment", "seek:enrich", ["--status", "shortlisted", "--concurrency", "1"]);
+  if (seekChallenge) {
+    steps.push({ name: "seek_shortlist_enrichment", ok: true, partial: true, exit_code: 0, duration_ms: 0,
+      result: { skipped: "seek_human_verification_required" } });
+  } else {
+    await runStep("seek_shortlist_enrichment", "seek:enrich", ["--status", "shortlisted", "--concurrency", "1"]);
+    seekChallenge ||= seekVerificationRequired(steps.at(-1));
+  }
+  // LinkedIn search cards do not contain the full JD or a reliable button
+  // destination. Enrich a bounded mix of promising scored backlog and fresh
+  // cards before classification, then refresh the active queue so closed ads
+  // and external portals do not appear send-ready.
+  if (channels.linkedin_jobs?.enabled) {
+    await runStep("linkedin_new_enrichment", "linkedin:enrich", ["--status", "discovered", "--limit", "25"]);
+    await runStep("linkedin_shortlist_enrichment", "linkedin:enrich", ["--status", "shortlisted", "--force", "--limit", "25"]);
+    await runStep("linkedin_queue_reconciliation", "pipeline:rescore", ["--status", "shortlisted"]);
+  }
 
   // Remove work that can no longer be acted on before spending model calls on
   // it. Expiry is based only on an explicit deadline or channel signal.
@@ -122,7 +168,8 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
     finished_at: new Date().toISOString(),
     ok: steps.every((step) => step.ok || ["sheet_pull"].includes(step.name)) && !degraded,
     degraded,
-    partial: classification.deferred > 0,
+    partial: classification.deferred > 0 || seekChallenge,
+    channel_health: { seek: { verification_required: seekChallenge } },
     degradation_acknowledged: blocking?.incident.acknowledged_at != null,
     cli_required_for_classification: false,
     telemetry: {

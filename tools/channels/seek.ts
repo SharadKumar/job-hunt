@@ -22,11 +22,12 @@
 
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { load as loadPipeline, list as listPipeline, patchMany, setStatus, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
 import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
+import { isSeekHumanVerification } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
 export const seek: HuntChannel = {
@@ -185,7 +186,7 @@ export async function enrichSeekRoles(options: {
   limit?: number;
   /** Only rows matched to this resume id (pipeline resumeId or classification matched_resume_id). */
   resume?: string;
-} = {}): Promise<{ selected: number; enriched: number; unchanged: number; expired: number; failed: number }> {
+} = {}): Promise<{ selected: number; enriched: number; unchanged: number; expired: number; failed: number; challenge: boolean; deferred: number }> {
   const roles = await loadPipeline();
   const status = options.status ?? (options.savedPending ? "any" : "shortlisted");
   const minScore = options.minScore ?? (options.savedPending ? 0 : 20);
@@ -200,7 +201,7 @@ export async function enrichSeekRoles(options: {
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
 
-  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, expired: 0, failed: 0 };
+  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, expired: 0, failed: 0, challenge: false, deferred: 0 };
 
   const ctx = await openChromeContext("seek-enrich", { headless: true });
   const patches: { id: string; fields: Partial<Opportunity> }[] = [];
@@ -208,12 +209,14 @@ export async function enrichSeekRoles(options: {
   let unchanged = 0;
   let expired = 0;
   let failed = 0;
+  let challenge = false;
   let cursor = 0;
   const startedAt = Date.now();
 
   try {
     const workers = Array.from({ length: Math.min(concurrency, candidates.length) }, async () => {
       while (true) {
+        if (challenge) return;
         const index = cursor++;
         if (index >= candidates.length) return;
         const role = candidates[index];
@@ -281,12 +284,17 @@ export async function enrichSeekRoles(options: {
             expired++;
             continue;
           }
+          if (isSeekHumanVerification(pageText)) {
+            challenge = true;
+            console.error(`[seek:enrich] SEEK human verification required at ${role.id}; stopping this channel batch before more adverts are requested`);
+            return;
+          }
           failed++;
           console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}; page=${page.url()}; visible=${pageText.replace(/\s+/g, " ").slice(0, 500)}`);
         } finally {
           await page.close();
           const complete = enriched + unchanged + expired + failed;
-          if (complete % 5 === 0 || complete === candidates.length) {
+          if (complete > 0 && (complete % 5 === 0 || complete === candidates.length)) {
             const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
             console.error(`[seek:enrich] ${complete}/${candidates.length}: ${enriched} updated, ${unchanged} unchanged, ${expired} expired, ${failed} failed (${elapsed}s)`);
           }
@@ -299,7 +307,8 @@ export async function enrichSeekRoles(options: {
   }
 
   if (patches.length) await patchMany(patches, "seek:enrich");
-  return { selected: candidates.length, enriched, unchanged, expired, failed };
+  return { selected: candidates.length, enriched, unchanged, expired, failed, challenge,
+    deferred: candidates.length - enriched - unchanged - expired - failed };
 }
 
 export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichment): boolean {
@@ -399,6 +408,31 @@ export type SeekSavedJob = {
 
 const SAVED_JOBS_URL = "https://www.seek.com.au/my-activity/saved-jobs";
 
+/** A saved live advert overrides an earlier harness rejection, but never an
+ * explicit passed deadline or a channel-expired notice. */
+export function shouldReopenSavedRejection(row: Opportunity, today: string): boolean {
+  return row.status === "rejected" && !row.submittedAt && !row.channelExpiredAt
+    && (!row.closingDate || row.closingDate >= today);
+}
+
+export function assertSavedJobsPageReadable(bodyText: string, cardCount: number): void {
+  if (isSeekHumanVerification(bodyText)) {
+    throw new Error("SEEK human verification required on saved-jobs page");
+  }
+  // An empty selector result is not proof that the user has no saved jobs.
+  // SEEK can change its markup or render a login/security interstitial at
+  // the same URL. Fail closed rather than reporting a successful empty import.
+  if (cardCount === 0) {
+    throw new Error("SEEK saved-jobs page returned no cards; cannot confirm an empty saved list");
+  }
+}
+
+export function assertSavedJobIdsExtracted(cards: ReadonlyArray<{ jobId: string }>): void {
+  if (cards.some((card) => !card.jobId)) {
+    throw new Error("SEEK saved-job cards were visible but a job ID could not be extracted; page structure may have changed");
+  }
+}
+
 // Browser-realm string (see enrich for why this is not a transpiled callback).
 const EXTRACT_SAVED_CARDS_JS = `(() => {
   const clean = (s) => (s || "").replace(/\\s+/g, " ").trim();
@@ -435,7 +469,10 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
     await page.goto(SAVED_JOBS_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
     if (/\/oauth|\/login/i.test(page.url())) throw new Error("SEEK session is signed out; re-run npm run login:seek");
     await page.locator('[data-automation^="job-item-"]').first().waitFor({ state: "attached", timeout: 15_000 }).catch(() => {});
-    const totalText = await page.locator("body").innerText().then((t) => t.match(/(\d+)\s+jobs?\b/i)?.[1]).catch(() => undefined);
+    const firstCards = await page.locator('[data-automation^="job-item-"]').count();
+    const firstBodyText = await page.locator("body").innerText().catch(() => "");
+    assertSavedJobsPageReadable(firstBodyText, firstCards);
+    const totalText = firstBodyText.match(/(\d+)\s+jobs?\b/i)?.[1];
     const expected = totalText ? Number(totalText) : undefined;
 
     for (let pageNumber = 1; pageNumber <= 50; pageNumber++) {
@@ -443,6 +480,8 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
       await page.mouse.wheel(0, 20_000).catch(() => {});
       await page.waitForTimeout(600);
       const cards = (await page.evaluate(EXTRACT_SAVED_CARDS_JS)) as Array<Omit<SeekSavedJob, "url" | "quickApply"> & { applyText: string }>;
+      assertSavedJobsPageReadable(await page.locator("body").innerText().catch(() => ""), cards.length);
+      assertSavedJobIdsExtracted(cards);
       let added = 0;
       for (const c of cards) {
         if (!c.jobId || byId.has(c.jobId)) continue;
@@ -544,10 +583,13 @@ async function main() {
     let alreadyKnown = 0;
     let expired = 0;
     let expiredClosed = 0;
+    let reopened = 0;
     if (upsertFlag) {
       const known = new Map((await listPipeline()).map((r) => [r.id, r]));
       const now = new Date().toISOString();
+      const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Australia/Sydney" });
       const batch: (Partial<Opportunity> & { channel: string; url: string; title: string; company: string })[] = [];
+      const reopenIds: string[] = [];
       for (const job of jobs) {
         if (job.expired) {
           expired++;
@@ -573,9 +615,14 @@ async function main() {
         if (!existing?.userSavedAt) partial.userSavedAt = now;
         batch.push(partial);
         ids.push(id);
+        if (existing && shouldReopenSavedRejection(existing, today)) reopenIds.push(id);
       }
       await upsertMany(batch);
-      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, expiredClosed, ids }, null, 2));
+      for (const id of reopenIds) {
+        await setStatus(id, "discovered", "user saved live SEEK advert after prior harness rejection", { actor: "seek:saved" });
+        reopened++;
+      }
+      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, expiredClosed, reopened, ids }, null, 2));
     } else {
       const known = new Set((await listPipeline()).map((r) => r.id));
       for (const job of jobs) {

@@ -7,8 +7,13 @@ const dir = await mkdtemp(path.join(tmpdir(), "seek-enrichment-"));
 process.env.PIPELINE_DB = path.join(dir, "pipeline.db");
 process.env.AUDIT_DIR = path.join(dir, "audit");
 const { get, upsertMany } = await import("../tools/pipeline.ts");
-const { closeSeekAdvertFromHeadings, closeSeekAdvertFromPageText, isPendingSavedSeekRole } = await import("../tools/channels/seek.ts");
+const { assertSavedJobIdsExtracted, assertSavedJobsPageReadable, closeSeekAdvertFromHeadings, closeSeekAdvertFromPageText, isPendingSavedSeekRole, shouldReopenSavedRejection } = await import("../tools/channels/seek.ts");
 try {
+  assert.doesNotThrow(() => assertSavedJobsPageReadable("Saved jobs", 1));
+  assert.throws(() => assertSavedJobsPageReadable("Performing security verification", 0), /human verification required/);
+  assert.throws(() => assertSavedJobsPageReadable("Saved jobs", 0), /cannot confirm an empty saved list/);
+  assert.doesNotThrow(() => assertSavedJobIdsExtracted([{ jobId: "123" }]));
+  assert.throws(() => assertSavedJobIdsExtracted([{ jobId: "123" }, { jobId: "" }]), /job ID could not be extracted/);
   const base = { channel: "seek", title: "Architect", company: "Example", url: "https://www.seek.com.au/job/123", description: "Original advert retained" };
   await upsertMany([
     { ...base, id: "closed", status: "shortlisted" },
@@ -19,6 +24,10 @@ try {
     { ...base, id: "closed-text", status: "shortlisted" },
     { ...base, id: "saved-rejected", status: "rejected", userSaved: true },
   ], { digest: false });
+  const savedRejected = (await get("saved-rejected"))!;
+  assert.equal(shouldReopenSavedRejection(savedRejected, "2026-09-30"), true);
+  assert.equal(shouldReopenSavedRejection({ ...savedRejected, closingDate: "2026-09-25" }, "2026-09-30"), false);
+  assert.equal(shouldReopenSavedRejection({ ...savedRejected, channelExpiredAt: "2026-09-29T00:00:00Z" }, "2026-09-30"), false);
   const headings = ["This job is no longer advertised"];
   assert.equal(await closeSeekAdvertFromHeadings((await get("closed"))!, headings), true);
   assert.equal((await get("closed"))!.status, "rejected");

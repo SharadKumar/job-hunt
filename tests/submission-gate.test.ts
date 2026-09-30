@@ -32,7 +32,14 @@ process.env.PIPELINE_DB = path.join(isolated, "pipeline.db");
 
 const { evaluateSubmission } = await import("../tools/submission-gate.ts");
 const { log: auditLogEvent } = await import("../tools/audit.ts");
+const { classificationContentHash } = await import("../tools/classification.ts");
 type EvaluateOpts = Parameters<typeof evaluateSubmission>[0];
+const TEST_IDENTITY: NonNullable<EvaluateOpts["classificationIdentity"]> = {
+  policyHash: "test-policy", profileHash: "test-profile", resumeHash: "test-resumes",
+  questionSchemaHash: "test-schema", requestedModel: "typesafe-ai/jev",
+  expectedGatewayRouteFingerprint: null, classificationStateApplicationEnabled: true,
+  gatewayDailySpendCapUsd: 1,
+};
 
 const NOW = "2026-05-29T10:00:00.000Z";
 
@@ -81,14 +88,22 @@ function autopilotPolicy(extra: Record<string, unknown> = {}, ap: Record<string,
   });
 }
 function coreRow(extra: Partial<Opportunity> = {}): Opportunity {
-  return opportunity({
+  const row = opportunity({
     status: "approved", location: "Sydney NSW",
     classification: classificationV2({ source: "agent_fallback", discipline_fit: "core", location_flexibility: "onsite", requires_tailoring: false }),
     ...extra,
   });
+  if (row.classification) row.classification.provenance = {
+    ...row.classification.provenance,
+    content_hash: classificationContentHash({ title: row.title, description: row.description ?? "", location: row.location }),
+    policy_hash: TEST_IDENTITY.policyHash, profile_hash: TEST_IDENTITY.profileHash,
+    resume_set_hash: TEST_IDENTITY.resumeHash, question_schema_hash: TEST_IDENTITY.questionSchemaHash,
+    requested_model: "gpt-6-sol", effective_model: "gpt-6-sol", confidence_source: "agent",
+  };
+  return row;
 }
 function apOpts(extra: Partial<EvaluateOpts> = {}): EvaluateOpts {
-  return opts({ approvedBy: "autopilot:daily-test", policy: autopilotPolicy(), opportunities: [coreRow()], archiveDir: archive("pass"), homeCity: "Sydney", jevDegradation: null, ...extra });
+  return opts({ approvedBy: "autopilot:daily-test", policy: autopilotPolicy(), opportunities: [coreRow()], archiveDir: archive("pass"), homeCity: "Sydney", jevDegradation: null, classificationIdentity: TEST_IDENTITY, ...extra });
 }
 
 // --- Baseline-by-reference fixtures ----------------------------------------
@@ -248,6 +263,30 @@ const tests: [string, () => Promise<void>][] = [
     assert.match(d.reason, /jev_autopilot_authority/);
   }],
 
+  ["autopilot: changed advert invalidates the agent decision", async () => {
+    const row = coreRow();
+    row.description = "The employer changed the role after verification.";
+    const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /autopilot_classification_current.*advert content changed/);
+  }],
+
+  ["autopilot: changed profile invalidates the agent decision", async () => {
+    const row = coreRow();
+    row.classification!.provenance.profile_hash = "older-profile";
+    const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /autopilot_classification_current.*profile evidence changed/);
+  }],
+
+  ["autopilot: unverified fallback provenance cannot authorise a send", async () => {
+    const row = coreRow();
+    row.classification!.provenance.confidence_source = undefined;
+    const d = await evaluateSubmission(apOpts({ opportunities: [row] }));
+    assert.equal(d.action, "gate_failed");
+    assert.match(d.reason, /supported agent verification provenance is missing/);
+  }],
+
   ["autopilot: fuzzy duplicate advisory does not block a valid package", async () => {
     const d = await evaluateSubmission(apOpts({ jevDegradation: {
       schema_version: 2,
@@ -379,6 +418,9 @@ const tests: [string, () => Promise<void>][] = [
     await auditLogEvent({ ts: start.toISOString(), event_type: "submitted", role_id: "x1", actor: "submission-runner", details: {} });
     await auditLogEvent({ ts: start.toISOString(), event_type: "submitted", role_id: "x2", actor: "submission-runner", details: {} });
     await auditLogEvent({ ts: start.toISOString(), event_type: "submitted", role_id: "x3", actor: "autopilot", details: {} });
+    // A status transition and a confirmation receipt may each append the same
+    // submitted event. They are one application, not two uses of the cap.
+    await auditLogEvent({ ts: start.toISOString(), event_type: "submitted", role_id: "x3", actor: "autopilot", details: { receipt: "confirmed" } });
     const d1 = await evaluateSubmission(apOpts({ policy: autopilotPolicy({}, { max_per_day: 2 }) }));
     assert.equal(d1.action, "submit");
     const d2 = await evaluateSubmission(apOpts({ policy: autopilotPolicy({}, { max_per_day: 1 }) }));

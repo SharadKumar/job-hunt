@@ -42,7 +42,10 @@ function makeFakeRepo(): string {
   fs.writeFileSync(path.join(root, "CLAUDE.md"), "# fake harness\n");
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
     name: "job-hunt-career-harness",
-    scripts: { "daily:front-half": "sh -c 'mkdir -p state && echo completed > state/front-half-marker'" },
+    scripts: {
+      "daily:priority": "sh -c 'mkdir -p state && echo priority > state/priority-marker'",
+      "daily:front-half": "sh -c 'mkdir -p state && echo completed > state/front-half-marker'",
+    },
   }));
   return root;
 }
@@ -86,6 +89,100 @@ test("Claude daily explicitly selects Sonnet instead of inheriting an expensive 
     const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_DAILY_MODEL: "" });
     assert.equal(run.status, 0);
     assert.match(run.log, /--model\nsonnet\n/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Codex daily pins Sol and the isolated Codex letter critic", () => {
+  const root = makeFakeRepo();
+  try {
+    const bin = fakeCli(root, 'printf "LETTER_CRITIC_CLI=%s\\nCODEX_CLI_BIN=%s\\nHARNESS_DAILY_MODEL=%s\\n" "$LETTER_CRITIC_CLI" "$CODEX_CLI_BIN" "$HARNESS_DAILY_MODEL"; printf "%s\\n" "$@"');
+    const run = runDaily(root, { HARNESS_CLI: "codex", HARNESS_CLI_BIN: bin, HARNESS_DAILY_MODEL: "" });
+    assert.equal(run.status, 0);
+    assert.match(run.log, /LETTER_CRITIC_CLI=codex/);
+    assert.match(run.log, /HARNESS_DAILY_MODEL=gpt-6-sol/);
+    assert.ok(run.log.includes(`CODEX_CLI_BIN=${bin}`));
+    assert.match(run.log, /exec\n--json\n--model\ngpt-6-sol\n--sandbox\ndanger-full-access\n-C\n/);
+    assert.doesNotMatch(run.log, /--ephemeral/, "writer subagents need a persisted parent thread");
+    assert.match(run.log, /Record that exact model id in agent-fallback provenance/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a completed same-day front half can be resumed without rerunning discovery", () => {
+  const root = makeFakeRepo();
+  try {
+    const reportDir = path.join(root, "state/journal/front-half");
+    fs.mkdirSync(reportDir, { recursive: true });
+    fs.writeFileSync(path.join(reportDir, `${today()}.json`), JSON.stringify({
+      schema_version: 2, running: false, ok: true, degraded: false,
+      finished_at: new Date().toISOString(),
+    }));
+    const bin = fakeCli(root, "echo resumed-agent; exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_REUSE_FRONT_HALF: "1" });
+    assert.equal(run.status, 0);
+    assert.match(run.log, /reusing completed front half/);
+    assert.match(run.log, /resumed-agent/);
+    assert.equal(fs.existsSync(path.join(root, "state/front-half-marker")), false);
+    assert.equal(fs.existsSync(path.join(root, "state/priority-marker")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("fresh runs do the prepared-package priority pass before discovery", () => {
+  const root = makeFakeRepo();
+  try {
+    const bin = fakeCli(root, "echo agent-ran; exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin });
+    assert.equal(run.status, 0);
+    assert.ok(run.log.indexOf("priority pass exit 0") < run.log.indexOf("deterministic front half exit 0"));
+    assert.equal(fs.readFileSync(path.join(root, "state/priority-marker"), "utf8").trim(), "priority");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a fresh priority SEEK challenge blocks later SEEK work in the front half", () => {
+  const root = makeFakeRepo();
+  try {
+    const priority = `node -e 'const fs=require("fs"); const d=new Date(); const day=d.toLocaleDateString("en-CA"); fs.mkdirSync("state/journal/priority",{recursive:true}); fs.writeFileSync("state/journal/priority/"+day+".json",JSON.stringify({started_at:d.toISOString(),channel_health:{seek:{verification_required:true,observed_this_pass:true}}}))'`;
+    const front = `node -e 'require("fs").writeFileSync("state/seek-flag",process.env.HARNESS_SEEK_VERIFICATION_REQUIRED||"")'`;
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+      name: "job-hunt-career-harness", scripts: { "daily:priority": priority, "daily:front-half": front },
+    }));
+    const bin = fakeCli(root, "exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin });
+    assert.equal(run.status, 0);
+    assert.equal(fs.readFileSync(path.join(root, "state/seek-flag"), "utf8"), "1");
+    assert.match(run.log, /SEEK verification required in priority pass/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("an inherited SEEK block still allows the new front half to recheck access", () => {
+  const root = makeFakeRepo();
+  try {
+    const priority = `node -e 'const fs=require("fs"); const d=new Date(); const day=d.toLocaleDateString("en-CA"); fs.mkdirSync("state/journal/priority",{recursive:true}); fs.writeFileSync("state/journal/priority/"+day+".json",JSON.stringify({started_at:d.toISOString(),channel_health:{seek:{verification_required:true,observed_this_pass:false}}}))'`;
+    const front = `node -e 'require("fs").writeFileSync("state/seek-flag",process.env.HARNESS_SEEK_VERIFICATION_REQUIRED||"")'`;
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+      name: "job-hunt-career-harness", scripts: { "daily:priority": priority, "daily:front-half": front },
+    }));
+    const bin = fakeCli(root, "exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin });
+    assert.equal(run.status, 0);
+    assert.equal(fs.readFileSync(path.join(root, "state/seek-flag"), "utf8"), "");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a stale or unhealthy front-half report cannot launch the agent", () => {
+  const root = makeFakeRepo();
+  try {
+    const reportDir = path.join(root, "state/journal/front-half");
+    fs.mkdirSync(reportDir, { recursive: true });
+    fs.writeFileSync(path.join(reportDir, `${today()}.json`), JSON.stringify({
+      schema_version: 2, running: false, ok: false, degraded: true,
+      finished_at: new Date().toISOString(),
+    }));
+    const bin = fakeCli(root, "echo agent-must-not-run; exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_REUSE_FRONT_HALF: "1" });
+    assert.equal(run.status, 2);
+    assert.match(run.log, /cannot reuse front half/);
+    assert.doesNotMatch(run.log, /agent-must-not-run/);
+    assert.equal(fs.existsSync(path.join(root, "state/front-half-marker")), false);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -167,6 +264,21 @@ test("front-half failure survives successful back-half recovery", () => {
   }
 });
 
+test("a failed priority pass cannot be reported as a healthy daily run", () => {
+  const root = makeFakeRepo();
+  try {
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+      name: "job-hunt-career-harness",
+      scripts: { "daily:priority": "exit 2", "daily:front-half": "sh -c 'mkdir -p state && echo completed > state/front-half-marker'" },
+    }));
+    const bin = fakeCli(root, "echo back-half-completed; exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_TIMEOUT_SEC: "30" });
+    assert.equal(run.status, 2);
+    assert.match(run.log, /back-half-completed/);
+    assert.match(run.summary!, /prepared-package priority pass exited 2/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("an existing summary is never clobbered by the failure block", () => {
   const root = makeFakeRepo();
   try {
@@ -219,6 +331,26 @@ test("an unknown HARNESS_CLI still exits 2", () => {
 test("HARNESS_CLI defaults to claude", () => {
   const text = fs.readFileSync(path.join(ROOT, "scripts/daily.sh"), "utf8");
   assert.match(text, /CLI="\$\{HARNESS_CLI:-claude\}"/);
+});
+
+test("the installer preserves weekday scheduling and a pinned Codex binary", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "daily-install-"));
+  try {
+    const binDir = path.join(root, "bin");
+    fs.mkdirSync(binDir);
+    fs.writeFileSync(path.join(binDir, "launchctl"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const codexBin = fakeCli(root, "exit 0");
+    const result = spawnSync("bash", [path.join(ROOT, "scripts/install-launchd.sh")], {
+      cwd: os.tmpdir(),
+      env: { ...process.env, HOME: root, PATH: `${binDir}:${process.env.PATH}`, HARNESS_CLI: "codex", HARNESS_CLI_BIN: codexBin },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const plist = fs.readFileSync(path.join(root, "Library/LaunchAgents/com.job-hunt-harness.daily.plist"), "utf8");
+    assert.ok(plist.includes(`<string>${codexBin}</string>`));
+    assert.equal((plist.match(/<key>Weekday<\/key>/g) ?? []).length, 5);
+    assert.match(plist, /<string>codex<\/string>/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 if (process.exitCode) {

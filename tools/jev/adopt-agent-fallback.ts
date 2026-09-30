@@ -45,6 +45,10 @@ async function main(): Promise<void> {
   const id = required(value("--id"), "--id");
   const jsonInput = required(value("--json"), "--json");
   const model = value("--model") ?? "agent-cli";
+  const runningModel = process.env.HARNESS_DAILY_MODEL;
+  if (runningModel && model !== runningModel) {
+    throw new Error(`agent-fallback model ${model} does not match running model ${runningModel}`);
+  }
   const decision = JSON.parse(jsonInput.trim().startsWith("{") ? jsonInput : await fs.readFile(jsonInput, "utf8")) as AgentDecision;
   if (!MATRIX[decision.discipline_fit] || ![0, 1, 2].includes(decision.evidence_strength)) throw new Error("invalid discipline_fit or evidence_strength");
   const row = await get(id);
@@ -115,7 +119,7 @@ async function main(): Promise<void> {
     },
   };
   store().putClassificationDecision(id, classification);
-  await patch(id, { classification }, "agent-fallback", "Jev degraded; attended agent fallback adopted through ClassificationV2");
+  await patch(id, { classification }, "agent-fallback", "Bounded agent verification adopted through ClassificationV2");
   console.log(JSON.stringify({
     id,
     source: classification.source,

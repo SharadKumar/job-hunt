@@ -41,9 +41,6 @@ const COMMON_ARGS = [
   "--use-mock-keychain",
 ];
 
-const REAL_CHROME_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
 /** A busy profile or crashed launch is not evidence that Chrome is absent. */
 export async function launchWithChromeFallback<T>(
   launchChrome: () => Promise<T>,
@@ -74,7 +71,8 @@ export async function openChromeContext(
     headless: opts.headless ?? false,
     args: COMMON_ARGS,
     viewport: opts.viewport ?? { width: 1280, height: 900 },
-    userAgent: REAL_CHROME_UA,
+    // Let the installed browser report its own version. A fixed Chrome 131
+    // user agent became inconsistent with the installed Chrome 154 binary.
     locale: "en-AU",
     timezoneId: "Australia/Sydney",
     // Cookies should not be wiped between runs

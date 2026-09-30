@@ -5,7 +5,7 @@
 An unattended run may submit only through `npm run autopilot:submit`, only on a channel listed in `autopilot.channels` in `state/profile/submission-policy.yaml` (one-click adapters: SEEK Quick Apply via `tools/channels/seek-submit.ts`, LinkedIn Easy Apply via `tools/channels/linkedin-submit.ts`), and only when every gate below passes:
 
 - `autopilot.enabled: true` and `kill_switch: false`
-- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path; a Jev decision may classify and prioritise a role but never satisfies unattended send authority; core discipline **or** a job the person saved on the channel
+- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path and still bound to the current advert content, classification policy, profile evidence, resume set and question schema; a Jev decision may classify and prioritise a role but never satisfies unattended send authority; core discipline **or** a job the person saved on the channel
 - no `red_flag_blocker` (bypassed for saved jobs)
 - baseline CV approved and unchanged since approval
 - `tools/letter-critic.ts` pass on the exact letter (sha256 matched against `cover-letter.md`)
@@ -14,4 +14,4 @@ An unattended run may submit only through `npm run autopilot:submit`, only on a 
 
 `tools/autopilot-submit.ts` runs the critic and then `tools/submission-gate.ts` with `--approved-by autopilot:<run-id>`; the gate, not the calling skill, is the authority. Every other channel, every external ATS, every recruiter or hiring-manager message and every LinkedIn comment or DM is attended or draft-only (`AGENTS.md` section 2, attended lane).
 
-Outcomes: gate `gate_failed` / `manual` / `duplicate`, an external-ATS redirect, an unknown screening question, a letter-critic block or an adapter failure park the row in `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run and stops submitting for the day.
+Outcomes: a missing, Jev-only or stale classification returns the unsubmitted row to `discovered` for bounded agent re-verification, retaining its package and history. Other gate `gate_failed` / `manual` / `duplicate` outcomes, an external-ATS redirect, an unknown screening question, a letter-critic block or an adapter failure park the row in `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run and stops submitting for the day.

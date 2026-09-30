@@ -112,7 +112,7 @@ export function extractMechanicalClassification(
   const lc = text.toLowerCase();
   const red_flags: MechanicalClassification["red_flags"] = [];
   const bonuses: MechanicalClassification["bonuses"] = [];
-  if (/(onsite|on-site|in.?office).{0,30}(5 days|five days|full[- ]time)/.test(lc)) red_flags.push("onsite_5_days");
+  if (/(onsite|on-site|in.?office).{0,30}(5 days|five days|full[- ]time)|(5 days|five days).{0,30}(onsite|on-site|in.?office)/.test(lc)) red_flags.push("onsite_5_days");
   if (/payg only|paye only|inside ir35|standard payroll|via (our|the) payroll only/.test(lc)) red_flags.push("inside_ir35_equivalent");
   if (/\b(junior|mid[- ]level|graduate|early career)\b/.test(lc)) red_flags.push("junior_or_mid_level");
   if (/no remote|in-office only|office based only/.test(lc)) red_flags.push("no_remote_at_all");
