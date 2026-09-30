@@ -23,6 +23,7 @@ import * as healthExt from "./health-api.ts";
 import * as jevExt from "./jev-api.ts";
 import * as rowsExt from "./rows-ext-api.ts";
 import * as workspaceExt from "./workspace-api.ts";
+import { execFile } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 
@@ -103,7 +104,20 @@ export type ApiContext = {
   journalDir?: string;
   /** Defaults to ignored state/jev/adjudications.json. Tests override it. */
   adjudicationsPath?: string;
+  /** Test seam for the local, user-requested Chrome handoff. */
+  openInChrome?: (file: string) => Promise<void>;
 };
+
+async function openInChrome(file: string, ctx: ApiContext): Promise<void> {
+  if (ctx.openInChrome) return ctx.openInChrome(file);
+  if (process.platform !== "darwin") throw new ApiError(501, "opening resume PDFs in Google Chrome is supported on macOS only");
+  await new Promise<void>((resolve, reject) => {
+    execFile("open", ["-a", "Google Chrome", file], { timeout: 10_000 }, (error) => {
+      if (error) reject(new ApiError(500, `could not open Google Chrome: ${error.message}`));
+      else resolve();
+    });
+  });
+}
 
 /**
  * The six segments the Pipeline screen is cut into
@@ -805,6 +819,18 @@ export async function handleApi(req: ApiRequest, ctx: ApiContext = {}): Promise<
 
     if (method === "GET" && pathname === "/api/resumes") {
       return { status: 200, body: await getResumes({ profileId: ctx.profileId ?? null, now: ctx.now }) };
+    }
+
+    const openPdf = pathname.match(/^\/api\/resumes\/([^/]+)\/open-pdf$/);
+    if (openPdf) {
+      if (method !== "POST") return { status: 405, body: { error: `${method} not allowed on ${pathname}` } };
+      const body = (req.body ?? {}) as { name?: unknown };
+      const name = typeof body.name === "string" ? body.name : "";
+      const resolved = await resolveResumeFile(decodeURIComponent(openPdf[1]), name, { profileId: ctx.profileId ?? null });
+      if (resolved.status !== 200) return { status: resolved.status, body: { error: resolved.error } };
+      if (resolved.contentType !== "application/pdf") return { status: 403, body: { error: "only a rendered PDF can open in Chrome" } };
+      await openInChrome(resolved.file, ctx);
+      return { status: 200, body: { ok: true, browser: "Google Chrome", file: name } };
     }
 
     // The artefact route: a page image, a PDF, a DOCX or the markdown, read

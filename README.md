@@ -604,7 +604,7 @@ Every non-send outcome (critic block, gate failure, external ATS redirect, unkno
 
 ## What runs unattended
 
-The launchd job at 07:00 (your local timezone) runs `scripts/daily.sh`, which invokes the `/daily` skill in the CLI named by `HARNESS_CLI`:
+The launchd job runs every two hours on weekdays at 07:00, 09:00, 11:00, 13:00, 15:00 and 17:00 in your local timezone. Each trigger runs `scripts/daily.sh`: prepared applications go through `daily:priority` before discovery, then the `/daily` skill finishes the existing queue before newly discovered work. The CLI is named by `HARNESS_CLI`. To use four hours instead, reinstall with `HARNESS_INTERVAL_HOURS=4 bash scripts/install-launchd.sh` (07:00, 11:00 and 15:00). `HARNESS_START_HOUR` and `HARNESS_END_HOUR` can change the working window. launchd runs only one instance of this job at a time.
 
 1. Pull the Sheet's `Tray.Action` + `Tray.Edits` columns; reconcile the manual queue.
 2. Import the jobs you saved on SEEK (`npm run seek:saved -- --upsert`). A saved job is an order to apply: nothing parks it except a non-Quick-Apply ad or an unknown screening question, and a saved row that is not yet `submitted` is retried every run, whatever its status.
