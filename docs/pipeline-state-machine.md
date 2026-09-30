@@ -36,7 +36,7 @@ parked              → shortlisted | discovered | rejected | withdrawn
 drafted             → awaiting_approval | discovered | rejected | withdrawn | manual_action_needed
 awaiting_approval   → approved | rejected | withdrawn | manual_action_needed
 approved            → submission_pending | submitted | manual_action_needed | withdrawn
-submission_pending  → submitted | manual_action_needed | withdrawn
+submission_pending  → submitted | approved (verified pre-submit challenge) | manual_action_needed | withdrawn
 manual_action_needed→ approved (retry once the blocker is cleared) | submitted | rejected | withdrawn
 submitted           → responded | rejected | withdrawn
 responded           → interview | rejected | withdrawn
@@ -69,6 +69,8 @@ Computed in `tools/score.ts` and applied by `tools/rescore-pipeline.ts`:
 4. Blockers: onsite 5 days, junior/mid, exclusive, PAYG-only, permanent/fixed-term, relevance < 25, or no `matched_resume_id`.
 5. A user-saved row retains its saved-job override and all package and send gates. Otherwise confirmed routine interstate attendance is ineligible. Unknown flexibility is non-blocking: an automatic core classification, adequate score and no other blockers can shortlist. Other uncertainty still prevents automatic promotion. Explicit user holds remain parked.
 
+LinkedIn search cards do not establish send readiness. A row with no usable full advert stays in `discovered`. A refreshed advert's explicit employment and location terms, including the channel's hybrid/onsite pill, are applied deterministically even if its semantic classification was cached earlier. A semantic decision whose content hash predates that advert returns the unsent row to `discovered` until the full advert is classified. An external application button moves a current, still-eligible row to `manual_action_needed`; an unconfirmed button returns it to `discovered`. The daily front half enriches bounded discovered and shortlisted LinkedIn rows before classification and reconciles the existing shortlist after refresh.
+
 ## Autopilot (one-click channels, unattended)
 
 User decision 2026-09-15 (SEEK), extended 2026-09-16 (LinkedIn Easy Apply): `/daily` may move a row on a channel listed in `autopilot.channels` to `submitted` without a human reading the package. The full gate list is `AGENTS.md` section 2 and `references/harness/autopilot-gates.md`. The only tool allowed to do that is `tools/autopilot-submit.ts` (`npm run autopilot:submit -- --id <id> --run-id daily-<date>`). It walks `drafted → awaiting_approval → approved` through `setStatus`, then `approved → submission_pending → submitted` only after both of these hold:
@@ -78,7 +80,7 @@ User decision 2026-09-15 (SEEK), extended 2026-09-16 (LinkedIn Easy Apply): `/da
 
 Evidence a row must carry after an autopilot send: `archive/<id>/confirmation.txt` (channel, channel job id, confirmation text, resume filename, letter sha, run id, timestamp), the adapter's success screenshot in the archive, `letter-critic.json`, an audit `submitted` event with `actor: "autopilot"` and `details.run_id`, and the full letter text under "Sent unattended" in that day's journal. A user-saved row is also unsaved on SEEK (`npm run seek:unsave`).
 
-Any other outcome (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) moves the row to `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path, with `linkedin_jobs` in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
+Missing, Jev-only or stale agent classification returns the unsubmitted row to `discovered` for bounded run-owned verification, retaining its package and audit history. Other repairable outcomes (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) move the row to `manual_action_needed` with the reason in `notes`. SEEK human verification detected before Submit returns the row to `approved` with its package intact for a later channel-safe run; it is a channel block, not a new user decision. A channel's explicit closed-advert notice before an application form opens is terminal: the row moves from `submission_pending` to `withdrawn`, records `channelExpiredAt`, and leaves active queues. An unconfirmed submission stays `submission_pending` for reconciliation. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path, with `linkedin_jobs` in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
 
 ## Sheet
 

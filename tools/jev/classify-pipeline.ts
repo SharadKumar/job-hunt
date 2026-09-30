@@ -55,13 +55,40 @@ export type ClassifyBatchSummary = {
 
 type CacheIdentity = Awaited<ReturnType<typeof currentJevCacheIdentity>>;
 
+function contentNeedsClassification(row: Opportunity): boolean {
+  return !row.classification || row.classification.provenance?.content_hash !== classificationContentHash({
+    title: row.title, description: row.description ?? "", location: row.location,
+  });
+}
+
+function latestContentEvidenceAt(row: Opportunity): string {
+  const events = row.history ?? [];
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].from === null || /field_update:.*\b(?:title|description|location)\b/.test(events[i].reason ?? "")) return events[i].at;
+  }
+  return row.postedAt ?? "";
+}
+
 /** Daily work never spends inference on completed records or explicit holds. */
 export function classificationWorkset(rows: Opportunity[]): Opportunity[] {
   const done = new Set(["submitted", "submission_pending", "responded", "interview", "offered", "won", "lost"]);
   const active = new Set(["discovered", "shortlisted", "drafted", "awaiting_approval", "approved", "manual_action_needed"]);
-  return rows.filter(row => !done.has(row.status) && (row.userSaved === true || active.has(row.status)))
-    .sort((a, b) => Number(b.userSaved === true) - Number(a.userSaved === true)
+  const candidates = rows.filter(row => !done.has(row.status) && (row.userSaved === true || active.has(row.status)))
+    // LinkedIn cards carry titles and locations, not enough JD evidence for a
+    // useful semantic decision. Wait for bounded advert enrichment instead of
+    // paying Jev to classify a card that cannot enter the apply queue.
+    .filter(row => row.channel !== "linkedin_jobs" || (row.description ?? "").length >= 80);
+  const priority = new Map(candidates.map(row => [row, {
+    contentChanged: contentNeedsClassification(row), contentAt: latestContentEvidenceAt(row),
+  }]));
+  return candidates.sort((a, b) => Number(b.userSaved === true) - Number(a.userSaved === true)
       || Number(b.status !== "discovered") - Number(a.status !== "discovered")
+      // A full advert fetched today is time-critical even when its search
+      // card was first seen days ago. Spend the bounded model budget there
+      // before refreshing rows whose content has not changed.
+      || Number(priority.get(b)!.contentChanged) - Number(priority.get(a)!.contentChanged)
+      || priority.get(b)!.contentAt.localeCompare(priority.get(a)!.contentAt)
+      || (b.score ?? -1) - (a.score ?? -1)
       || String(b.history?.[0]?.at ?? "").localeCompare(String(a.history?.[0]?.at ?? ""))
       || a.id.localeCompare(b.id));
 }

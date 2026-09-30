@@ -37,7 +37,7 @@ import { execFile } from "node:child_process";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
-import { query as auditQuery, type AuditEvent } from "./audit.ts";
+import { query as auditQuery, distinctSubmittedEvents, type AuditEvent } from "./audit.ts";
 import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilters, sheetEnabled } from "./sheets-sync.ts";
 import { loadLocale } from "./profile.ts";
 import { laneFor } from "./ui/rows-ext-api.ts";
@@ -91,6 +91,7 @@ export type DailySummary = {
   /** State that could not be read (present but unparseable). Non-empty means exit 1. */
   errors: string[];
   automation?: { prepared: number; awaitingScreening?: number; blocker: string | null };
+  priority?: { ok: boolean; ready: number; attempted: number; submitted: number; firstSendMs: number | null };
   operationalNotes?: string[];
   observations?: string[];
   numbers: {
@@ -186,8 +187,8 @@ function confirmationLine(txt: string | null): string {
 
 /** Name of the resume file sent, from metadata.json or the archive listing. */
 async function resumeFilename(row: Opportunity, dir: string): Promise<string> {
-  const meta = await readJsonIfExists<{ resume?: { docx?: string } }>(path.join(dir, "metadata.json"));
-  if (meta?.resume?.docx) return path.basename(meta.resume.docx);
+  const meta = await readJsonIfExists<{ resume?: { docx?: string; ref?: string } }>(path.join(dir, "metadata.json"));
+  if (meta?.resume?.ref || meta?.resume?.docx) return path.basename(meta.resume.ref ?? meta.resume.docx!);
   if (row.tailoredResume?.docxPath) return path.basename(row.tailoredResume.docxPath);
   const conf = await readIfExists(path.join(dir, "confirmation.txt"));
   const fromConf = conf?.match(/^Resume:\s*(\S+\.(?:docx|pdf))/m)?.[1];
@@ -261,7 +262,7 @@ class Escalations {
 }
 
 /** Turn a manual_action_needed row into a reason plus the exact next step. */
-async function manualEscalation(r: Opportunity): Promise<Escalation> {
+export async function manualEscalation(r: Opportunity, answeredTexts: Set<string> = new Set()): Promise<Escalation | null> {
   const dir = path.join(ARCHIVE_DIR, r.id);
   const reason = lastReason(r);
   const base = { kind: "manual" as const, id: r.id, title: r.title, company: r.company };
@@ -271,8 +272,17 @@ async function manualEscalation(r: Opportunity): Promise<Escalation> {
   if (ats) {
     return { ...base, reason: `External ATS redirect to ${ats[1]}`, action: `Open ${r.url} and apply on ${ats[1]} yourself; package is in ${path.relative(repoPath(), dir)}` };
   }
+  if (r.channel === "seek" && /SEEK human verification required/i.test(reason)) {
+    return { ...base, kind: "channel", reason: "SEEK blocked the harness browser before the application form opened; no send was confirmed", action: `Restore access to the harness SEEK profile, then retry this package through autopilot:submit. The challenge screenshot is in ${path.relative(repoPath(), dir)}. Do not discard the package` };
+  }
+  if (/external application portal/i.test(reason) && /package is not prepared yet/i.test(reason)) {
+    return { ...base, reason: "LinkedIn advert uses an external portal; package not prepared", action: "Prepare the package with /manual-applications, then complete the portal together in an attended session" };
+  }
   const q = reason.match(/unknown screening question:\s*"([^"]+)"/i);
   if (q) {
+    // The row still records the stopped attempt, but a newly banked answer
+    // makes this run-owned retry work, not another question for the person.
+    if (answeredTexts.has(norm(q[1]))) return null;
     // Same problem as the screening-answers escalation below, so same kind and
     // wording: the two merge into one entry for this row.
     return { ...base, kind: "screening", reason: `Unanswered screening question: "${short(q[1], 110)}"`, action: "Answer it in state/profile/screening-answers.yaml unknown_questions, then rerun autopilot:submit for this id" };
@@ -300,7 +310,7 @@ type Read<T> = { value: T; status: "ok" | "missing" | "error"; error?: string };
  * Fail closed: a file that is present but unparseable is an error the summary
  * shows and exits 1 on, never a silent "nothing to answer".
  */
-async function unansweredQuestions(liveRowIds: Set<string>, rows: Opportunity[]): Promise<Read<UnknownQuestion[]>> {
+async function unansweredQuestions(liveRowIds: Set<string>, rows: Opportunity[]): Promise<Read<UnknownQuestion[]> & { answeredTexts?: Set<string> }> {
   const txt = await readIfExists(SCREENING_PATH);
   if (txt == null) return { value: [], status: "missing" };
   let doc: { unknown_questions?: UnknownQuestion[] };
@@ -330,7 +340,7 @@ async function unansweredQuestions(liveRowIds: Set<string>, rows: Opportunity[])
     seen.add(key);
     out.push(q);
   }
-  return { value: out, status: "ok" };
+  return { value: out, status: "ok", answeredTexts };
 }
 function norm(s: string): string { return s.replace(/\s+/g, " ").trim().toLowerCase(); }
 
@@ -404,29 +414,55 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   const rows = await loadPipeline();
   const { start, end } = dayBounds(date);
   const dayEvents = (await auditQuery({ sinceISO: start })).filter((e) => e.ts < end);
-  const submittedEvents = dayEvents.filter((e) => e.event_type === "submitted");
+  const submittedEvents = distinctSubmittedEvents(dayEvents);
   const policyRead = await policy();
   const pol = policyRead.value;
   const lanePolicy = { channels: pol.channels, autopilot_enabled: pol.autopilotEnabled, kill_switch: pol.killSwitch };
   const runOwned = (row: Opportunity) => laneFor(row, lanePolicy).lane === "autopilot";
   const incident = blockingDegradation(await readDegradation());
+  const frontHalf = await readJsonIfExists<{ channel_health?: { seek?: { verification_required?: boolean } } }>(
+    repoPath(`state/journal/front-half/${date}.json`));
+  const priorityReport = await readJsonIfExists<{
+    ok?: boolean; selected?: number; attempts?: { outcome?: string }[];
+    telemetry?: { submitted?: number; time_to_first_send_ms?: number | null };
+  }>(repoPath(`state/journal/priority/${date}.json`));
+  const priority = priorityReport ? {
+    ok: priorityReport.ok === true,
+    ready: priorityReport.selected ?? 0,
+    attempted: priorityReport.attempts?.length ?? 0,
+    submitted: priorityReport.telemetry?.submitted ?? 0,
+    firstSendMs: priorityReport.telemetry?.time_to_first_send_ms ?? null,
+  } : undefined;
+  const seekChallengeReported = frontHalf?.channel_health?.seek?.verification_required === true;
   const preparedRows = rows.filter(row => ["awaiting_approval", "approved"].includes(row.status) && runOwned(row));
 
   const sent = await gatherSent(rows, date, submittedEvents);
-  const autopilotSends = submittedEvents.filter((e) => e.actor === "autopilot").length;
-
-  // Escalations
-  const esc = new Escalations();
-  for (const r of rows.filter((x) => x.status === "manual_action_needed")) esc.add(await manualEscalation(r));
+  const autopilotSends = distinctSubmittedEvents(dayEvents.filter((e) => e.actor === "autopilot")).length;
 
   const liveRowIds = new Set(rows.filter((x) => ["manual_action_needed", "submission_pending", "approved", "awaiting_approval", "drafted", "shortlisted"].includes(x.status)).map((x) => x.id));
   const screening = await unansweredQuestions(liveRowIds, rows);
+  // Escalations
+  const esc = new Escalations();
+  for (const r of rows.filter((x) => x.status === "manual_action_needed")) {
+    const item = await manualEscalation(r, screening.answeredTexts);
+    if (item) esc.add(item);
+  }
   const questions = screening.value;
   const screeningIds = new Set(questions.map(q => q.opportunity_id));
   const awaitingScreening = preparedRows.filter(row => screeningIds.has(row.id)).length;
+  const seekChallengeToday = seekChallengeReported || rows.some(row => row.channel === "seek" && row.status === "manual_action_needed"
+    && /SEEK human verification required/i.test(lastReason(row))
+    && row.history.at(-1)?.at && localDate(row.history.at(-1)!.at) === date);
   const automation = { prepared: preparedRows.length - awaitingScreening, awaitingScreening,
-    blocker: incident?.incident.reason ?? null };
+    blocker: incident?.incident.reason ?? (seekChallengeToday && preparedRows.some(row => row.channel === "seek")
+      ? "SEEK challenged the harness browser before an application form opened"
+      : null) };
   const errors = [policyRead.error, screening.error].filter((e): e is string => Boolean(e));
+  if (seekChallengeReported && !rows.some(row => row.channel === "seek" && row.status === "manual_action_needed"
+    && /SEEK human verification required/i.test(lastReason(row)))) {
+    esc.add({ kind: "channel", reason: "SEEK human verification stopped advert enrichment before the full job descriptions could be read",
+      action: "Restore access to the harness SEEK profile; the deferred adverts remain queued for a later channel-safe run" });
+  }
   for (const q of questions) {
     esc.add({
       kind: "screening", id: q.opportunity_id, title: q.title, company: q.company,
@@ -500,7 +536,7 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   return {
     date, generatedAt: new Date().toISOString(), headline, sent, escalations,
     movement: { discovered: discoveredToday, queue, parked: { total: parkedRows.length, byReason }, exited },
-    responses, errors, numbers, automation, operationalNotes, observations,
+    responses, errors, numbers, automation, priority, operationalNotes, observations,
   };
 }
 
@@ -526,11 +562,20 @@ export function renderMarkdown(s: Omit<DailySummary, "markdown" | "sheet">): str
   }
   L.push("");
 
+  if (s.priority) {
+    L.push("## Priority pass", "");
+    L.push(`${s.priority.ready} ready, ${s.priority.attempted} attempted, ${s.priority.submitted} confirmed sent before discovery.`);
+    if (s.priority.firstSendMs != null) L.push(`First confirmed send: ${Math.round(s.priority.firstSendMs / 1000)} seconds from pass start.`);
+    else L.push("No time-to-first-send result yet; no priority send was confirmed.");
+    if (!s.priority.ok) L.push("Priority pass did not complete cleanly; check its report before treating this run as healthy.");
+    L.push("");
+  }
+
   if (s.automation?.prepared || s.automation?.awaitingScreening || s.automation?.blocker) {
     L.push("## Autopilot work (no individual approval needed)", "");
     L.push(`${s.automation.prepared} prepared package${s.automation.prepared === 1 ? "" : "s"} awaiting run validation.`);
     if (s.automation.awaitingScreening) L.push(`${s.automation.awaitingScreening} prepared package${s.automation.awaitingScreening === 1 ? " needs" : "s need"} screening answers before retry. See the specific questions below; this is not a package-approval request.`);
-    if (s.automation.blocker) L.push(`Submission paused: ${s.automation.blocker}. The next run must recheck provider health and all send gates.`);
+    if (s.automation.blocker) L.push(`Submission paused: ${s.automation.blocker}. The next run must recheck channel access, provider health and all send gates.`);
     else if (s.automation.prepared) L.push("The next run will validate and submit eligible packages through the one-click adapters.");
     L.push("");
   }

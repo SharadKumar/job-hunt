@@ -85,6 +85,7 @@
     "daily": "bash scripts/daily.sh",
     "agent:context": "tsx tools/agent-context.ts",
     "daily:front-half": "tsx tools/daily-front-half.ts",
+    "daily:priority": "tsx tools/daily-priority.ts",
     "screening:retry-queue": "tsx tools/screening-retry-queue.ts",
     "pipeline:expire": "tsx tools/expire-opportunities.ts",
     "daily:summary": "tsx tools/daily-summary.ts",

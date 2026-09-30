@@ -564,7 +564,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
     if (/\/login|\/checkpoint|\/authwall/.test(page.url())) return await fail("LinkedIn session is signed out; re-run npm run login:linkedin");
     const bodyText = async () => (await page!.locator("main").innerText().catch(() => "")).replace(/\s+/g, " ");
     const body = await bodyText();
-    if (/No longer accepting applications/i.test(body)) return await fail("LinkedIn ad is no longer accepting applications");
+    if (/No longer accepting applications/i.test(body)) return await fail("LinkedIn ad is no longer accepting applications", { advertClosed: true });
     if (/\bApplied\b.{0,40}\bago\b|Application submitted|See application/i.test(body.slice(0, 1500))) return await fail("LinkedIn reports this application was already submitted");
 
     const easy = page.locator('a[aria-label^="Easy Apply"], button[aria-label^="Easy Apply"]').first();

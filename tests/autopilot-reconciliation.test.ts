@@ -16,7 +16,7 @@ try {
     url: "https://www.seek.com.au/job/123", status: "submission_pending", userSaved: true }], { digest: false });
   for (const extra of [[], ["--dry-run"]]) {
     const result = spawnSync(process.execPath, [repoPath("node_modules/tsx/dist/cli.mjs"),
-      repoPath("tools/autopilot-submit.ts"), "--id", id, ...extra], {
+      repoPath("tools/autopilot-submit.ts"), "--id", id, "--run-id", "fixture-reconciliation", ...extra], {
       env: process.env, encoding: "utf8", timeout: 20_000,
     });
     assert.equal(result.error, undefined);
@@ -34,7 +34,7 @@ try {
     await upsertMany([{ id: blockedId, channel: "seek", title: "Architect", company: "Example",
       url: `https://www.seek.com.au/job/${status}`, status, userSaved: true }], { digest: false });
     const result = spawnSync(process.execPath, [repoPath("node_modules/tsx/dist/cli.mjs"),
-      repoPath("tools/autopilot-submit.ts"), "--id", blockedId], {
+      repoPath("tools/autopilot-submit.ts"), "--id", blockedId, "--run-id", "fixture-reconciliation"], {
       env: process.env, encoding: "utf8", timeout: 20_000,
     });
     assert.equal(result.status, 1);

@@ -645,6 +645,7 @@ async function fromAuditLog(date: string): Promise<{ sent: RunSent[]; stopped: R
   for (const event of onTheDay) {
     const row = named(event.role_id ?? null);
     if (event.event_type === "submitted") {
+      if (event.role_id && sent.some((item) => item.id === event.role_id)) continue;
       sent.push({
         id: event.role_id ?? null,
         title: row?.title ?? event.role_id ?? "A row this log no longer names",

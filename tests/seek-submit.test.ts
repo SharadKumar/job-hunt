@@ -26,6 +26,7 @@ const entries: ScreeningEntry[] = [
 ];
 assert.equal(isSeekHumanVerification("Help us keep SEEK secure, confirm you are human."), true);
 assert.equal(isSeekHumanVerification("Verify you are human"), true);
+assert.equal(isSeekHumanVerification("au.seek.com Performing security verification This website uses a security service to protect against malicious bots."), true);
 assert.equal(isSeekHumanVerification("Cyber security architect. Select a resume."), false);
 const opts = (...labels: string[]) => labels.map((label, i) => ({ label, id: `o${i}` }));
 const q = (kind: PageQuestion["kind"], label: string, options: PageQuestion["options"] = []): PageQuestion => ({ kind, label, id: "", name: "", options, required: true });

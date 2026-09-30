@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { Opportunity } from "../tools/pipeline.ts";
+import { classificationContentHash } from "../tools/classification.ts";
 import { classificationV2 } from "./fixtures/classification-v2.ts";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rescore-targeting-"));
 
@@ -26,7 +27,8 @@ process.env.AUDIT_DIR = path.join(tempRoot, "audit");
 const { selectOpportunitiesForRescore, applyRescore, rescoreStatusDecision, validateRescoreArgs } = await import("../tools/rescore-pipeline.ts");
 validateRescoreArgs(["--help"]);
 validateRescoreArgs(["--ids-file", "ids.json", "--limit", "2", "--dry-run"]);
-for (const args of [["--ids"], ["--limit"], ["--ids-file"], ["--limit", "NaN"], ["--limit", "0"], ["--bogus"]]) {
+validateRescoreArgs(["--status", "shortlisted"]);
+for (const args of [["--ids"], ["--limit"], ["--ids-file"], ["--status", "submitted"], ["--limit", "NaN"], ["--limit", "0"], ["--bogus"]]) {
   assert.throws(() => validateRescoreArgs(args));
 }
 // The actual CLI must exit before opening or creating the pipeline store.
@@ -95,6 +97,18 @@ assert.equal(rescoreStatusDecision({ ...oldHold, userSaved: true }, scoreResult(
 assert.equal(rescoreStatusDecision({ ...oldHold, parkedBy: "user" }, scoreResult(80), 55).status, "parked");
 assert.equal(rescoreStatusDecision({ ...oldHold, parkedReason: "Waiting for an agreed start date" }, scoreResult(80), 55).status, "parked");
 assert.equal(rescoreStatusDecision(oldHold, scoreResult(80, { classification: classificationV2({ status: "uncertain" }) }), 55).status, "discovered");
+const linkedinQueue = { ...role("linkedin-external", "shortlisted"), channel: "linkedin_jobs", applyMethod: "external" as const, description: "A full detailed contract advert for a solutions architect with delivery leadership and enterprise integration responsibilities." };
+const linkedinCurrent = classificationV2({ provenance: { ...automaticClassification.provenance,
+  content_hash: classificationContentHash({ title: linkedinQueue.title, description: linkedinQueue.description }),
+} });
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { classification: linkedinCurrent }), 55).status, "manual_action_needed");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, status: "discovered" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "manual_action_needed");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, description: "card" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80), 55).status, "discovered", "a stale search-card decision cannot promote the full advert");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { classification: classificationV2({ ...linkedinCurrent, status: "uncertain" }) }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, applyMethod: "unknown" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, applyMethod: "easy_apply" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "rejected");
 
 const card = (n: number, title: string) => ({
   channel: "seek",

@@ -259,6 +259,15 @@ assert.equal(validPipelineFallback.cache_hits, 1, "an incompatible later cache r
 const workRows = ["submitted", "rejected", "withdrawn", "parked", "discovered", "approved", "submission_pending"].map(status => ({ ...replayInput, id: status, status } as any));
 assert.deepEqual(classificationWorkset(workRows).map(r => r.id), ["approved", "discovered"]);
 assert.deepEqual(classificationWorkset(workRows.map(r => ({ ...r, userSaved: true }))).map(r => r.id).sort(), ["approved", "discovered", "parked", "rejected", "withdrawn"]);
+assert.deepEqual(classificationWorkset([
+  { ...replayInput, id: "linkedin-card", channel: "linkedin_jobs", status: "discovered", description: "card" } as any,
+  { ...replayInput, id: "linkedin-full", channel: "linkedin_jobs", status: "discovered", description: "A full contract advert describing delivery scope, required architecture skills, integration work and the work arrangement." } as any,
+]).map(r => r.id), ["linkedin-full"], "Jev waits for a usable LinkedIn advert");
+assert.deepEqual(classificationWorkset([
+  { ...replayInput, id: "unchanged-newer", classification: cachedDecision, history: [{ at: "2026-09-29T00:00:00Z", from: null, to: "discovered" }] } as any,
+  { ...replayInput, id: "enriched-older", description: `${replayInput.description} Newly fetched full advert.`, classification: cachedDecision,
+    history: [{ at: "2026-09-15T00:00:00Z", from: null, to: "discovered" }, { at: "2026-09-30T00:00:00Z", from: "discovered", to: "discovered", reason: "field_update: description [linkedin:enrich]" }] } as any,
+]).map(r => r.id), ["enriched-older", "unchanged-newer"], "new full-advert content must precede unchanged decisions despite an older discovery date");
 const boundedRows = Array.from({ length: 12 }, (_, i) => ({ ...replayInput, id: `bounded-${i}` } as any));
 const bounded = await classifyPipeline(boundedRows, { force: true, shadow: true, concurrency: 2, maxRequests: 3,
   classify: input => classifyWithJev(input, { evaluate: evaluator(0.9), credential: null }),

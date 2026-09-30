@@ -66,7 +66,7 @@ import { openChromeContext } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
 
 export function isSeekHumanVerification(text: string): boolean {
-  return /confirm you are human|verify you are human|help us keep SEEK secure/i.test(text);
+  return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots/i.test(text);
 }
 
 export type SubmitSeekOptions = {
@@ -604,7 +604,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
 
     for (let hop = 0; hop < 8; hop++) {
       if (isSeekHumanVerification(await bodyText())) {
-        return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying");
+        return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying", { channelVerificationRequired: true });
       }
       const step = classifyApplyStep(page.url());
       if (submissionAttempted && step !== "success") return await fail("Submission outcome unconfirmed after Submit; reconcile on SEEK before retrying");
@@ -620,7 +620,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
             await page.getByRole("radio").first().waitFor({ state: "attached", timeout }).catch(() => {});
             if ((await resumeRadio.count()) === 0) {
               if (isSeekHumanVerification(await bodyText())) {
-                return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying");
+                return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying", { channelVerificationRequired: true });
               }
               const listed = await page.getByRole("radio").evaluateAll((els: any[]) =>
                 els.map((e) => e.getAttribute("aria-label") || (e.labels && e.labels[0] ? e.labels[0].innerText : "") || e.value).filter(Boolean));

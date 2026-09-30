@@ -34,7 +34,7 @@ export type SubmitPackage = {
 
 export type SubmitResult =
   | { ok: true; confirmationRef?: string; screenshotPath?: string }
-  | { ok: false; reason: string; needsManual?: boolean; submissionUnconfirmed?: boolean; newScreeningQuestion?: { text: string; context: string } };
+  | { ok: false; reason: string; needsManual?: boolean; submissionUnconfirmed?: boolean; channelVerificationRequired?: boolean; advertClosed?: boolean; newScreeningQuestion?: { text: string; context: string } };
 
 export interface HuntChannel {
   id: ChannelId;

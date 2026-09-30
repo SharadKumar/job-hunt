@@ -87,6 +87,20 @@ export type AuditEvent = {
   provenance?: { url?: string; channel?: string; source_pipeline_id?: string } | null;
 };
 
+/** Count a submitted role once even if both a state transition and a receipt
+ * append a submitted event. Events without a role id cannot be reconciled and
+ * remain separate. Filter by actor before calling when measuring a lane. */
+export function distinctSubmittedEvents(events: AuditEvent[]): AuditEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (event.event_type !== "submitted") return false;
+    if (!event.role_id) return true;
+    if (seen.has(event.role_id)) return false;
+    seen.add(event.role_id);
+    return true;
+  });
+}
+
 function normaliseCompany(company: string): string {
   return company
     .toLowerCase()
@@ -204,7 +218,7 @@ async function summary(days: number): Promise<void> {
   const events = await query({ sinceISO });
   const byType: Record<string, number> = {};
   const byActor: Record<string, number> = {};
-  const submitted = events.filter((e) => e.event_type === "submitted");
+  const submitted = distinctSubmittedEvents(events);
   const contacts = new Map<string, number>();
   for (const e of events) {
     byType[e.event_type] = (byType[e.event_type] ?? 0) + 1;

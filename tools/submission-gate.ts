@@ -26,7 +26,7 @@
  *   1. provenance present and, for autopilot, enabled in policy → else needs_approval
  *   2. kill_switch off                                  → else blocked  (+ audit policy_kill_switch_blocked)
  *   3. [autopilot only] status is `approved`            → else gate_failed
- *   4. [autopilot only] automatic persisted Jev decision       → else gate_failed
+ *   4. [autopilot only] current automatic agent verification    → else gate_failed
  *   5. [autopilot only] userSaved, OR discipline_fit core and not an
  *      confirmed routine interstate attendance         → else gate_failed
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
@@ -62,11 +62,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
-import { log as auditLog, query as auditQuery, checkDuplicate } from "./audit.ts";
+import { log as auditLog, query as auditQuery, checkDuplicate, distinctSubmittedEvents } from "./audit.ts";
 import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
 import { sha256 } from "./lib/hash.ts";
 import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
+import { classificationFreshnessIssue, type ClassificationIdentity } from "./jev/classification-freshness.ts";
+import { currentJevCacheIdentity } from "./jev/classifier.ts";
 import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
 
 const exec = promisify(execFile);
@@ -164,7 +166,7 @@ async function submittedToday(nowISO: string, actor?: string): Promise<number> {
   const start = new Date(nowISO);
   start.setHours(0, 0, 0, 0);
   const events = await auditQuery({ type: "submitted", sinceISO: start.toISOString() });
-  return actor ? events.filter((e) => e.actor === actor).length : events.length;
+  return distinctSubmittedEvents(actor ? events.filter((e) => e.actor === actor) : events).length;
 }
 
 /** Home city from profile.md (`city:` in the front matter); mirrors score.ts. */
@@ -200,6 +202,7 @@ export type EvaluateOpts = {
   archiveDir?: string;       // injectable for tests; default state/pipeline/archive/<id>
   homeCity?: string;         // injectable for tests; default from profile.md
   jevDegradation?: JevDegradation | null;
+  classificationIdentity?: ClassificationIdentity; // injectable for tests
 };
 
 export function parseProvenance(approvedBy: string | undefined): { kind: Provenance; ref: string } | null {
@@ -353,6 +356,13 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     } else {
       checks.push({ gate: "jev_autopilot_authority", ok: true, detail: "not applicable to agent_fallback" });
     }
+
+    let classificationIdentity: ClassificationIdentity;
+    try { classificationIdentity = opts.classificationIdentity ?? await currentJevCacheIdentity(); }
+    catch (error) { return failGate("autopilot_classification_current", `decision context could not be verified: ${(error as Error).message}`); }
+    const freshnessIssue = classificationFreshnessIssue(opportunity, classificationIdentity);
+    if (freshnessIssue) return failGate("autopilot_classification_current", freshnessIssue);
+    checks.push({ gate: "autopilot_classification_current", ok: true, detail: "advert and decision context unchanged" });
 
     // (d) user-saved (an order to apply) OR core discipline and not parked interstate.
     if (userSaved) {

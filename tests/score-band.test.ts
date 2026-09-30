@@ -8,7 +8,9 @@
  */
 
 import assert from "node:assert/strict";
-import { bandFor, computeFitVerdict, type SkillTaxonomy } from "../tools/score.ts";
+import { bandFor, computeFitVerdict, scoreRole, type SkillTaxonomy } from "../tools/score.ts";
+import { extractMechanicalClassification } from "../tools/classification.ts";
+import { classificationV2 } from "./fixtures/classification-v2.ts";
 
 const taxonomy: SkillTaxonomy = {
   categories: {
@@ -90,3 +92,18 @@ assert.equal(bandFor(100), "over_qualified");
 }
 
 console.log("score band tests passed");
+
+// Current advert terms override stale search-card semantics for hard logistics.
+{
+  const stale = classificationV2({ location_flexibility: "unknown", red_flags: [] });
+  const base = { id: "synthetic", channel: "linkedin_jobs", title: "Solution Architect", company: "Example",
+    url: "https://example.test/role", location: "Melbourne, Victoria, Australia", workArrangement: "hybrid" as const };
+  const interstate = await scoreRole({ ...base, description: "Six-month contract based in Melbourne. Hybrid working." }, stale);
+  assert.match(interstate.ineligible_reason ?? "", /routine interstate attendance/);
+  const pillOnly = await scoreRole({ ...base, description: "Six-month contract delivering technology change." }, stale);
+  assert.match(pillOnly.ineligible_reason ?? "", /routine interstate attendance/, "the channel hybrid pill is explicit attendance evidence");
+  const remote = await scoreRole({ ...base, description: "Six-month contract. Fully remote from anywhere in Australia." }, stale);
+  assert.equal(remote.ineligible_reason, undefined);
+  const onsite = extractMechanicalClassification("Architect", "Contract, 5 days onsite in Sydney.");
+  assert.ok(onsite.red_flags.includes("onsite_5_days"));
+}

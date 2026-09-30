@@ -20,7 +20,7 @@
 import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
-import { isExplicitFixedTermEmployment, type ClassificationV2 } from "./classification.ts";
+import { extractMechanicalClassification, isExplicitFixedTermEmployment, type ClassificationV2 } from "./classification.ts";
 
 export type Role = {
   id: string;
@@ -399,8 +399,14 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
 
   // Recheck explicit current advert terms even when semantic fit is cached.
   const fixedTermEmployee = isExplicitFixedTermEmployment(`${role.title}\n${role.description ?? ""}`);
+  // Enrichment can replace a search-card blurb after a semantic decision was
+  // cached. Explicit terms in the current advert must take effect immediately,
+  // without spending another model call or treating stale semantic output as
+  // authority to keep a role in the apply queue.
+  const currentFacts = extractMechanicalClassification(role.title, role.description ?? "", { location: role.location });
+  const currentRedFlags = new Set([...classification.red_flags, ...currentFacts.red_flags]);
   const red_flag_blocker = fixedTermEmployee ||
-    classification.red_flags.some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time" || f === "clearance_required")
+    [...currentRedFlags].some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time" || f === "clearance_required")
     || relevance < 25   // wholly-irrelevant roles are also blockers
     || noPositioning;
 
@@ -416,7 +422,13 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   // outside the home location fails eligibility; saved-job policy is applied
   // by the lifecycle and submission gate.
   const homeCity = profile.homeCity;
-  const locFlex = (classification as { location_flexibility?: string }).location_flexibility;
+  const locFlex = currentFacts.location_flexibility !== "unknown"
+    ? currentFacts.location_flexibility
+    : role.workArrangement === "remote"
+      ? "remote"
+    : role.workArrangement === "hybrid" || role.workArrangement === "onsite"
+      ? "onsite"
+      : (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
   let ineligible_reason: string | undefined;
   if (fixedTermEmployee) {
@@ -428,7 +440,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   } else if (isInterstate && (!locFlex || locFlex === "unknown")) {
     reasons.push("location flexibility unknown; proceed subject to other eligibility gates");
   } else if (isInterstate && (locFlex === "remote" || locFlex === "flexible")) {
-    reasons.push(`interstate but ${locFlex}: ${(classification as { location_flexibility_quote?: string }).location_flexibility_quote ?? ""}`.trim());
+    reasons.push(`interstate but ${locFlex}: ${currentFacts.location_flexibility_quote || (classification as { location_flexibility_quote?: string }).location_flexibility_quote || ""}`.trim());
   }
 
   // Blockers cap the score so the Sheet ordering matches the pipeline decision.

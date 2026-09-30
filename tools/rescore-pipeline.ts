@@ -11,7 +11,7 @@
 import { promises as fs } from "node:fs";
 import { load, patchMany, setStatus, type Opportunity, type PipelineStatus } from "./pipeline.ts";
 import { scoreRole } from "./score.ts";
-import { canPromoteFromClassification } from "./classification.ts";
+import { canPromoteFromClassification, classificationContentHash } from "./classification.ts";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
 
@@ -87,12 +87,37 @@ export function rescoreStatusDecision(
     outcome: "demoted", reason: result.ineligible_reason,
   };
 
+  if (opportunity.channel === "linkedin_jobs" && (opportunity.description ?? "").length < 80) {
+    if (current === "discovered") return keep("unchanged");
+    return { status: "discovered", outcome: "demoted", reason: "LinkedIn advert has no usable full description" };
+  }
+
+  if (opportunity.channel === "linkedin_jobs" && result.classification.provenance.content_hash !== classificationContentHash({
+    title: opportunity.title, description: opportunity.description ?? "", location: opportunity.location,
+  })) {
+    if (current === "discovered") return keep("unchanged");
+    return { status: "discovered", outcome: "demoted", reason: "LinkedIn advert changed since semantic verification; reclassify the full advert" };
+  }
+
   const classificationEligible = canPromoteFromClassification(result.classification)
     && result.classification.discipline_fit === "core";
   const scoreEligible = !result.red_flag_blocker && result.score >= shortlistMin;
   if (!classificationEligible || !scoreEligible) {
     if (current === "discovered") return keep("unchanged");
     return { status: "discovered", outcome: "demoted" };
+  }
+
+  // A full LinkedIn advert can be a fit while its button still opens an ATS.
+  // Route it straight to attended work, including on first classification.
+  // An unconfirmed button needs another channel check, not a send-ready row.
+  if (opportunity.channel === "linkedin_jobs" && ["discovered", "shortlisted"].includes(current)) {
+    if (opportunity.applyMethod === "external") return {
+      status: "manual_action_needed", outcome: "demoted",
+      reason: "LinkedIn advert opens an external application portal; attended application required",
+    };
+    if (opportunity.applyMethod !== "easy_apply") return current === "discovered"
+      ? keep("unchanged")
+      : { status: "discovered", outcome: "demoted", reason: "LinkedIn application method unconfirmed; advert needs another channel check" };
   }
 
   // Once a still-eligible role has entered package preparation or a genuine
@@ -127,6 +152,9 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
     red_flag_blocker: result.red_flag_blocker,
     classification: result.classification,
     status: decision.status,
+    notes: decision.status === "manual_action_needed" && decision.reason
+      ? [opportunity.notes, decision.reason].filter(Boolean).join("\n")
+      : opportunity.notes,
     parkedReason: decision.parkedReason,
     parkedBy: decision.status === "parked" ? opportunity.parkedBy : undefined,
   };
@@ -135,7 +163,7 @@ export function opportunityWithScoreResult(opportunity: Opportunity, result: Sco
 /** Fields a rescore is allowed to write. Status is not one of them: it moves through `setStatus`. */
 const RESCORE_FIELDS = [
   "workArrangement", "dayRate", "score", "scoreReasons", "red_flag_blocker",
-  "classification", "resumeId", "parkedReason", "parkedBy",
+  "classification", "resumeId", "parkedReason", "parkedBy", "notes",
 ] as const;
 
 export function rescoreFieldPatch(before: Opportunity, after: Opportunity): Partial<Opportunity> {
@@ -214,10 +242,11 @@ export function validateRescoreArgs(argv: string[]): void {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (["--help", "-h", "--all", "--dry-run"].includes(arg)) continue;
-    if (arg === "--ids-file" || arg === "--limit") {
+    if (arg === "--ids-file" || arg === "--limit" || arg === "--status") {
       const value = argv[++i];
       if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
       if (arg === "--limit" && (!Number.isSafeInteger(Number(value)) || Number(value) < 1)) throw new Error("--limit must be a positive integer");
+      if (arg === "--status" && !["discovered", "shortlisted", "parked"].includes(value)) throw new Error("--status must be discovered, shortlisted or parked");
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -228,7 +257,7 @@ async function main() {
   const argv = process.argv.slice(2);
   validateRescoreArgs(argv);
   if (argv.includes("--help") || argv.includes("-h")) {
-    console.log(JSON.stringify({ usage: "pipeline:rescore [--ids-file path] [--all] [--limit N] [--dry-run]", mutates: false }));
+    console.log(JSON.stringify({ usage: "pipeline:rescore [--ids-file path] [--status discovered|shortlisted|parked] [--all] [--limit N] [--dry-run]", mutates: false }));
     return;
   }
   const all = argv.includes("--all");
@@ -236,6 +265,8 @@ async function main() {
   const limitIdx = argv.indexOf("--limit");
   const limit = limitIdx >= 0 ? Number(argv[limitIdx + 1]) : Infinity;
   const idsIdx = argv.indexOf("--ids-file");
+  const statusIdx = argv.indexOf("--status");
+  const statusFilter = statusIdx >= 0 ? argv[statusIdx + 1] as PipelineStatus : null;
   const idsPath = idsIdx >= 0 ? argv[idsIdx + 1] : null;
   const requestedIds: string[] | null = idsPath
     ? JSON.parse(await fs.readFile(idsPath, "utf8"))
@@ -250,7 +281,7 @@ async function main() {
   const roles = await load();
   const eligibleStatuses: PipelineStatus[] = all
     ? RESCORE_MUTABLE_STATUSES
-    : ["discovered", "shortlisted", "parked"];
+    : statusFilter ? [statusFilter] : ["discovered", "shortlisted", "parked"];
   if (targetIds) {
     const pipelineIds = new Set(roles.map((role) => role.id));
     const missingPipelineIds = requestedIds!.filter((id) => !pipelineIds.has(id));

@@ -137,7 +137,9 @@ const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn", "manual_action_needed"],
   awaiting_approval: ["approved", "discovered", "rejected", "withdrawn", "manual_action_needed"],
   approved: ["submission_pending", "submitted", "discovered", "manual_action_needed", "withdrawn"],
-  submission_pending: ["submitted", "manual_action_needed", "withdrawn"],
+  // A channel challenge observed before Submit is attempted is safe to retry
+  // later with the same approved package. An attempted send remains pending.
+  submission_pending: ["submitted", "approved", "manual_action_needed", "withdrawn"],
   submitted: ["responded", "rejected", "withdrawn"],
   responded: ["interview", "rejected", "withdrawn"],
   interview: ["offered", "rejected", "withdrawn"],
@@ -371,31 +373,35 @@ export async function setStatus(
   id: string,
   next: PipelineStatus,
   reason?: string,
-  extras?: { contact?: any; details?: Record<string, unknown>; actor?: string },
+  extras?: { contact?: any; details?: Record<string, unknown>; actor?: string; expectedStatus?: PipelineStatus },
 ): Promise<Opportunity> {
   const s = store();
-  const role = s.get(id);
-  if (!role) throw new Error(`role not found: ${id}`);
-  const allowed = VALID_TRANSITIONS[role.status] ?? [];
-  if (!allowed.includes(next)) {
-    throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
-  }
-  const from = role.status;
-  const at = new Date().toISOString();
-  const extraFields: Partial<Opportunity> = {};
-  if (next === "parked") {
-    extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
-    extraFields.parkedReason = reason ?? role.parkedReason;
-  }
-  if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
-  if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
-
-  const updated = s.transaction(() => {
+  // BEGIN IMMEDIATE must precede the status read. Two independent daily runs
+  // must not both observe approved and claim the same portal submission.
+  const { role, updated } = s.transaction(() => {
+    const role = s.get(id);
+    if (!role) throw new Error(`role not found: ${id}`);
+    if (extras?.expectedStatus && role.status !== extras.expectedStatus) {
+      throw new Error(`status changed from ${extras.expectedStatus} to ${role.status} before transition to ${next}`);
+    }
+    const allowed = VALID_TRANSITIONS[role.status] ?? [];
+    if (!allowed.includes(next)) {
+      throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
+    }
+    const from = role.status;
+    const at = new Date().toISOString();
+    const extraFields: Partial<Opportunity> = {};
+    if (next === "parked") {
+      extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
+      extraFields.parkedReason = reason ?? role.parkedReason;
+    }
+    if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
+    if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
     const row = s.setStatusColumn(id, next, extraFields, at)!;
     const entry = { at, from, to: next, ...(reason ? { reason } : {}) };
     s.appendHistory(id, entry);
     row.history = [...row.history, entry];
-    return row;
+    return { role, updated: row };
   });
 
   await auditLog({
@@ -403,7 +409,7 @@ export async function setStatus(
     role_id: id,
     actor: extras?.actor ?? "pipeline.setStatus",
     channel: role.channel,
-    details: { company: role.company, title: role.title, from, to: next, reason, ...(extras?.details ?? {}) },
+    details: { company: role.company, title: role.title, from: role.status, to: next, reason, ...(extras?.details ?? {}) },
     contact: extras?.contact ?? null,
     provenance: { url: role.url, channel: role.channel },
   });
