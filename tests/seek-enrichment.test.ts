@@ -7,7 +7,7 @@ const dir = await mkdtemp(path.join(tmpdir(), "seek-enrichment-"));
 process.env.PIPELINE_DB = path.join(dir, "pipeline.db");
 process.env.AUDIT_DIR = path.join(dir, "audit");
 const { get, upsertMany } = await import("../tools/pipeline.ts");
-const { closeSeekAdvertFromHeadings } = await import("../tools/channels/seek.ts");
+const { closeSeekAdvertFromHeadings, closeSeekAdvertFromPageText, isPendingSavedSeekRole } = await import("../tools/channels/seek.ts");
 try {
   const base = { channel: "seek", title: "Architect", company: "Example", url: "https://www.seek.com.au/job/123", description: "Original advert retained" };
   await upsertMany([
@@ -16,6 +16,8 @@ try {
     { ...base, id: "sent", status: "submitted", submittedAt: "2026-01-01T00:00:00Z" },
     { ...base, id: "pending", status: "submission_pending" },
     { ...base, id: "open", status: "shortlisted", postedAt: "2020-01-01" },
+    { ...base, id: "closed-text", status: "shortlisted" },
+    { ...base, id: "saved-rejected", status: "rejected", userSaved: true },
   ], { digest: false });
   const headings = ["This job is no longer advertised"];
   assert.equal(await closeSeekAdvertFromHeadings((await get("closed"))!, headings), true);
@@ -31,7 +33,19 @@ try {
     assert.equal((await get(id))!.status, before.status, "never discard a confirmed or uncertain send");
   }
   for (const text of ["", "Just a moment...", "Verify you are human", "Architect", "We support clients whose job is no longer advertised"]) {
-    assert.equal(await closeSeekAdvertFromHeadings((await get("open"))!, [text]), false);
+  assert.equal(await closeSeekAdvertFromHeadings((await get("open"))!, [text]), false);
+  }
+  const closedPage = "Skip to content SEEK Job search This job is no longer advertised Jobs remain on SEEK for 30 days, unless the advertiser removes them sooner. Search for another job";
+  assert.equal(isPendingSavedSeekRole((await get("saved-rejected"))!), true);
+  assert.equal(await closeSeekAdvertFromPageText((await get("closed-text"))!, closedPage), true);
+  assert.equal((await get("closed-text"))!.status, "rejected");
+  assert.equal(await closeSeekAdvertFromPageText((await get("saved-rejected"))!, closedPage), true);
+  assert.equal((await get("saved-rejected"))!.status, "rejected");
+  assert.ok((await get("saved-rejected"))!.channelExpiredAt);
+  assert.equal(isPendingSavedSeekRole((await get("saved-rejected"))!), false);
+  assert.equal(await closeSeekAdvertFromPageText((await get("saved-rejected"))!, closedPage), false);
+  for (const text of ["Verify you are human", "We support clients whose job is no longer advertised", "This job is no longer advertised. Apply now for a new job."]) {
+    assert.equal(await closeSeekAdvertFromPageText((await get("open"))!, text), false);
   }
   assert.equal((await get("open"))!.status, "shortlisted", "age and generic page failures are not expiry evidence");
   console.log("SEEK enrichment closed-advert lifecycle tests passed");

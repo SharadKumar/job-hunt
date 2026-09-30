@@ -117,8 +117,15 @@ export async function closeOpportunityAsExpired(
   signal: { source: "description" | "channel"; closingDate?: string; channelName?: string },
   opts: { apply?: boolean } = {},
 ): Promise<ExpiryResult | null> {
-  const row = await get(id);
-  if (!row || !EXPIRABLE_STATUSES.has(row.status)) return null;
+  let row = await get(id);
+  if (!row || row.channelExpiredAt) return null;
+  if (row.status === "rejected" && row.userSaved && signal.source === "channel") {
+    if (!opts.apply) return { id, from: row.status, to: "rejected", expired: true, closing_date: null, source: signal.source, reason: `opening expired on ${signal.channelName ?? row.channel}` };
+    // Saved rows may have been rejected by classification; channel evidence
+    // supersedes that reason and needs a normal audited close transition.
+    row = await setStatus(id, "discovered", "saved advert reopened for channel expiry", { actor: "pipeline.expiry" });
+  }
+  if (!EXPIRABLE_STATUSES.has(row.status)) return null;
   const to = closedStatus(row.status);
   const reason = signal.source === "channel"
     ? `opening expired on ${signal.channelName ?? row.channel}`
@@ -128,6 +135,7 @@ export async function closeOpportunityAsExpired(
       await patch(id, { closingDate: signal.closingDate, closingDateSource: signal.source }, "pipeline.expiry", "explicit advert deadline");
     }
     await setStatus(id, to, reason, { actor: "pipeline.expiry", details: { expiry_source: signal.source, closing_date: signal.closingDate ?? null } });
+    if (signal.source === "channel") await patch(id, { channelExpiredAt: new Date().toISOString() }, "pipeline.expiry", reason);
   }
   return { id, from: row.status, to, expired: true, closing_date: signal.closingDate ?? null, source: signal.source, reason };
 }
