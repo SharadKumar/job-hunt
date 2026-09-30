@@ -10,11 +10,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import type { Classification } from "../tools/classify-jd.ts";
 import type { Opportunity } from "../tools/pipeline.ts";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
+import { classificationContentHash } from "../tools/classification.ts";
+import { classificationV2 } from "./fixtures/classification-v2.ts";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rescore-targeting-"));
 
 // Both must be set before pipeline.ts is evaluated: the store resolves its file
@@ -24,7 +24,24 @@ process.env.AUDIT_DIR = path.join(tempRoot, "audit");
 
 // Every runtime import happens after those are set: a static import would
 // evaluate audit.ts first, which pins AUDIT_DIR at module load.
-const { selectOpportunitiesForRescore, applyRescore } = await import("../tools/rescore-pipeline.ts");
+const { selectOpportunitiesForRescore, applyRescore, rescoreStatusDecision, validateRescoreArgs } = await import("../tools/rescore-pipeline.ts");
+validateRescoreArgs(["--help"]);
+validateRescoreArgs(["--ids-file", "ids.json", "--limit", "2", "--dry-run"]);
+validateRescoreArgs(["--status", "shortlisted"]);
+for (const args of [["--ids"], ["--limit"], ["--ids-file"], ["--status", "submitted"], ["--limit", "NaN"], ["--limit", "0"], ["--bogus"]]) {
+  assert.throws(() => validateRescoreArgs(args));
+}
+// The actual CLI must exit before opening or creating the pipeline store.
+for (const args of [["--help"], ["--bogus"], ["--ids-file"]]) {
+  const probeDb = path.join(tempRoot, `cli-${args[0].slice(2)}.db`);
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)),
+    fileURLToPath(new URL("../tools/rescore-pipeline.ts", import.meta.url)), ...args], {
+    env: { ...process.env, PIPELINE_DB: probeDb }, encoding: "utf8", timeout: 20_000,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, args[0] === "--help" ? 0 : 1);
+  assert.equal(fs.existsSync(probeDb), false, "help and invalid arguments must not open the pipeline");
+}
 const { upsertMany, patch, setStatus, get } = await import("../tools/pipeline.ts");
 
 // --- selection --------------------------------------------------------------
@@ -58,22 +75,40 @@ console.log("Targeted rescore selection test passed");
 
 // --- what a rescore may move ------------------------------------------------
 
-const agentClassification = JSON.parse(
-  fs.readFileSync(path.join(here, "fixtures", "rescore", "agent-classification.json"), "utf8"),
-) as Classification;
+const automaticClassification = classificationV2();
 
 const SHORTLIST_MIN = 55;
 
-function scoreResult(score: number, extra: { parked_reason?: string; red_flag_blocker?: boolean } = {}) {
+function scoreResult(score: number, extra: { ineligible_reason?: string; red_flag_blocker?: boolean; classification?: typeof automaticClassification } = {}) {
   return {
     score,
-    reasons: [`classifier: ${agentClassification._classifier}`],
+    reasons: [`classification: ${automaticClassification.source}/${automaticClassification.status}`],
     red_flag_blocker: extra.red_flag_blocker ?? false,
     breakdown: {} as any,
-    classification: agentClassification,
-    parked_reason: extra.parked_reason,
+    classification: extra.classification ?? automaticClassification,
+    ineligible_reason: extra.ineligible_reason,
   } as Awaited<ReturnType<typeof import("../tools/score.ts").scoreRole>>;
 }
+
+const oldHold = { ...role("old-hold", "parked"), parkedReason: "interstate onsite (Example city)" };
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "rejected");
+assert.equal(rescoreStatusDecision({ ...oldHold, userSaved: true }, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision({ ...oldHold, parkedBy: "user" }, scoreResult(80), 55).status, "parked");
+assert.equal(rescoreStatusDecision({ ...oldHold, parkedReason: "Waiting for an agreed start date" }, scoreResult(80), 55).status, "parked");
+assert.equal(rescoreStatusDecision(oldHold, scoreResult(80, { classification: classificationV2({ status: "uncertain" }) }), 55).status, "discovered");
+const linkedinQueue = { ...role("linkedin-external", "shortlisted"), channel: "linkedin_jobs", applyMethod: "external" as const, description: "A full detailed contract advert for a solutions architect with delivery leadership and enterprise integration responsibilities." };
+const linkedinCurrent = classificationV2({ provenance: { ...automaticClassification.provenance,
+  content_hash: classificationContentHash({ title: linkedinQueue.title, description: linkedinQueue.description }),
+} });
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { classification: linkedinCurrent }), 55).status, "manual_action_needed");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, status: "discovered" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "manual_action_needed");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, description: "card" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80), 55).status, "discovered", "a stale search-card decision cannot promote the full advert");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { classification: classificationV2({ ...linkedinCurrent, status: "uncertain" }) }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, applyMethod: "unknown" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "discovered");
+assert.equal(rescoreStatusDecision({ ...linkedinQueue, applyMethod: "easy_apply" }, scoreResult(80, { classification: linkedinCurrent }), 55).status, "shortlisted");
+assert.equal(rescoreStatusDecision(linkedinQueue, scoreResult(80, { ineligible_reason: "routine interstate attendance" }), 55).status, "rejected");
 
 const card = (n: number, title: string) => ({
   channel: "seek",
@@ -88,16 +123,17 @@ const card = (n: number, title: string) => ({
 const statusMoves = (row: Opportunity) => row.history.filter((h) => h.from !== h.to);
 
 try {
-  const [parkedRow, discoveredRow, awaitingRow, shortlistedRow, probeRow] = await upsertMany([
+  const [parkedRow, discoveredRow, awaitingRow, shortlistedRow, probeRow, manualRow] = await upsertMany([
     card(1, "Parked interstate architect"),
     card(2, "Discovered architect"),
     card(3, "Awaiting approval architect"),
     card(4, "Shortlisted architect"),
     card(5, "Transition probe"),
+    card(6, "Manual blocker under an uncertain decision"),
   ]);
 
   await setStatus(parkedRow.id, "parked", "interstate onsite; user ruled on it");
-  await patch(parkedRow.id, { parkedReason: "interstate onsite (Melbourne VIC)" }, "seed");
+  await patch(parkedRow.id, { parkedReason: "interstate onsite (Melbourne VIC)", parkedBy: "user" }, "seed");
 
   await setStatus(awaitingRow.id, "shortlisted", "fits");
   await setStatus(awaitingRow.id, "drafted", "package assembled");
@@ -105,6 +141,7 @@ try {
 
   await setStatus(shortlistedRow.id, "shortlisted", "fits");
   await setStatus(probeRow.id, "shortlisted", "fits");
+  await setStatus(manualRow.id, "manual_action_needed", "old blocker");
 
   // Does the live transition table allow the demotion a rescore wants to make?
   let demotionAllowed = true;
@@ -122,6 +159,9 @@ try {
     { before: (await get(discoveredRow.id))!, result: scoreResult(88) },
     { before: awaitingBefore, result: scoreResult(91) },
     { before: (await get(shortlistedRow.id))!, result: scoreResult(18) },
+    { before: (await get(manualRow.id))!, result: scoreResult(82, {
+      classification: classificationV2({ status: "uncertain" }),
+    }) },
   ], SHORTLIST_MIN);
 
   // 1. A parked row with a reason keeps its hold, however well it now scores.
@@ -140,7 +180,7 @@ try {
   const promoted = (await get(discoveredRow.id))!;
   assert.equal(promoted.status, "shortlisted");
   assert.equal(promoted.score, 88);
-  assert.equal(promoted.classificationSource, "agent");
+  assert.equal(promoted.classification?.source, "jev");
   const move = statusMoves(promoted).at(-1)!;
   assert.equal(move.from, "discovered");
   assert.equal(move.to, "shortlisted");
@@ -169,21 +209,20 @@ try {
   // 4. A shortlisted row that drops below the threshold leaves the apply queue.
   const demoted = (await get(shortlistedRow.id))!;
   assert.equal(demoted.score, 18, "the new score is written either way");
-  if (demotionAllowed) {
-    assert.equal(demoted.status, "discovered", "a sub-threshold row leaves the queue");
-    const back = statusMoves(demoted).at(-1)!;
-    assert.equal(back.from, "shortlisted");
-    assert.equal(back.to, "discovered");
-    assert.match(back.reason ?? "", /rescore/);
-    assert.equal(counts.demoted, 1);
-  } else {
-    // tools/pipeline.ts does not yet list `discovered` under `shortlisted` in
-    // VALID_TRANSITIONS. The rescore must not force the move; it leaves the row
-    // alone and reports nothing demoted.
-    assert.equal(demoted.status, "shortlisted", "a refused transition leaves the row where it is");
-    assert.equal(counts.demoted, 0, "a refused move is not reported as demoted");
-    console.log("Note: shortlisted → discovered is not in VALID_TRANSITIONS; the demotion path is inert until tools/pipeline.ts allows it");
-  }
+  assert.equal(demotionAllowed, true, "the state machine permits queue reconciliation");
+  assert.equal(demoted.status, "discovered", "a sub-threshold row leaves the queue");
+  const back = statusMoves(demoted).at(-1)!;
+  assert.equal(back.from, "shortlisted");
+  assert.equal(back.to, "discovered");
+  assert.match(back.reason ?? "", /rescore/);
+
+  // 5. Historical work does not pin an uncertain row in Needs you. The row,
+  //    package and history remain available under discovered.
+  const reconciled = (await get(manualRow.id))!;
+  assert.equal(reconciled.status, "discovered", "an uncertain unsubmitted row leaves the active queue");
+  assert.equal(statusMoves(reconciled).at(-1)?.from, "manual_action_needed");
+  assert.equal(statusMoves(reconciled).at(-1)?.to, "discovered");
+  assert.equal(counts.demoted, 2);
 
   console.log("Rescore status-targeting tests passed");
 } finally {

@@ -32,7 +32,23 @@ process.env.PIPELINE_DB = path.join(root, "pipeline.db");
 process.env.AUDIT_DIR = path.join(root, "audit");
 
 const { upsert, setStatus, patch } = await import("../tools/pipeline.ts");
-const { buildSummary, renderMarkdown } = await import("../tools/daily-summary.ts");
+const { buildSummary, renderMarkdown, journalObservations, manualEscalation } = await import("../tools/daily-summary.ts");
+assert.deepEqual(journalObservations("- unrelated\n## Observations for the user\n- Review repeated critic finding\n## Sent unattended\n- Not a review item"), ["Review repeated critic finding"]);
+const unpreparedPortal = await manualEscalation({
+  id: "synthetic-external", title: "Architect", company: "Example", url: "https://example.test/job",
+  notes: "LinkedIn opens an external application portal. Package is not prepared yet; review eligibility, prepare it, then complete the portal in an attended session.",
+  history: [],
+} as any);
+assert.match(unpreparedPortal?.action ?? "", /Prepare the package with \/manual-applications/);
+const seekChallenge = await manualEscalation({
+  id: "synthetic-seek-challenge", channel: "seek", title: "Architect", company: "Example", url: "https://www.seek.com.au/job/123",
+  notes: "[autopilot daily-test] SEEK human verification required; open npm run login:seek and complete verification before retrying",
+  history: [],
+} as any);
+assert.equal(seekChallenge?.kind, "channel");
+assert.match(seekChallenge?.reason ?? "", /before the application form opened/);
+assert.match(seekChallenge?.action ?? "", /retry this package through autopilot:submit/);
+assert.doesNotMatch(seekChallenge?.action ?? "", /submit yourself|rejected\/withdrawn/);
 
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
 const SCREENING = path.join(root, "state/profile/screening-answers.yaml");
@@ -96,6 +112,10 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
 
 {
   const s = await buildSummary(today);
+  assert.equal(s.automation?.prepared, 0, "an approved-lane package with a screening blocker is not awaiting validation");
+  assert.equal(s.automation?.awaitingScreening, 1, "count blocked packages once, independently of the number of questions");
+  assert.match(renderMarkdown(s), /1 prepared package needs screening answers before retry/);
+  assert.doesNotMatch(renderMarkdown(s), /The next run will validate and submit eligible packages/, "do not promise submission while every prepared package needs an answer");
   const keys = s.escalations.map((e) => `${e.id ?? e.reason}::${e.kind}`);
   assert.equal(new Set(keys).size, keys.length, `no duplicate (id, kind) escalations: ${keys.join(" | ")}`);
   assert.deepEqual(s.errors, [], "readable state produces no errors");
@@ -115,7 +135,7 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   // the same ask as answering a screening question.
   assert.deepEqual(
     s.escalations.filter((e) => e.id === approvalId).map((e) => e.kind).sort(),
-    ["awaiting_approval", "screening"],
+    ["screening"],
     "one entry per kind for the Tray row",
   );
   assert.equal(s.escalations.filter((e) => e.id === pendingId)[0].kind, "submission_pending");
@@ -123,7 +143,8 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   console.log("  ✓ escalations are keyed by (opportunity, kind) and merged");
 
   // ---------- journal problems ----------
-  const journalLines = s.escalations.filter((e) => e.reason.startsWith("Journal:")).map((e) => e.reason);
+  const journalLines = s.operationalNotes ?? [];
+  assert.ok(!s.escalations.some(e => e.reason.startsWith("Journal:")), "journal prose cannot invent a user approval request");
   assert.equal(journalLines.length, 1, `exactly one journal problem, got: ${journalLines.join(" | ")}`);
   assert.match(journalLines[0], /session expired mid-hunt/, "the real failure is reported");
   for (const healthy of ["healthy", "No login/DOM errors", "no login issues", "all succeeded", "saved list"]) {
@@ -139,13 +160,79 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   assert.ok(!md.includes("## State errors"), "no error section when state reads cleanly");
   assert.ok(!/[—–]/.test(md), "no em or en dashes");
   assert.equal(s.numbers.sentToday, 1);
+  assert.match(md, /- \d{1,2}:\d{2} [ap]m /, "send times use human-readable 12-hour format");
+  assert.ok(md.includes("## Historical run observations"));
+  assert.ok(md.includes("They are not current blockers"), "journal history is not presented as live health");
+  assert.ok(renderMarkdown({ ...s, observations: ["Review repeated critic finding"] }).includes("## Observations for the user\n\n- Review repeated critic finding"));
   assert.equal(s.numbers.manual, 2);
   assert.equal(s.numbers.queue, 1);
   assert.equal(s.numbers.parked, 1);
   console.log("  ✓ markdown shape unchanged");
 }
 
+{
+  await seed("Prepared Platform Lead", "Ready Example", ["shortlisted", "drafted", "awaiting_approval", "approved"]);
+  const report = write(`state/journal/front-half/${today}.json`, JSON.stringify({
+    channel_health: { seek: { verification_required: true } },
+  }));
+  const s = await buildSummary(today);
+  assert.match(s.automation?.blocker ?? "", /SEEK challenged the harness browser/);
+  assert.ok(s.escalations.some(e => e.kind === "channel" && /advert enrichment/.test(e.reason)),
+    "a front-half challenge is visible even without a manual submission row");
+  fs.rmSync(report);
+  console.log("  ✓ front-half SEEK challenge reaches the daily summary");
+}
+
+{
+  const report = write(`state/journal/priority/${today}.json`, JSON.stringify({
+    ok: true, selected: 3, attempts: [{ outcome: "channel_verification_required" }, { outcome: "submitted" }],
+    telemetry: { submitted: 1, time_to_first_send_ms: 87_000 },
+  }));
+  const s = await buildSummary(today);
+  assert.deepEqual(s.priority, { ok: true, ready: 3, attempted: 2, submitted: 1, firstSendMs: 87_000 });
+  assert.match(renderMarkdown(s), /First confirmed send: 87 seconds from pass start/);
+  fs.rmSync(report);
+  console.log("  ✓ priority throughput is visible without inferring sends from attempts");
+}
+
+{
+  await seed("Saved Architect", "Challenge Example", ["manual_action_needed"], {
+    notes: "[autopilot daily-test] SEEK human verification required; open npm run login:seek and complete verification before retrying",
+  });
+  await seed("Prepared Integration Lead", "Ready Example", ["shortlisted", "drafted", "awaiting_approval", "approved"]);
+  const s = await buildSummary(today);
+  assert.match(s.automation?.blocker ?? "", /SEEK challenged the harness browser/);
+  const md = renderMarkdown(s);
+  assert.match(md, /Submission paused: SEEK challenged the harness browser/);
+  assert.doesNotMatch(md, /The next run will validate and submit eligible packages/, "do not promise a send while the channel is challenged");
+  console.log("  ✓ SEEK verification is a channel blocker, not an individual approval request");
+}
+
 // ---------- missing files are allowed ----------
+
+{
+  const original = fs.readFileSync(SCREENING, "utf8");
+  fs.appendFileSync(SCREENING, `\n  - opportunity_id: ${manualScreeningId}\n    question: Do you hold a current NV1 clearance?\n    answer: "No."\n`);
+  const s = await buildSummary(today);
+  assert.equal(s.escalations.some((e) => e.id === manualScreeningId), false, "a banked exact answer is run-owned retry work, not a user escalation");
+  assert.equal(s.numbers.unansweredQuestions, 1);
+  fs.writeFileSync(SCREENING, original);
+  console.log("  ✓ banked answers leave Needs you without erasing the row");
+}
+
+{
+  const original = fs.readFileSync(SCREENING, "utf8");
+  const nextQuestion = "Do you have a Scrum Master Certification?";
+  await patch(manualScreeningId, { notes: `unknown screening question: "Do you hold a current NV1 clearance?"\nunknown screening question: "${nextQuestion}"` }, "test");
+  fs.appendFileSync(SCREENING, `\n  - opportunity_id: ${manualScreeningId}\n    question: '${nextQuestion}'\n    answer: null\n`);
+  const s = await buildSummary(today);
+  const row = s.escalations.filter(e => e.id === manualScreeningId);
+  assert.equal(row.length, 1);
+  assert.ok(row[0].reason.includes(nextQuestion), "latest form blocker wins over historical ledger entries");
+  assert.equal(s.numbers.unansweredQuestions, 2, "superseded question is retained in the ledger but not counted as current");
+  fs.writeFileSync(SCREENING, original);
+  await patch(manualScreeningId, { notes: 'unknown screening question: "Do you hold a current NV1 clearance?"' }, "test");
+}
 
 {
   fs.renameSync(SCREENING, `${SCREENING}.away`);

@@ -123,8 +123,7 @@ await test("actionFor reads the run's own reason before the row's status", () =>
     "https://example.test/ad",
     "a portal action carries the advert to open",
   );
-  assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").kind, "retry");
-  assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").post, "retry");
+  assert.equal(ext.actionFor(row, "letter-critic block (2 fail): scope wording").kind, "in_flight");
   const duplicate = ext.actionFor(row, "Duplicate of LH-07526; another agency represents it");
   assert.equal(duplicate.kind, "decide", "a duplicate is a decision, not a single move");
   assert.equal(duplicate.primary, false, "there is no default choice on a duplicate");
@@ -144,17 +143,62 @@ await test("a retry is offered only where the state machine allows one", () => {
   const at = (status: string, reason: string, lane?: "autopilot" | "attended") =>
     ext.actionFor({ id: "seek-2", status, url: "https://example.test/ad", channel: "recruiter" }, reason, lane);
 
-  assert.equal(at("manual_action_needed", letter).kind, "retry", "a blocked row is where a retry belongs");
-  assert.equal(at("awaiting_approval", letter).kind, "retry", "and an approval waiting on a fixed letter");
+  assert.equal(at("manual_action_needed", letter).kind, "in_flight", "the daily run owns the automatic letter repair");
+  assert.equal(at("awaiting_approval", letter).kind, "in_flight", "an approval waiting on a fixed letter is still run-owned");
   assert.equal(at("shortlisted", letter).kind, "in_flight", "a queued row falls through to what it is actually doing");
   assert.equal(at("parked", letter).kind, "unpark", "and a parked row to the one move it has");
   assert.equal(at("drafted", letter).kind, "in_flight");
+
+  const manualRetry = at("manual_action_needed", "adapter failed after login expired");
+  assert.equal(manualRetry.kind, "retry");
+  assert.equal(ext.needsYou(manualRetry), true, "a generic manual retry stays visible to the person");
+  assert.equal(ext.needsYouGroup(manualRetry), "decide");
 
   const dup = "already submitted to this advertiser within 60 days; needs a user decision";
   assert.equal(at("manual_action_needed", dup).kind, "decide");
   assert.equal(at("awaiting_approval", dup).kind, "decide");
   assert.equal(at("parked", dup).kind, "unpark", "a duplicate note on a parked row is not a decision to take here");
   assert.equal(at("submitted", dup).kind, "none", "and a sent row is done whatever its note says");
+});
+
+await test("resolved screening is run-owned, exact, and never bypasses a portal", () => {
+  const row = { id: "seek-answer", status: "manual_action_needed", channel: "seek" };
+  const reason = 'unknown screening question: "How many years?"';
+  const bank = { unknown: [{ opportunity_id: row.id, question: "How many years?", answer: "0" }], skills_years: {}, answers_count: 0, path: "fixture" } as any;
+  assert.equal(ext.screeningResolved(row.id, reason, bank), true);
+  assert.equal(ext.screeningResolved("other", reason, bank), false);
+  assert.equal(ext.screeningResolved(row.id, 'unknown screening question: "New question?"', bank), false);
+  assert.equal(ext.screeningResolved(row.id, reason, { ...bank, unknown: [...bank.unknown, { ...bank.unknown[0], answer: null }] }), false);
+  const resolved = ext.actionFor(row, reason, "autopilot", true);
+  assert.equal(resolved.kind, "in_flight");
+  assert.equal(ext.needsYou(resolved), false);
+  assert.equal(ext.actionFor(row, reason, "autopilot", false).kind, "answer");
+  assert.equal(ext.actionFor(row, reason, "attended", true).kind, "attended_send");
+  assert.equal(ext.actionFor(row, "external ATS: example.test", "autopilot", true).kind, "portal");
+  for (const status of ["discovered", "parked", "rejected", "withdrawn", "submitted"]) {
+    assert.equal(ext.needsYou(ext.actionFor({ ...row, status }, "external ATS: example.test", "attended", true)), false);
+  }
+});
+
+await test("live answer changes refresh list and detail without a status rewrite", async () => {
+  const file = path.join(profileDir, "screening-answers.yaml");
+  const before = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  const id = "seek-recovery-fixture";
+  await upsert({ id, channel: "seek", title: "Recovery fixture", company: "Fixture", url: "https://example.test/recovery", status: "manual_action_needed", notes: 'unknown screening question: "Years?"' } as any);
+  try {
+    fs.writeFileSync(file, `unknown_questions:\n  - opportunity_id: ${id}\n    question: "Years?"\n    answer: null\n`);
+    const unresolved = await ext.getRowDetailPlus(id, ctx);
+    assert.equal(unresolved.action.kind, "answer");
+    fs.writeFileSync(file, `unknown_questions:\n  - opportunity_id: ${id}\n    question: "Years?"\n    answer: 0\n`);
+    const detail = await ext.getRowDetailPlus(id, ctx);
+    assert.equal(detail.action.kind, "in_flight");
+    const listing = await ext.getRowsWithActions({ status: "manual_action_needed" }, ctx);
+    assert.equal(listing.rows.find(r => r.id === id)?.needs_you, false);
+    assert.equal((await get(id))?.status, "manual_action_needed", "reading does not rewrite history");
+  } finally {
+    if (before === null) fs.unlinkSync(file); else fs.writeFileSync(file, before);
+    await setStatus(id, "rejected", "fixture cleanup");
+  }
 });
 
 await test("actionFor falls back to the status when the reason says nothing", () => {
@@ -196,7 +240,7 @@ await test("GET /api/rows returns the derived action beside every row", async ()
   assert.equal(result.status, 200);
   const rows = (result.body as any).rows as any[];
   const byId = new Map(rows.map((r) => [r.id, r]));
-  assert.equal(byId.get(blockedId)!.action.kind, "retry");
+  assert.equal(byId.get(blockedId)!.action.kind, "in_flight");
   assert.equal(byId.get(parkedId)!.action.kind, "unpark");
   assert.equal(byId.get(approveId)!.action.kind, "in_flight",
     "a SEEK row awaiting approval is not waiting on a yes: the daily run sends it");
@@ -262,7 +306,7 @@ await test("on the autopilot lane there is nothing to approve, only something to
   assert.match(linkedin.note ?? "", /LinkedIn Easy Apply adapter/);
 
   const blocked = ext.actionFor({ ...row, status: "manual_action_needed" }, "letter-critic block (1 fail): scope wording", "autopilot");
-  assert.equal(blocked.kind, "retry", "a row the run could not finish keeps the derivations it always had");
+  assert.equal(blocked.kind, "in_flight", "an automatic letter repair remains the run's work");
   const asked = ext.actionFor({ ...row, status: "manual_action_needed" }, 'unknown screening question: "How many years"', "autopilot");
   assert.equal(asked.kind, "answer");
 });
@@ -412,10 +456,10 @@ await test("every row carries the Needs you group the screen heads it under", as
   }, ctx);
   const rows = (result.body as any).rows as any[];
   const byId = new Map(rows.map((r) => [r.id, r]));
-  // A letter block is the run being asked for another letter: the person is
-  // waiting on it rather than doing anything about it.
-  assert.equal(byId.get(blockedId)!.needs_you_group, "waiting_redraft");
-  assert.equal(byId.get(portalId)!.needs_you_group, "open_portal", "a portal row is work the person opens");
+  // A letter block is automatic repair work and does not become a user queue.
+  assert.equal(byId.get(blockedId)!.needs_you, false);
+  assert.equal(byId.get(blockedId)!.needs_you_group, null);
+  assert.equal(byId.get(portalId)!.needs_you_group, null, "an unchecked portal package is harness-owned preparation");
   assert.equal(typeof (result.body as any).total, "number", "and the response says how many matched before the limit");
 
   const capped = await handleApi({
@@ -423,6 +467,18 @@ await test("every row carries the Needs you group the screen heads it under", as
   }, ctx);
   assert.equal((capped.body as any).rows.length, 1, "the limit trims the rows");
   assert.equal((capped.body as any).total, rows.length, "and the total is what the header counts against");
+});
+
+await test("portal readiness requires a passing verdict for the exact current letter", async () => {
+  const dir = path.join(archiveDir, portalId);
+  fs.mkdirSync(dir, { recursive: true });
+  const letter = "Fixture letter";
+  fs.writeFileSync(path.join(dir, "cover-letter.md"), letter);
+  const { sha256Text } = await import("../tools/letter-critic.ts");
+  fs.writeFileSync(path.join(dir, "letter-critic.json"), JSON.stringify({ verdict: "pass", letter_sha256: sha256Text(letter), findings: [] }));
+  assert.equal((await ext.getRowDetailPlus(portalId, ctx)).action.kind, "portal");
+  fs.writeFileSync(path.join(dir, "cover-letter.md"), `${letter} changed`);
+  assert.equal((await ext.getRowDetailPlus(portalId, ctx)).action.kind, "in_flight");
 });
 
 const sentId = await seed("Integration Lead", "Port Authority", ["shortlisted", "drafted", "awaiting_approval", "approved", "submitted"], { score: 70 }, "sent");
@@ -536,7 +592,7 @@ await test("the row detail finds a package the row never recorded a draftDir for
   assert.match(body.package.cover_letter, /Dear hiring team/, "the archive folder named after the row is the fallback");
   assert.match(body.package.jd, /Solution Architect at Acme Federal/);
   assert.ok(body.package_files.includes("cover-letter.md"), "the detail lists what is in the package");
-  assert.equal(body.action.kind, "retry", "the detail derives the same action as the list");
+  assert.equal(body.action.kind, "in_flight", "the detail derives the same action as the list");
 });
 
 // ---------------------------------------------------------------------------
@@ -565,7 +621,7 @@ await test("the rest of the table: unanswered, duplicate, letter block, to appro
   const dup = ext.actionFor(row, "already submitted to this advertiser within 60 days; needs a user decision");
   assert.equal(dup.kind, "decide");
   assert.deepEqual(dup.also.map((a) => a.label), ["Reject as duplicate"]);
-  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording").kind, "retry");
+  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording").kind, "in_flight");
   assert.equal(ext.actionFor({ ...row, status: "awaiting_approval" }, "package drafted").kind, "approve");
 });
 
@@ -603,7 +659,7 @@ await test("a gate refusal is not a retry: the row says what stopped it", () => 
     "Recruiter is not on the autopilot list; send it in an attended session.");
 
   // A run that failed at something a rerun could fix keeps its retry.
-  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording", "autopilot").kind, "retry");
+  assert.equal(ext.actionFor(row, "letter-critic block (1 fail): scope wording", "autopilot").kind, "in_flight");
   assert.equal(ext.actionFor(row, 'unknown screening question: "How many years"', "autopilot").kind, "answer");
   assert.equal(ext.actionFor(row, "adapter failed on the review page", "autopilot").kind, "retry");
 });

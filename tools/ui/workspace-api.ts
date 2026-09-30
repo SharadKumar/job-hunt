@@ -144,6 +144,9 @@ export type RunSummary = {
   note: string | null;
   /** The instant the log's own start line carries, so a screen can say when(). */
   started_at: string | null;
+  /** Last log activity is evidence of reporting, not proof of process health. */
+  last_activity_at?: string | null;
+  preparation_issues?: boolean;
 };
 
 /** One application the run lodged, as the summary recorded it. */
@@ -195,6 +198,8 @@ export type RunDetail = {
   log_truncated: boolean;
   log_path: string | null;
   letters_sent: { title: string; letter: string }[];
+  /** Deterministic pre-agent work for this date, when the new front half ran. */
+  front_half: Record<string, unknown> | null;
 };
 
 /**
@@ -239,8 +244,11 @@ function leadingNumber(value: string | undefined): number | null {
 export function runTally(markdown: string): { sent: number | null; blocked: number | null } {
   const numbers = parseNumbersTable(markdown);
   const sent = leadingNumber(numbers["Sent today"]);
-  const blocked = leadingNumber(numbers["Manual"]);
-  if (sent !== null || blocked !== null) return { sent, blocked };
+  // The detail page lists parsed operational escalations. Use that exact list
+  // for the browser tally too, rather than a legacy "Manual" table cell whose
+  // meaning changed over time.
+  const blocked = parseEscalations(markdown).length;
+  if (sent !== null || blocked > 0) return { sent, blocked };
   const headline = /Sent\s+(\d+),\s*escalations\s+(\d+)/i.exec(markdown);
   return headline ? { sent: Number(headline[1]), blocked: Number(headline[2]) } : { sent: null, blocked: null };
 }
@@ -337,6 +345,19 @@ async function readRun(date: string, ctx: ApiContext): Promise<{
   const fromLog = ends
     ? parseRunLog(ends.head, ends.tail, { mtime_ms: ends.mtime_ms })
     : { exit_code: null, duration_s: null, running: false, note: null, started_at: null };
+  const front = await readFrontHalf(date, ctx);
+  // Ignore a previous execution's checkpoint when the wrapper has restarted.
+  const matches = front && fromLog.started_at && Date.parse(String(front.started_at)) >= Date.parse(fromLog.started_at);
+  const activity = matches ? Date.parse(String(front.updated_at)) : NaN;
+  let alive = false;
+  if (matches && front.running === true && Number.isInteger(front.pid) && Number(front.pid) > 0) {
+    try { process.kill(Number(front.pid), 0); alive = true; } catch {}
+  }
+  if (fromLog.exit_code === null && alive && Date.now() - activity < 60_000 && activity <= Date.now()) {
+    fromLog.running = true;
+    fromLog.note = null;
+    fromLog.duration_s = Math.max(0, (Date.now() - Date.parse(fromLog.started_at!)) / 1000);
+  }
   // Head and tail are the same bytes when the file is smaller than one edge,
   // so joining them blindly would print a short log twice.
   const truncated = ends !== null && ends.head !== ends.tail;
@@ -354,12 +375,21 @@ async function readRun(date: string, ctx: ApiContext): Promise<{
       running: fromLog.running,
       note: fromLog.note,
       started_at: fromLog.started_at,
+      last_activity_at: Number.isFinite(activity) && activity > (ends?.mtime_ms ?? 0) ? new Date(activity).toISOString() : ends ? new Date(ends.mtime_ms).toISOString() : null,
+      preparation_issues: Boolean(matches && (front.ok === false || front.partial === true)),
     },
     markdown,
     log,
     log_truncated: truncated,
     log_path: ends === null ? null : relativeToRepo(logFile),
   };
+}
+
+async function readFrontHalf(date: string, ctx: ApiContext): Promise<Record<string, any> | null> {
+  const text = await readTextIfExists(path.join(journalRootOf(ctx), "front-half", `${date}.json`));
+  if (!text) return null;
+  try { const value = JSON.parse(text); return value && typeof value === "object" && !Array.isArray(value) ? value : null; }
+  catch { return null; }
 }
 
 export async function getRuns(
@@ -582,7 +612,10 @@ export function parseEscalations(markdown: string): RunStoppedRow[] {
     .map((line) => parseEscalationLine(plainTitle(`- ${line}`)))
     .filter((row): row is RunStoppedRow => row !== null)
     // "Nothing needs you." is the empty state of that section, not a stop.
-    .filter((row) => !/^nothing needs you$/i.test(row.reason));
+    .filter((row) => !/^nothing needs you$/i.test(row.reason))
+    // Schema migrations are retained in the raw summary, but they are not
+    // work and must not inflate the operational Stopped count.
+    .filter((row) => !/field_update:\s*classification|\[jev-migration\]/i.test(`${row.reason} ${row.next ?? ""}`));
 }
 
 /** The Numbers table in the order the run wrote it, for the detail page. */
@@ -612,6 +645,7 @@ async function fromAuditLog(date: string): Promise<{ sent: RunSent[]; stopped: R
   for (const event of onTheDay) {
     const row = named(event.role_id ?? null);
     if (event.event_type === "submitted") {
+      if (event.role_id && sent.some((item) => item.id === event.role_id)) continue;
       sent.push({
         id: event.role_id ?? null,
         title: row?.title ?? event.role_id ?? "A row this log no longer names",
@@ -669,6 +703,7 @@ export async function getRun(date: string, ctx: ApiContext = {}): Promise<RunDet
   if (!DATE_RE.test(date)) throw new ApiError(400, `date must be YYYY-MM-DD, got '${date}'`);
   const { run, markdown, log, log_truncated, log_path } = await readRun(date, ctx);
   const journal = await readTextIfExists(path.join(journalRootOf(ctx), `${date}.md`));
+  const frontHalf = await readFrontHalf(date, ctx);
 
   const fromSummary = markdown !== null;
   const raw = fromSummary
@@ -687,6 +722,7 @@ export async function getRun(date: string, ctx: ApiContext = {}): Promise<RunDet
     log_truncated,
     log_path,
     letters_sent: journal ? parseSentUnattended(journal) : [],
+    front_half: frontHalf && (!run.started_at || Date.parse(String(frontHalf.started_at)) >= Date.parse(run.started_at)) ? frontHalf : null,
   };
 }
 

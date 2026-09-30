@@ -25,9 +25,9 @@ Read the opportunity with `npm run pipeline -- get <opportunity-id>`, which prin
 - `classification.requires_tailoring` (bool): whether to take the tailor path
 - `classification.profile_relevance` (number 0-100): gate for tailoring
 
-If classification is missing or `classification._classifier != "agent"` → halt and surface: "Opportunity not classified by the agent; run `/hunt` / opportunity-finder re-classification, then `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`; don't apply from regex/default scoring."
+If classification is missing or not `status: automatic`, halt and surface: "Opportunity lacks an automatic ClassificationV2 decision; run `npm run jev:classify`, then review any uncertain result. An individual bounded verification may be adopted through `npm run jev:agent-fallback`."
 
-Before assembling a package, validate the loaded opportunity using `assertAgentClassificationForApplication()` from `tools/classification-policy.ts` or perform the same inline checks: persisted agent classification, non-null `matched_resume_id`, and no regex/default source.
+Before assembling a package, validate the loaded opportunity using `assertAutomaticClassificationForApplication()` from `tools/classification-policy.ts` or perform the same inline checks: persisted automatic ClassificationV2 decision from Jev or the attended fallback, plus a non-null `matched_resume_id`. Attended preparation may use either source. Unattended submission requires the bounded in-agent verification source because Jev never supplies send authority.
 
 If status isn't `awaiting_approval` or `approved`: ask via `AskUserQuestion`: "Currently in `<status>`: proceed anyway / move to awaiting_approval first / cancel?"
 
@@ -146,7 +146,7 @@ The baseline path skips this: the baseline was already critiqued and approved by
 Create `state/pipeline/archive/<opportunity-id>/` and place:
 - Resume: copy baseline (glob `state/profile/resumes/<resume-id>/*.docx` / `*.pdf`, where filenames follow `{Profile-Name}_{Resume-Label}.ext`, e.g. `Jane-Citizen_Solution-Architect.pdf`; don't assume a literal name) OR tailored artefacts (from resume-writer's output).
 - Cover letter: from cover-letter-writer's output (`cover-letter.md`).
-- JD snapshot: write the JD text to `jd.md` (WebFetch the URL if the opportunity's `description` is truncated).
+- JD snapshot: write the JD text to `jd.md`, prefixed with the pipeline record's exact title, advertiser and source URL (WebFetch the URL if `description` is truncated). The critic must receive this provenance so a verified advertiser name is not mistaken for an invented claim. Label an advertiser as a recruiter only when evidence establishes that relationship.
 - `keyword-plan.json`: the final (post-patch, post-composition) keyword plan from step 2b.
 - `metadata.json`: bundle of resume reference + cover letter reference + classifier verdict + both quality reports + keyword coverage (`renderable_pct`, `surfaced_pct`) + the count of pending `kind: keyword` rows + timestamp.
 

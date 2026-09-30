@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-22T06:35:01.000Z",
+  "purpose": "Frozen pre-correction baseline for comparison after adopting the TypeSafe confidence contract and revised Vercel route identity rules.",
+  "source_files": [
+    "jev-after.json",
+    "jev-comparison.json",
+    "jev-backtest-live-120.json"
+  ],
+  "cohort": {
+    "requested": 120,
+    "measured": 120
+  },
+  "decision_contract": {
+    "confidence_source": "winning option probability",
+    "question_schema_bound_to_cache": false,
+    "degradation_scope": "global",
+    "model_identity_claim": "alias and transport fingerprint treated as a model pin"
+  },
+  "metrics": {
+    "automatic": 57,
+    "automatic_rate": 0.475,
+    "uncertain": 63,
+    "degraded": 0,
+    "delegated_discipline_exact_agreement": 0.566667,
+    "delegated_matched_resume_exact_agreement": 0.858333,
+    "delegated_calibration_ece": 0.124,
+    "delegated_calibration_monotonic": true,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_high_not_apply_worthy_errors": 9,
+    "consequential_errors": 0,
+    "input_tokens": 543192,
+    "estimated_cost_usd": 0.021728,
+    "mean_latency_ms": 677.791667,
+    "p95_latency_ms": 825
+  },
+  "active_subset_115": {
+    "measured": 115,
+    "automatic": 57,
+    "automatic_rate": 0.495652,
+    "uncertain": 58,
+    "delegated_discipline_exact_agreement": 0.565217,
+    "delegated_matched_resume_exact_agreement": 0.852174,
+    "delegated_calibration_ece": 0.124,
+    "delegated_calibration_monotonic": true,
+    "automatic_low_apply_worthy_errors": 0,
+    "automatic_high_not_apply_worthy_errors": 9,
+    "consequential_errors": 0,
+    "note": "Five original cohort rows no longer exist in the pipeline. These quality metrics remove those five so the revised 115-row result has a like-for-like reference."
+  },
+  "safety_state": {
+    "rollout_percent": 0,
+    "jev_autopilot_authority_enabled": false,
+    "resolved_model_version_observable": false
+  },
+  "note": "This is evidence of the previous implementation, not a promotion claim. The confidence and model identity semantics were incorrect and are what the after measurement corrects."
+}

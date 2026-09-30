@@ -41,8 +41,20 @@ const COMMON_ARGS = [
   "--use-mock-keychain",
 ];
 
-const REAL_CHROME_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+/** A busy profile or crashed launch is not evidence that Chrome is absent. */
+export async function launchWithChromeFallback<T>(
+  launchChrome: () => Promise<T>,
+  launchBundled: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await launchChrome();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Chromium distribution 'chrome' is not found|Executable doesn't exist at/i.test(message)) throw error;
+    console.error(`[browser] Chrome executable missing; falling back to bundled Chromium`);
+    return await launchBundled();
+  }
+}
 
 async function profileDirFor(channel: ChannelKey): Promise<string> {
   const dir = path.resolve(CHROME_PROFILES_ROOT, channel);
@@ -59,7 +71,8 @@ export async function openChromeContext(
     headless: opts.headless ?? false,
     args: COMMON_ARGS,
     viewport: opts.viewport ?? { width: 1280, height: 900 },
-    userAgent: REAL_CHROME_UA,
+    // Let the installed browser report its own version. A fixed Chrome 131
+    // user agent became inconsistent with the installed Chrome 154 binary.
     locale: "en-AU",
     timezoneId: "Australia/Sydney",
     // Cookies should not be wiped between runs
@@ -68,13 +81,10 @@ export async function openChromeContext(
 
   // Prefer the user's installed Google Chrome (less likely to be flagged).
   // Fall back to bundled Chromium only if Chrome isn't available.
-  let context: BrowserContext;
-  try {
-    context = await chromium.launchPersistentContext(dir, { channel: "chrome", ...launchOpts });
-  } catch (e) {
-    console.error(`[browser] Chrome not available (${(e as Error).message.slice(0, 80)}); falling back to bundled Chromium`);
-    context = await chromium.launchPersistentContext(dir, launchOpts);
-  }
+  const context = await launchWithChromeFallback(
+    () => chromium.launchPersistentContext(dir, { channel: "chrome", ...launchOpts }),
+    () => chromium.launchPersistentContext(dir, launchOpts),
+  );
 
   // Strip the most common automation tells.
   await context.addInitScript(() => {

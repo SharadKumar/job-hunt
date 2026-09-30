@@ -22,6 +22,8 @@
  *   6 sheet        env set, key file readable, spreadsheet reachable
  *   7 schedule     launchd job loaded (macOS only)
  *   8 autopilot    policy state and what would still block a send
+ *   9 UI           informational local approval surface
+ *  10 Jev          gateway credential and pinned model policy
  */
 
 import { readYamlIfExists } from "./lib/fs.ts";
@@ -35,6 +37,8 @@ import YAML from "yaml";
 import { huntScriptFor } from "./channels/_interface.ts";
 import { repoPath } from "./repo-root.ts";
 import { resolveProfileContext } from "./profile-context.ts";
+import { gatewayCredential } from "./jev/env.ts";
+import { loadJevPolicy } from "./jev/policy.ts";
 
 const exec = promisify(execFile);
 
@@ -328,6 +332,53 @@ async function stageUi(): Promise<Stage> {
   return { stage: 9, name: "ui", ok: true, informational: true, checks, portless };
 }
 
+async function stageJev(): Promise<Stage> {
+  const credential = await gatewayCredential();
+  const { policy } = await loadJevPolicy();
+  const benchmark = await fs.readFile(repoPath("docs/benchmarks/jev-after.json"), "utf8").then(JSON.parse).catch(() => null);
+  const modelVersionObservable = benchmark?.model?.model_version_observable_all === true;
+  const checks: Check[] = [
+    {
+      id: "gateway_credential",
+      ok: Boolean(credential),
+      detail: credential ? "AI Gateway credential available" : "AI_GATEWAY_API_KEY and VERCEL_OIDC_TOKEN are unavailable",
+      fix: "create a dedicated Vercel AI Gateway key and store AI_GATEWAY_API_KEY in ignored .env.local",
+    },
+    {
+      id: "model",
+      ok: policy.model === "typesafe-ai/jev",
+      detail: policy.model,
+      fix: "set model: typesafe-ai/jev in state/profile/jev-policy.yaml",
+    },
+    {
+      id: "gateway_route_fingerprint",
+      ok: Boolean(policy.expected_gateway_route_fingerprint),
+      detail: policy.expected_gateway_route_fingerprint ?? "route identity not pinned",
+      fix: "calibrate the current Jev route and pin expected_gateway_route_fingerprint",
+    },
+    {
+      id: "resolved_model_version_observable",
+      ok: true,
+      detail: modelVersionObservable
+        ? "resolved model version recorded in the current benchmark"
+        : "Vercel exposes the Jev route alias but not the resolved model version; recorded as an operational limitation",
+    },
+    {
+      id: "gateway_spend_cap",
+      ok: policy.gateway_daily_spend_cap_usd > 0,
+      detail: `US$${policy.gateway_daily_spend_cap_usd} daily cap declared`,
+      fix: "set a positive gateway_daily_spend_cap_usd and apply the same cap to the dedicated Vercel AI Gateway key",
+    },
+    {
+      id: "live_classification",
+      ok: policy.classification_state_application_enabled === true,
+      detail: `pipeline state application ${policy.classification_state_application_enabled ? "enabled" : "disabled"}; Jev autopilot authority permanently disabled by the submission gate`,
+      fix: "set classification_state_application_enabled: true",
+    },
+  ];
+  return { stage: 10, name: "jev", ok: checks.every((check) => check.ok), checks };
+}
+
 /* ------------------------------------------------------------ scaffold */
 
 async function scaffold(profileId: string | null): Promise<{ created: string[]; skipped: string[] }> {
@@ -372,7 +423,7 @@ async function main() {
   const all = [
     () => stageMachine(), () => stageProfile(profileId), () => stageCv(profileId), () => stagePositionings(profileId),
     () => stageBaselines(profileId), () => stageChannels(profileId), () => stageSheet(profileId), () => stageSchedule(),
-    () => stageAutopilot(profileId), () => stageUi(),
+    () => stageAutopilot(profileId), () => stageUi(), () => stageJev(),
   ];
   const wanted = args.stage !== undefined ? [Number(args.stage)] : all.map((_, i) => i);
   const stages: Stage[] = [];

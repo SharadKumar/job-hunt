@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-20T14:27:52Z",
+  "overall_status": "engineering_complete_promotion_blocked",
+  "engineering_implementation": "pass",
+  "production_promotion": "blocked",
+  "hard_constraints": {
+    "jev_never_sole_send_authority": {
+      "status": "pass",
+      "evidence": "submission gate retains every prior gate and now has an independent jev_autopilot_authority gate that defaults false"
+    },
+    "degraded_mode": {
+      "status": "pass",
+      "evidence": "missing credential, provider exception, timeout, spend cap, invalid enum and missing replay fixture fail closed and block autopilot"
+    },
+    "model_identity_pinned": {
+      "status": "pass",
+      "fingerprint": "049a4eb005ca3240d98d7e78"
+    },
+    "full_call_audit": {
+      "status": "pass",
+      "evidence": "classification, screening and fuzzy dedup share tools/jev/evaluate.ts, which records full question sets, answers, model identity, latency, tokens and cost"
+    },
+    "compact_json_tools": {
+      "status": "pass"
+    },
+    "tests_without_network_or_key": {
+      "status": "pass",
+      "evidence": "test runner forces JEV_MODE=replay and blanks both gateway credential variables; 63 of 63 tests passed"
+    },
+    "spend_cap": {
+      "status": "pass",
+      "daily_cap_usd": 1,
+      "measured_spend_today_usd": 0.02172768
+    },
+    "locale_and_dash_rules": {
+      "status": "pass"
+    }
+  },
+  "definition_of_done": [
+    {
+      "id": 1,
+      "requirement": "before snapshot plus same-schema current-path and Jev replay with validated comparison",
+      "status": "pass",
+      "evidence": "retrospective legacy isolated telemetry remains null; a forward comparator of the retained agent fallback and Jev uses the same 120 rows, content, context, machine and concurrency before production rollout"
+    },
+    {
+      "id": 2,
+      "requirement": "all primary quality and operational targets pass",
+      "status": "fail",
+      "evidence": "The user-delegated assistant first pass completed 119 of 120 frozen labels and all 5 shadow reviews. Its diagnostics show exact resume agreement 0.858333, zero automatic-low apply-worthy errors, zero consequential errors and monotonic selected-discipline calibration, but ECE is 0.124 against the 0.10 ceiling. One ambiguous location decision remains. Independent human labels remain at zero. Generic-agent token, cost and runtime targets pass."
+    },
+    {
+      "id": 3,
+      "requirement": "CLI-unavailable and provider-degraded fault tests pass",
+      "status": "pass"
+    },
+    {
+      "id": 4,
+      "requirement": "submission gates unchanged or stricter",
+      "status": "pass",
+      "evidence": "38 submission-gate tests pass, including the independent disabled Jev authority gate and retention of the supported in-agent classification prerequisite"
+    },
+    {
+      "id": 5,
+      "requirement": "SQLite contains only valid ClassificationV2 or explicit unclassified states",
+      "status": "pass",
+      "evidence": "1502 valid pipeline classifications, 696 explicitly unclassified, zero malformed and zero legacy"
+    },
+    {
+      "id": 6,
+      "requirement": "legacy architecture scan has zero runtime references",
+      "status": "pass"
+    },
+    {
+      "id": 7,
+      "requirement": "typecheck, unit, replay and full suite pass without a Jev key",
+      "status": "pass",
+      "evidence": "63 of 63 tests; 120 of 120 Jev fixtures replayed with blank credentials, zero degraded, zero unavailable and zero provider cost; 24 agent-comparator batches are locally recorded for offline replay"
+    },
+    {
+      "id": 8,
+      "requirement": "Runs and Guardrails expose decision quality, fallback, cost and runtime",
+      "status": "pass",
+      "evidence": "UI static assertions pass; the Decision layer route was visually inspected with the 125-item attended queue, exact-decision label controls and measurement overview rendered without browser errors"
+    }
+  ],
+  "rollout_evidence": {
+    "shadow_roles": 500,
+    "automatic": 214,
+    "uncertain": 286,
+    "degraded": 0,
+    "consequential_errors": 0,
+    "matched_resume_rate_automatic_non_outside": 1,
+    "delegated_calibration_ece": 0.124,
+    "delegated_calibration_monotonic": true,
+    "delegated_matched_resume_exact_agreement": 0.858333,
+    "delegated_automatic_low_apply_worthy_error_rate": 0,
+    "delegated_automatic_high_not_apply_worthy_errors": 9,
+    "delegated_consequential_errors": 0,
+    "cohort_cost_usd": 0.089223,
+    "mean_latency_ms": 818.344,
+    "p95_latency_ms": 3103,
+    "recorded_replay_fixtures": 120,
+    "classification_rollout_percent": 0,
+    "jev_autopilot_authority_enabled": false,
+    "agent_fallback_classification_gate_retained": true,
+    "forward_agent_comparator_tokens": 1211388,
+    "forward_agent_comparator_cost_usd": 4.936999,
+    "forward_agent_comparator_wall_ms": 608687,
+    "jev_live_cost_usd": 0.021728,
+    "jev_live_wall_ms_including_retry": 42221,
+    "generic_agent_token_reduction": 1,
+    "classification_cost_reduction": 0.995599,
+    "runtime_ratio_vs_agent": 0.069364,
+    "human_frozen_labels_required": 120,
+    "human_frozen_labels_complete": 0,
+    "delegated_frozen_labels_complete": 119,
+    "shadow_reviews_required": 5,
+    "shadow_reviews_complete": 5,
+    "delegated_decisions": 124,
+    "independently_human_verified": 0,
+    "adjudication_queue_items": 125
+  },
+  "scheduled_shadow_collection": {
+    "launch_agent": "com.job-hunt-harness.daily",
+    "loaded": true,
+    "schedule": "Monday to Friday at 07:00 Australia/Sydney",
+    "observed_runs": 5,
+    "last_exit_code": 0,
+    "daily_front_half_wired": true
+  },
+  "remaining_external_evidence": [
+    "One apply-worthiness decision for seek-bed2ed9a02b9, whose advert identifies a Canberra government agency but does not say whether remote or Sydney delivery is possible",
+    "Recalibration of the discipline confidence policy followed by a fresh replay; the current delegated diagnostic ECE is 0.124 against the 0.10 ceiling",
+    "At least three scheduled daily shadow runs, not same-session repetitions",
+    "Thirty days of response and interview outcome evidence before any explicit grant of autopilot authority"
+  ],
+  "next_safe_action": "Resolve the single ambiguous Public Sector People location decision, rerun the benchmark reports, then design and replay a measured discipline-confidence recalibration. Keep classification rollout at zero and Jev autopilot authority disabled until every gate passes."
+}

@@ -12,6 +12,7 @@ import { exists } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { load, patchMany, type Opportunity } from "./pipeline.ts";
+import { canAuthoriseApplication } from "./classification.ts";
 import { sha256 } from "./lib/hash.ts";
 import { repoPath, repoRoot } from "./repo-root.ts";
 
@@ -52,14 +53,15 @@ async function main(): Promise<void> {
   for (const id of ids) {
     const opportunity = opportunities.find((candidate) => candidate.id === id);
     if (!opportunity) throw new Error(`Unknown opportunity: ${id}`);
-    if (opportunity.classification?._classifier !== "agent") {
-      throw new Error(`${id}: agent classification is required`);
+    if (!canAuthoriseApplication(opportunity.classification)) {
+      throw new Error(`${id}: an automatic ClassificationV2 decision is required`);
     }
-    if (opportunity.classification.requires_tailoring) {
+    const classification = opportunity.classification!;
+    if (classification.requires_tailoring) {
       throw new Error(`${id}: classification requires tailoring; baseline packaging refused`);
     }
 
-    const resumeId = opportunity.classification.matched_resume_id;
+    const resumeId = classification.matched_resume_id;
     if (!resumeId) throw new Error(`${id}: matched_resume_id is missing`);
     const baselineDir = path.join(repoPath("state/profile/resumes"), resumeId);
     const baselineMetadataPath = path.join(baselineDir, "metadata.json");

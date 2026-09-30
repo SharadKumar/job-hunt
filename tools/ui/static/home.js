@@ -346,10 +346,10 @@ export async function viewHome(view) {
   const baseSummary = getSummary();
   const healthValue = health.status === "fulfilled" ? health.value : null;
   const runRows = runs.status === "fulfilled" ? runs.value.runs || [] : [];
-  const workRows = needs.status === "fulfilled" ? needs.value.rows || [] : [];
+  const workRows = needs.status === "fulfilled" ? (needs.value.rows || []).filter((row) => row.needs_you === true) : [];
   const grouped = { answer_question: 0, decide: 0, open_portal: 0, waiting_redraft: 0 };
   for (const row of workRows) {
-    const key = needsYouGroup(row.action);
+    const key = row.needs_you_group || needsYouGroup(row.action);
     if (key) grouped[key] += 1;
   }
   const groupedTotal = Object.values(grouped).reduce((total, count) => total + count, 0);

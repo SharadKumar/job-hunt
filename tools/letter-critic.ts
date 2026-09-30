@@ -11,11 +11,10 @@
  * against `state/profile/cv-source.md`, `state/profile/profile.md` and the
  * standing confidentiality rules, and returns strict JSON.
  *
- * There is no API key in this environment. The daily run itself is a
- * `claude -p` session, so the critic spawns a fresh `claude -p` child with no
- * tools, no project settings and a bespoke system prompt. If the child cannot
- * be spawned or returns unparseable output the tool exits 2 (error) and never
- * reports a pass; a missing verdict is a closed gate, not an open one.
+ * The default critic spawns a fresh `claude -p` child with no tools or project
+ * settings. `LETTER_CRITIC_CLI=codex` uses an isolated, read-only Codex exec
+ * process with structured output. Both backends run the same fact-checking
+ * prompt and deterministic gates. A child failure closes the gate.
  *
  * Deterministic pre-checks run before the LLM (em/en dashes, never-named
  * entities, other agencies' requisition codes). They are mechanical facts and
@@ -23,7 +22,7 @@
  *
  * CLI:
  *   tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md> [--out <json>]
- *       [--model sonnet|opus|haiku] [--timeout-ms 240000] [--apply-fixes]
+ *       [--model <model>] [--timeout-ms 240000]
  *   tsx tools/letter-critic.ts --digest [--since 14d] [--archive <dir>]
  *
  * The digest is the learning loop. Blocks recur on the same few themes (scope
@@ -44,6 +43,7 @@
 
 import { sha256 } from "./lib/hash.ts";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import YAML from "yaml";
@@ -197,12 +197,14 @@ export function systemPrompt(standingRules: string[]): string {
 
 const JSON_SCHEMA = {
   type: "object",
+  additionalProperties: false,
   properties: {
     verdict: { type: "string", enum: ["pass", "block"] },
     findings: {
       type: "array",
       items: {
         type: "object",
+        additionalProperties: false,
         properties: {
           severity: { type: "string", enum: ["fail", "warn"] },
           quote: { type: "string" },
@@ -282,6 +284,44 @@ async function spawnClaude(systemPrompt: string, userPrompt: string, model: stri
   });
 }
 
+async function spawnCodex(system: string, user: string, model: string, timeoutMs: number): Promise<ClaudeJson> {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "letter-critic-codex-"));
+  const schemaPath = path.join(temp, "verdict.schema.json");
+  const outputPath = path.join(temp, "verdict.json");
+  await fs.writeFile(schemaPath, JSON.stringify(JSON_SCHEMA));
+  const prompt = `${system}\n\n${user}\n\nDo not use tools. Return only the JSON verdict.`;
+  const args = ["exec", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "read-only", "--model", model, "--output-schema", schemaPath, "--output-last-message", outputPath, "-C", temp, "-"];
+  const started = Date.now();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(process.env.CODEX_CLI_BIN ?? "codex", args, { cwd: temp, stdio: ["pipe", "pipe", "pipe"] });
+      let stderr = "";
+      let settled = false;
+      const fail = (detail: string) => { if (!settled) { settled = true; reject(new CriticError(COULD_NOT_RUN, detail)); } };
+      const timer = setTimeout(() => { child.kill("SIGKILL"); fail(`codex exec timed out after ${timeoutMs} ms`); }, timeoutMs);
+      child.stdout.on("data", () => { /* final answer is read from outputPath */ });
+      child.stderr.on("data", (d) => { stderr = (stderr + d.toString()).slice(-4000); });
+      child.on("error", (e) => { clearTimeout(timer); fail(`could not spawn codex exec: ${e.message}`); });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (settled) return;
+        if (code !== 0) return fail(`codex exec exit ${code}: ${stderr.slice(-500)}`);
+        settled = true;
+        resolve();
+      });
+      child.stdin.on("error", () => { /* close handler reports a failed child */ });
+      child.stdin.end(prompt);
+    });
+    const output = await fs.readFile(outputPath, "utf8").catch((e) => { throw new CriticError(UNPARSEABLE, `codex exec did not write its final verdict: ${e.message}`); });
+    if (output.length > 64_000) throw new CriticError(UNPARSEABLE, "codex exec verdict exceeded 64 KB");
+    const parsed = parseVerdictText(output);
+    if (!parsed || !["pass", "block"].includes(parsed.verdict)) throw new CriticError(UNPARSEABLE, "codex exec returned no pass/block verdict");
+    return { structured_output: parsed, duration_ms: Date.now() - started };
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+}
+
 function parseClaudeStdout(stdout: string): ClaudeJson | null {
   const trimmed = stdout.trim();
   if (!trimmed) return null;
@@ -344,7 +384,8 @@ export async function critiqueLetter(opts: CritiqueOpts): Promise<CriticResult> 
   if (jdPath) {
     try { jd = await fs.readFile(jdPath, "utf8"); } catch (e: any) { throw new Error(`cannot read JD ${jdPath}: ${e.message}`); }
   }
-  const model = opts.model ?? process.env.LETTER_CRITIC_MODEL ?? "sonnet";
+  const backend = process.env.LETTER_CRITIC_CLI === "codex" ? "codex" : "claude";
+  const model = opts.model ?? (backend === "codex" ? (process.env.CODEX_LETTER_CRITIC_MODEL ?? "gpt-6-sol") : (process.env.LETTER_CRITIC_MODEL ?? "sonnet"));
   const checkedAt = new Date().toISOString();
   const sha = sha256Text(letter);
 
@@ -352,7 +393,9 @@ export async function critiqueLetter(opts: CritiqueOpts): Promise<CriticResult> 
   const findings: CriticFinding[] = [...deterministicFindings(letter, rules.neverNamed), ...requisitionCodesNotInJd(letter, jd)];
 
   const userPrompt = await buildUserPrompt(letter, jd, rules, opts.profileId);
-  const raw = await spawnClaude(systemPrompt(rules.standingRules), userPrompt, model, opts.timeoutMs ?? 240_000);
+  const raw = backend === "codex"
+    ? await spawnCodex(systemPrompt(rules.standingRules), userPrompt, model, opts.timeoutMs ?? 240_000)
+    : await spawnClaude(systemPrompt(rules.standingRules), userPrompt, model, opts.timeoutMs ?? 240_000);
 
   const parsed = verdictFromRaw(raw);
   for (const f of parsed.findings) {
@@ -588,7 +631,7 @@ async function main() {
     return;
   }
   if (!a.letter) {
-    console.error("Usage: tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md> [--out <json>] [--model sonnet] [--timeout-ms 240000] [--apply-fixes]");
+    console.error("Usage: tsx tools/letter-critic.ts --letter <cover-letter.md> --jd <jd.md> [--out <json>] [--model <model>]");
     console.error("       tsx tools/letter-critic.ts --digest [--since 14d] [--archive <dir>]");
     process.exit(2);
   }

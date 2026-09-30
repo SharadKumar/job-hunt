@@ -31,7 +31,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { log as auditLog, logMany as auditLogMany, loadDedupIndex, fingerprintFor, type AuditEventType } from "./audit.ts";
 import { store, type ListFilter } from "./pipeline-store.ts";
-import type { Classification } from "./classify-jd.ts";
+import type { ClassificationV2 } from "./classification.ts";
 
 // Map pipeline statuses to canonical audit event types so the audit log
 // records meaningful semantic events, not raw status names.
@@ -80,6 +80,12 @@ export type Opportunity = {
   url: string;
   description?: string;             // raw JD; may be truncated on disk
   postedAt?: string;
+  /** Explicit application closing day in the profile timezone (YYYY-MM-DD). */
+  closingDate?: string;
+  /** Where the closing day came from. Inferred age is never an expiry signal. */
+  closingDateSource?: "description" | "channel";
+  /** Channel-confirmed expiry prevents a saved advert from being reopened on later imports. */
+  channelExpiredAt?: string;
   dayRate?: { min?: number; max?: number; currency?: string; inc_super?: boolean };
   workArrangement?: "remote" | "hybrid" | "onsite" | "unknown";
   /** How the channel expects the application to be lodged; drives the submit adapter choice and the autopilot gate. */
@@ -90,10 +96,10 @@ export type Opportunity = {
   score?: number;
   /** Why the row sits in `parked` (interstate onsite, blurb-only interstate). */
   parkedReason?: string;
+  parkedBy?: "user" | "harness";
   scoreReasons?: string[];
   red_flag_blocker?: boolean;
-  classification?: Classification;
-  classificationSource?: "agent" | "regex" | "none";
+  classification?: ClassificationV2;
   resumeId?: string;
   endEmployer?: string;            // resolved buyer when the advertiser is a recruiter
   requisitionId?: string;          // buyer/RFQ identifier shared across recruiter listings
@@ -114,6 +120,8 @@ export type Opportunity = {
   /** True when the user saved this job on the channel (e.g. SEEK "Saved jobs"); a strong interest signal. */
   userSaved?: boolean;
   userSavedAt?: string;             // ISO timestamp of the first time the saved-jobs watcher saw it
+  /** A bounded automatic rewrite is queued for the next daily run. */
+  redraftRequested?: { at: string; reason: string | null } | null;
   submittedAt?: string;
   responseAt?: string;
   notes?: string;
@@ -123,15 +131,15 @@ export type Opportunity = {
 const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   discovered: ["shortlisted", "parked", "awaiting_external", "rejected", "manual_action_needed"],
   awaiting_external: ["shortlisted", "rejected", "withdrawn"],
-  shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn"],
-  // parked (2026-09-15): fits the profile but held for a logistics reason the
-  // user has ruled on (interstate role needing routine onsite attendance, or
-  // a card-only blurb that cannot be judged). Not part of the apply queue.
+  shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn", "manual_action_needed"],
+  // Explicit temporary holds, not location uncertainty or known ineligibility.
   parked: ["shortlisted", "discovered", "rejected", "withdrawn"],
-  drafted: ["awaiting_approval", "rejected", "withdrawn"],
-  awaiting_approval: ["approved", "rejected", "withdrawn", "manual_action_needed"],
-  approved: ["submission_pending", "submitted", "manual_action_needed", "withdrawn"],
-  submission_pending: ["submitted", "manual_action_needed", "withdrawn"],
+  drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn", "manual_action_needed"],
+  awaiting_approval: ["approved", "discovered", "rejected", "withdrawn", "manual_action_needed"],
+  approved: ["submission_pending", "submitted", "discovered", "manual_action_needed", "withdrawn"],
+  // A channel challenge observed before Submit is attempted is safe to retry
+  // later with the same approved package. An attempted send remains pending.
+  submission_pending: ["submitted", "approved", "manual_action_needed", "withdrawn"],
   submitted: ["responded", "rejected", "withdrawn"],
   responded: ["interview", "rejected", "withdrawn"],
   interview: ["offered", "rejected", "withdrawn"],
@@ -141,7 +149,7 @@ const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   rejected: ["discovered"],
   withdrawn: ["discovered"],
   // retry (2026-09-15): once the blocker is cleared (screening answer banked, letter fixed) the row may re-enter the autopilot path at approved.
-  manual_action_needed: ["approved", "submitted", "rejected", "withdrawn"],
+  manual_action_needed: ["discovered", "approved", "submitted", "rejected", "withdrawn"],
 };
 
 export function opportunityIdFor(channel: string, url: string): string {
@@ -365,27 +373,35 @@ export async function setStatus(
   id: string,
   next: PipelineStatus,
   reason?: string,
-  extras?: { contact?: any; details?: Record<string, unknown>; actor?: string },
+  extras?: { contact?: any; details?: Record<string, unknown>; actor?: string; expectedStatus?: PipelineStatus },
 ): Promise<Opportunity> {
   const s = store();
-  const role = s.get(id);
-  if (!role) throw new Error(`role not found: ${id}`);
-  const allowed = VALID_TRANSITIONS[role.status] ?? [];
-  if (!allowed.includes(next)) {
-    throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
-  }
-  const from = role.status;
-  const at = new Date().toISOString();
-  const extraFields: Partial<Opportunity> = {};
-  if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
-  if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
-
-  const updated = s.transaction(() => {
+  // BEGIN IMMEDIATE must precede the status read. Two independent daily runs
+  // must not both observe approved and claim the same portal submission.
+  const { role, updated } = s.transaction(() => {
+    const role = s.get(id);
+    if (!role) throw new Error(`role not found: ${id}`);
+    if (extras?.expectedStatus && role.status !== extras.expectedStatus) {
+      throw new Error(`status changed from ${extras.expectedStatus} to ${role.status} before transition to ${next}`);
+    }
+    const allowed = VALID_TRANSITIONS[role.status] ?? [];
+    if (!allowed.includes(next)) {
+      throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
+    }
+    const from = role.status;
+    const at = new Date().toISOString();
+    const extraFields: Partial<Opportunity> = {};
+    if (next === "parked") {
+      extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
+      extraFields.parkedReason = reason ?? role.parkedReason;
+    }
+    if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
+    if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
     const row = s.setStatusColumn(id, next, extraFields, at)!;
     const entry = { at, from, to: next, ...(reason ? { reason } : {}) };
     s.appendHistory(id, entry);
     row.history = [...row.history, entry];
-    return row;
+    return { role, updated: row };
   });
 
   await auditLog({
@@ -393,7 +409,7 @@ export async function setStatus(
     role_id: id,
     actor: extras?.actor ?? "pipeline.setStatus",
     channel: role.channel,
-    details: { company: role.company, title: role.title, from, to: next, reason, ...(extras?.details ?? {}) },
+    details: { company: role.company, title: role.title, from: role.status, to: next, reason, ...(extras?.details ?? {}) },
     contact: extras?.contact ?? null,
     provenance: { url: role.url, channel: role.channel },
   });

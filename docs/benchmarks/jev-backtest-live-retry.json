@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T06:37:27.121Z",
+  "mode": "record",
+  "cohort_file": "docs/benchmarks/jev-retry-cohort.json",
+  "cohort_requested": 6,
+  "cohort_found": 6,
+  "identity": {
+    "policy_hash": "ebc21b0f5d5b079d0ead9c5b1e8bf95a88b77b30b8cdd5320f480a89d9966ee5",
+    "profile_hash": "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f",
+    "resume_set_hash": "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c",
+    "requested_model": "typesafe-ai/jev",
+    "expected_gateway_route_fingerprint": "049a4eb005ca3240d98d7e78",
+    "question_schema_hash": "a266b766fc72b554ba8b6b87236b2b795273e64d221d6e1fd56da248517dd4a3"
+  },
+  "summary": {
+    "considered": 6,
+    "requested": 6,
+    "cache_hits": 0,
+    "automatic": 0,
+    "uncertain": 6,
+    "degraded": 0,
+    "insufficient_input": 0,
+    "input_tokens": 27135,
+    "estimated_cost_usd": 0.0010854,
+    "deterministic_fields_resolved": 5,
+    "deterministic_fields_ambiguous": 25,
+    "extraction_ms": 9,
+    "jev_ms": 7847,
+    "scoring_ms": 48,
+    "changed": 6,
+    "unchanged": 0,
+    "decision_differs_from_pipeline": 6,
+    "promoted": 0,
+    "demoted": 0,
+    "rollout_percent": 0,
+    "rollout_eligible": 0,
+    "state_applied": 0,
+    "replay_misses": 0,
+    "latency_p50_ms": 874,
+    "latency_p95_ms": 3531,
+    "total_ms": 4208,
+    "requested_models": [
+      "typesafe-ai/jev"
+    ],
+    "effective_models": [
+      "typesafe-ai/jev"
+    ],
+    "gateway_route_fingerprints": [
+      "049a4eb005ca3240d98d7e78"
+    ],
+    "policy_hashes": [
+      "ebc21b0f5d5b079d0ead9c5b1e8bf95a88b77b30b8cdd5320f480a89d9966ee5"
+    ],
+    "profile_hashes": [
+      "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f"
+    ],
+    "resume_set_hashes": [
+      "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c"
+    ],
+    "content_set_hash": "3a920a85e3599ef5c7b659aae6ed2672fa595dc0053762512e96364e820c79af",
+    "gateway_daily_spend_cap_usd": 1
+  },
+  "changed_decisions": 6,
+  "unavailable_decisions": 0,
+  "changes": [
+    {
+      "id": "seek-488c4362235d",
+      "before": null,
+      "after": {
+        "decision_id": "2cbc5b6a309bd5873321c8bd",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-72bfe3fe6484",
+      "before": {
+        "decision_id": "migrated-9632db85fb327ffb89b2",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 68
+      },
+      "after": {
+        "decision_id": "7300c7d4af8a2db88df7e9a0",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6930257d995a",
+      "before": null,
+      "after": {
+        "decision_id": "9a7332dea2f589004c663868",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-dee54a2c3927",
+      "before": {
+        "decision_id": "migrated-ffbf6d52302ebbfda7fb",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 65
+      },
+      "after": {
+        "decision_id": "9a18bea61e7c1d4303bfbf7a",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": null,
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-7f08b8f79071",
+      "before": {
+        "decision_id": "migrated-74fb8d4cbd7780ad5a49",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "097b232f712b27acb0c2297a",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-b62605135aeb",
+      "before": {
+        "decision_id": "migrated-3ca5df8ec9765115b318",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "9a167c7df5f5a2678e330fa5",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    }
+  ]
+}

@@ -2,8 +2,8 @@
 
 /**
  * Backfill the same cheap technical-relevance gate used by the SEEK collector.
- * Defaults to dry-run. `--apply` only rejects unclassified SEEK discoveries;
- * agent-classified/actionable rows are never touched.
+ * Defaults to dry-run. `--apply` only rejects SEEK discoveries that have no
+ * ClassificationV2; classified/actionable rows are never touched.
  */
 
 import { load, setStatus } from "./pipeline.ts";
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   const rejected = roles.filter((role) =>
     role.channel === "seek" &&
     role.status === "discovered" &&
-    (role.classificationSource ?? role.classification?._classifier ?? "none") === "none" &&
+    !role.classification &&
     !looksTechnicallyRelevant(role.title, role.description ?? ""),
   );
 

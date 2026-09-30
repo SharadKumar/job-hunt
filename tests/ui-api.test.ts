@@ -122,22 +122,21 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
     ["closed", "needs", "parked", "queue", "replies", "sent"],
     "one count per Pipeline segment, section 4",
   );
-  assert.equal(summary.segments.needs, 1, "needs is manual_action_needed");
+  assert.equal(summary.segments.needs, 0, "a run-owned redraft is not an active Needs you row");
   assert.equal(summary.segments.queue, 2, "queue is shortlisted through submission_pending");
   assert.equal(summary.segments.sent, 1, "sent is submitted");
   assert.equal(summary.segments.parked + summary.segments.replies + summary.segments.closed, 0,
     "and nothing seeded is parked, replied or closed");
   const bySegment = Object.values(summary.segments).reduce((a, b) => a + b, 0);
-  assert.equal(bySegment, summary.total, "every seeded row lands in exactly one segment");
+  assert.equal(bySegment, summary.total - 1, "retained run-owned history is omitted from operational segments");
 
   assert.deepEqual(
     Object.keys(summary.needs_you_groups).sort(),
     ["answer_question", "decide", "open_portal", "waiting_redraft"],
     "the four Needs you groups Today lists",
   );
-  // The one blocked row was stopped by the letter critic, so it is waiting on
-  // a redraft. The classification is the row API's own, not a second copy.
-  assert.equal(summary.needs_you_groups.waiting_redraft, 1, "a letter block is a row waiting on a redraft");
+  // A letter block is run-owned repair work, not a decision for the person.
+  assert.equal(summary.needs_you_groups.waiting_redraft, 0, "a queued automatic redraft is not in Needs you");
   assert.equal(summary.needs_you_groups.answer_question, 0);
   assert.equal(summary.needs_you_groups.open_portal, 0);
   assert.equal(summary.needs_you_groups.decide, 0);
@@ -451,8 +450,23 @@ write("state/profile/submission-policy.yaml", "kill_switch: false\nautopilot:\n 
   assert.match(present.markdown!, /Two sent, one parked/);
 
   const digest = await api.getCriticDigest({ since: "14d" }, ctx);
-  assert.equal(digest.blocked, 0, "an archive with no verdicts digests to nothing");
+  assert.equal(digest.blocked, 1, "the current letter block is counted even before an archived verdict is available");
   assert.deepEqual(digest.themes, []);
+
+  const activeA = await seed("Cloud Architect", "Northbank", ["manual_action_needed"], {}, "letter-critic blocked: unsupported scope");
+  const activeB = await seed("Platform Architect", "Southbank", ["manual_action_needed"], {}, "letter critic blocked: unsupported scope");
+  const historical = await seed("Legacy Architect", "Oldbank", ["rejected"], {}, "not a current fit");
+  for (const id of [activeA, activeB, historical]) {
+    write(`archive/${id}/letter-critic.json`, JSON.stringify({
+      checked_at: new Date().toISOString(), verdict: "block",
+      findings: [{ severity: "fail", issue: "Unsupported delivery claim", quote: "delivered", fix: "Use evidence-backed wording" }],
+    }));
+  }
+  const activeDigest = await api.getCriticDigest({ since: "14d" }, ctx);
+  assert.equal(activeDigest.blocked, 3, "all current letter blocks count as operational");
+  assert.equal(activeDigest.themes.length, 1, "a recurring theme remains visible");
+  assert.equal(activeDigest.themes[0].count, 2, "historical packages do not inflate the active theme");
+  assert.deepEqual(activeDigest.themes[0].opportunity_ids.sort(), [activeA, activeB].sort());
   console.log("  ✓ journal for today and the critic digest");
 }
 

@@ -93,6 +93,10 @@ Tell them in one line what the UI is: the local approval surface, same decisions
 
 If they want it on their phone, say the two conditions in one sentence: reach the machine over Tailscale or the LAN, and start it with `--host <that address>` plus a long random `HARNESS_UI_TOKEN` (the plist has the line commented out, ready to fill). Never put a token in the journal.
 
+## Stage 10: Jev decision layer
+
+Run `npm run setup:check -- --stage 10` and `npm run jev:check`. Collect the Vercel AI Gateway key through the masked secret-intake flow, never in chat or the journal. The stage must confirm the `typesafe-ai/jev` route, pinned Gateway route identity, resolved-model visibility, positive daily spend cap, credential presence and live classification state application. The route identity is not a model-version pin. Missing resolved-model visibility is reported as an operational limitation, not invented as a version pin. Jev unattended send authority is permanently disabled by the submission gate.
+
 ## Rules
 
 - Never paste, log or journal credentials, key-file contents, or session cookies.

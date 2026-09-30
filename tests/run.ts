@@ -46,6 +46,9 @@ export function childEnv(file: string, base: NodeJS.ProcessEnv = process.env): N
   return {
     ...base,
     HARNESS_TEST: "1",
+    JEV_MODE: "replay",
+    AI_GATEWAY_API_KEY: "",
+    VERCEL_OIDC_TOKEN: "",
     AUDIT_DIR: base.AUDIT_DIR ?? path.join(own, "audit"),
     PIPELINE_DB: base.PIPELINE_DB ?? path.join(own, "pipeline.db"),
   };

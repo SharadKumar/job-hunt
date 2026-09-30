@@ -13,8 +13,8 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 | Status | Meaning | Who moves a row here | Required fields |
 |---|---|---|---|
 | `discovered` | Imported from a channel. Scored, but not in the queue: below the shortlist line, blocked by a red flag, or no resume positioning fits. | `hunt` upsert; `pipeline:rescore` (demotion) | `score`, `classification` (agent) |
-| `shortlisted` | **The apply queue.** Agent-classified, score ≥ `shortlist_min_score`, no blocker, a resume positioning fits, and the role is doable from the home city (Sydney/NSW/remote, or interstate with `location_flexibility` remote/flexible). Every row here is meant to be applied to unless a human records a concrete reason. | `pipeline:rescore` only (agent classification required) | `classification.matched_resume_id`, `classification.discipline_fit` ∈ {core, platform_gap} |
-| `parked` | Fits the profile but held for a logistics reason the user has ruled on: an interstate role that needs routine onsite attendance, or an interstate role whose ad is a card-only blurb so flexibility is unknown. Not part of the queue. Re-enters `shortlisted` if the ad turns out remote/flexible. | `pipeline:rescore` (when `score.ts` returns `parked_reason`); attended user decision | `parkedReason` |
+| `shortlisted` | **The apply queue.** An automatic ClassificationV2 decision exists, score ≥ `shortlist_min_score`, no blocker, a resume positioning fits, and the role is doable from the home city. | `pipeline:rescore` only (automatic Jev or bounded agent verification decision required) | `classification.matched_resume_id`, `classification.discipline_fit: core`; saved jobs are exempt |
+| `parked` | Explicit temporary hold, not missing location information or a confirmed eligibility failure. User holds remain protected. Known legacy automatic location holds are re-evaluated against current classification. | Attended user decision or explicit harness hold | `parkedReason`, `parkedBy` for new holds |
 | `awaiting_external` | Waiting on something outside the harness (e.g. a recruiter reply that decides whether to proceed). | attended session | reason in history |
 | `drafted` | Package assembled in `state/pipeline/archive/<id>/`: JD, keyword plan, CV (baseline or tailored), cover letter, metadata. Not yet reviewed. | `/apply`, daily orchestrator | archive dir |
 | `awaiting_approval` | Package complete and shown in the Sheet Tray. An `approve` in the Tray authorises preparation only, never submission. | `/apply`, daily orchestrator | Tray row |
@@ -31,12 +31,12 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 ```
 discovered          → shortlisted | parked | awaiting_external | rejected | manual_action_needed
 awaiting_external   → shortlisted | rejected | withdrawn
-shortlisted         → drafted | parked | discovered | rejected | withdrawn
+shortlisted         → drafted | parked | discovered | rejected | withdrawn | manual_action_needed
 parked              → shortlisted | discovered | rejected | withdrawn
-drafted             → awaiting_approval | rejected | withdrawn
+drafted             → awaiting_approval | discovered | rejected | withdrawn | manual_action_needed
 awaiting_approval   → approved | rejected | withdrawn | manual_action_needed
 approved            → submission_pending | submitted | manual_action_needed | withdrawn
-submission_pending  → submitted | manual_action_needed | withdrawn
+submission_pending  → submitted | approved (verified pre-submit challenge) | manual_action_needed | withdrawn
 manual_action_needed→ approved (retry once the blocker is cleared) | submitted | rejected | withdrawn
 submitted           → responded | rejected | withdrawn
 responded           → interview | rejected | withdrawn
@@ -46,7 +46,16 @@ won                 → (terminal)
 rejected | withdrawn→ discovered   (user reopen only; the row must earn shortlisted again)
 ```
 
-`pipeline:rescore` may only move rows between `discovered`, `shortlisted` and `parked` (and re-score `drafted` / `awaiting_approval` with `--all` without changing status). It never rejects, withdraws or submits.
+`pipeline:rescore` reconciles unsent mutable rows against current eligibility. Confirmed routine interstate attendance closes unsaved rows as `rejected` (`withdrawn` from `approved`); unknown flexibility does not block. Explicit user holds, submitted outcomes and later stages remain protected. It never submits.
+
+### Expired openings
+
+`npm run pipeline:expire -- --apply` runs after channel ingestion and before classification. It closes an active, unsent row only when the advert contains an explicit closing date that is before today in the profile timezone, or the channel explicitly reports that the advert expired. It re-reads the current advert on every run and prefers a later stated extension over the retained original deadline. Posting age is never treated as expiry evidence.
+
+- `discovered`, `awaiting_external`, `shortlisted`, `parked`, `drafted`, `awaiting_approval` and `manual_action_needed` move to `rejected`.
+- `approved` and `submission_pending` move to `withdrawn`, which is the legal transition from those states.
+- `submitted`, `responded`, `interview`, `offered` and `won` remain untouched because they are application history, not work waiting in the pipeline.
+- The closing date, evidence source, reason and transition remain in the row and audit log. Closed rows leave every actionable queue but are still available under Closed.
 
 An attended submission that starts from `shortlisted` must walk `drafted → awaiting_approval → approved → submitted`; helper scripts must not skip steps, and must surface a non-zero exit rather than swallow it (2026-09-14 incident: four confirmed submissions sat at `shortlisted` because a helper grepped the error away).
 
@@ -54,22 +63,24 @@ An attended submission that starts from `shortlisted` must walk `drafted → awa
 
 Computed in `tools/score.ts` and applied by `tools/rescore-pipeline.ts`:
 
-1. Classification is agent-sourced (`_classifier: "agent"`); regex triage never promotes.
+1. Classification is `status: automatic` from Jev or the bounded agent verification path; uncertain, degraded and migrated decisions never promote.
 2. `discipline_fit` caps `profile_relevance`: outside ≤ 25, adjacent ≤ 54, platform_gap ≤ 74.
 3. `score = 0.65 × relevance + 0.35 × base` (base = arrangement, rate, recency, tag overlap, seniority, bonuses, penalties). Relevance < 50 caps the score at 40; any blocker caps it at 30.
 4. Blockers: onsite 5 days, junior/mid, exclusive, PAYG-only, permanent/fixed-term, relevance < 25, or no `matched_resume_id`.
-5. A row with `userSaved: true` (saved by the user on SEEK) is always `shortlisted`; the gate applies only the hard employment blocks at send time. Otherwise `score ≥ 55` and no blocker → `shortlisted`, unless the role is interstate and `location_flexibility` is `onsite` or `unknown`, in which case → `parked` with `parkedReason`.
+5. A user-saved row retains its saved-job override and all package and send gates. Otherwise confirmed routine interstate attendance is ineligible. Unknown flexibility is non-blocking: an automatic core classification, adequate score and no other blockers can shortlist. Other uncertainty still prevents automatic promotion. Explicit user holds remain parked.
+
+LinkedIn search cards do not establish send readiness. A row with no usable full advert stays in `discovered`. A refreshed advert's explicit employment and location terms, including the channel's hybrid/onsite pill, are applied deterministically even if its semantic classification was cached earlier. A semantic decision whose content hash predates that advert returns the unsent row to `discovered` until the full advert is classified. An external application button moves a current, still-eligible row to `manual_action_needed`; an unconfirmed button returns it to `discovered`. The daily front half enriches bounded discovered and shortlisted LinkedIn rows before classification and reconciles the existing shortlist after refresh.
 
 ## Autopilot (one-click channels, unattended)
 
 User decision 2026-09-15 (SEEK), extended 2026-09-16 (LinkedIn Easy Apply): `/daily` may move a row on a channel listed in `autopilot.channels` to `submitted` without a human reading the package. The full gate list is `AGENTS.md` section 2 and `references/harness/autopilot-gates.md`. The only tool allowed to do that is `tools/autopilot-submit.ts` (`npm run autopilot:submit -- --id <id> --run-id daily-<date>`). It walks `drafted → awaiting_approval → approved` through `setStatus`, then `approved → submission_pending → submitted` only after both of these hold:
 
 1. `archive/<id>/letter-critic.json` is a `pass` from `tools/letter-critic.ts` whose `letter_sha256` matches the current `cover-letter.md` (a cold fact-check against `cv-source.md`; any unsupported claim, misattribution, dash or confidentiality breach is a `fail` and blocks).
-2. `tools/submission-gate.ts` returns `submit` for provenance `autopilot:<run-id>`: `autopilot.enabled` in `submission-policy.yaml`, status `approved`, `classification._classifier: "agent"`, `userSaved: true` or (`discipline_fit: core` and not an interstate onsite/unknown row), no `red_flag_blocker`, the row's channel opted in and listed in `autopilot.channels`, kill switch off, both daily caps open.
+2. `tools/submission-gate.ts` returns `submit` for provenance `autopilot:<run-id>` only with `autopilot.enabled`, status `approved`, an automatic `agent_fallback` verification decision, healthy or acknowledged Jev state, the existing fit rules, no applicable blocker, channel opt-in, kill switch off and both daily caps open. A Jev decision may prioritise the row but never authorises the send.
 
 Evidence a row must carry after an autopilot send: `archive/<id>/confirmation.txt` (channel, channel job id, confirmation text, resume filename, letter sha, run id, timestamp), the adapter's success screenshot in the archive, `letter-critic.json`, an audit `submitted` event with `actor: "autopilot"` and `details.run_id`, and the full letter text under "Sent unattended" in that day's journal. A user-saved row is also unsaved on SEEK (`npm run seek:unsave`).
 
-Any other outcome (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) moves the row to `manual_action_needed` with the reason in `notes`. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path, with `linkedin_jobs` in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
+Missing, Jev-only or stale agent classification returns the unsubmitted row to `discovered` for bounded run-owned verification, retaining its package and audit history. Other repairable outcomes (letter-critic block, gate `gate_failed` / `manual` / `duplicate`, external-ATS redirect, unknown screening question, adapter failure) move the row to `manual_action_needed` with the reason in `notes`. SEEK human verification detected before Submit returns the row to `approved` with its package intact for a later channel-safe run; it is a channel block, not a new user decision. A channel's explicit closed-advert notice before an application form opens is terminal: the row moves from `submission_pending` to `withdrawn`, records `channelExpiredAt`, and leaves active queues. An unconfirmed submission stays `submission_pending` for reconciliation. Gate `blocked` (kill switch) or `capped` leaves the row at `approved` for a later run. LinkedIn Easy Apply rows (`channel: linkedin_jobs`, `applyMethod: easy_apply`) take the same autopilot path, with `linkedin_jobs` in `autopilot.channels`; LinkedIn ads with any other apply method go to `manual_action_needed`. Rows on every other channel still reach `submitted` only through an attended session.
 
 ## Sheet
 

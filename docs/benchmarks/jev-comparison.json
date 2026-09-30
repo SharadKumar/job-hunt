@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T09:18:20.072Z",
+  "same_cohort": false,
+  "same_current_context_cohort": true,
+  "same_context": false,
+  "same_machine": true,
+  "same_concurrency": true,
+  "before_snapshot": {
+    "opportunities": 2198,
+    "five_run_total_cost_usd": 88.49349394999999,
+    "classification_only_cost_usd": null,
+    "legacy_isolated_metrics_available": false
+  },
+  "forward_agent_comparator": {
+    "file": "jev-agent-comparator.json",
+    "measured": 120,
+    "input_tokens": 1116737,
+    "output_tokens": 94651,
+    "total_tokens": 1211388,
+    "cost_usd": 4.936999,
+    "wall_ms": 608687,
+    "operational_proxy_false_low": 2,
+    "operational_proxy_false_high": 2
+  },
+  "jev_live_comparator": {
+    "files": [
+      "jev-backtest-live-120.json",
+      "jev-backtest-live-retry.json"
+    ],
+    "measured": 115,
+    "input_tokens": 530099,
+    "output_tokens": 32049,
+    "cost_usd": 0.021204,
+    "wall_ms": 76178,
+    "first_pass_degraded": 6,
+    "recovered_on_single_row_retry": true
+  },
+  "classifier_comparison": {
+    "comparable_decisions": 115,
+    "discipline_agreement": 0.608696,
+    "matched_resume_agreement": 0.826087,
+    "note": "Agreement is diagnostic. Operational proxy errors and human adjudication, not agreement with either model, decide quality."
+  },
+  "repeatability": {
+    "schema_version": 1,
+    "generated_at": "2026-09-22T06:45:00.070Z",
+    "contract": "Two live TypeSafe Jev evaluations of the same content, profile, policy and question schema through Vercel AI Gateway.",
+    "repeated": 115,
+    "discipline_same": 111,
+    "discipline_stability": 0.965217,
+    "resume_same": 111,
+    "resume_stability": 0.965217,
+    "status_same": 115,
+    "status_stability": 1,
+    "changed_ids": [
+      "recruiter-06eae7f65091",
+      "seek-488c4362235d",
+      "seek-e227851c8fc7",
+      "seek-786adedbd933",
+      "seek-22468a22e32e",
+      "seek-eb5b64043da2",
+      "seek-4bf7ab8df5f8"
+    ]
+  },
+  "jev": {
+    "measured": 115,
+    "automatic_rate": 0.295652,
+    "input_tokens": 530099,
+    "estimated_cost_usd": 0.021204,
+    "mean_latency_ms": 938.495652,
+    "p95_latency_ms": 1562
+  },
+  "quality_evidence": {
+    "file": "jev-after.json",
+    "measured": 115,
+    "label_basis": "user-delegated assistant decisions grounded in the profile, CV evidence and job description; reported separately from independent human validation",
+    "delegated_complete": 0,
+    "delegated_required": 115,
+    "independent_human_complete": false,
+    "diagnostic_metrics": {
+      "adjudication": {
+        "required": 115,
+        "complete_count": 0,
+        "complete": false,
+        "shadow_review_required": 0,
+        "shadow_review_complete": 0,
+        "delegated_decisions": 0,
+        "independently_human_verified": 0,
+        "stale": 115
+      },
+      "apply_labels": 0,
+      "automatic_apply_labels": 0,
+      "automatic_low_apply_worthy_errors": 0,
+      "automatic_low_apply_worthy_error_rate": null,
+      "automatic_high_not_apply_worthy_errors": 0,
+      "automatic_high_not_apply_worthy_error_ids": [],
+      "consequential_errors": [],
+      "matched_resume_labels": 0,
+      "matched_resume_exact_agreement": null,
+      "discipline_labels": 0,
+      "discipline_exact_agreement": null,
+      "calibration_ece": null,
+      "calibration_curve": [],
+      "calibration_monotonic": null,
+      "calibration_basis": "automatic selected-option probability versus exact delegated discipline",
+      "label_basis": "user-delegated assistant decisions grounded in the profile, CV evidence and job description; reported separately from independent human validation"
+    },
+    "operational_proxy_file": "jev-shadow-500.json",
+    "operational_proxy_measured": 314
+  },
+  "targets": {
+    "resolved_model_version_observable": {
+      "target": true,
+      "value": false,
+      "pass": false
+    },
+    "delegated_adjudication_complete": {
+      "target": true,
+      "value": false,
+      "pass": false
+    },
+    "shadow_disagreements_reviewed": {
+      "target": true,
+      "value": false,
+      "pass": false
+    },
+    "automatic_low_apply_worthy_error_rate": {
+      "target": "<=0.02",
+      "value": null,
+      "pass": null
+    },
+    "consequential_errors": {
+      "target": 0,
+      "value": null,
+      "pass": null
+    },
+    "matched_resume_rate": {
+      "target": ">=0.85",
+      "value": null,
+      "pass": null
+    },
+    "calibration_ece": {
+      "target": "<=0.10",
+      "value": null,
+      "pass": null
+    },
+    "calibration_monotonic": {
+      "target": true,
+      "value": null,
+      "pass": null
+    },
+    "discipline_repeatability": {
+      "target": ">=0.98",
+      "value": 0.965217,
+      "pass": false
+    },
+    "resume_repeatability": {
+      "target": ">=0.98",
+      "value": 0.965217,
+      "pass": false
+    },
+    "unchanged_calls": {
+      "target": 0,
+      "value": 0,
+      "pass": true
+    },
+    "send_authority": {
+      "target": "Jev-only sends = 0",
+      "value": 0,
+      "pass": true
+    },
+    "generic_agent_token_reduction": {
+      "target": ">=0.90",
+      "value": 1,
+      "pass": true
+    },
+    "classification_cost_reduction": {
+      "target": ">=0.50",
+      "value": 0.995518,
+      "pass": true
+    },
+    "runtime_guardrail": {
+      "target": "<=1.10x",
+      "value": 0.130593,
+      "pass": true
+    }
+  },
+  "promotion_ready": false,
+  "note": "Promotion quality targets use the user's delegated first-pass decisions bound to the exact content and Jev decision. Independent human validation is reported separately and delegated evidence cannot self-authorise Jev sends. Operational proxy quality remains diagnostic only. Retrospective legacy telemetry remains null. Five historical cohort rows are no longer in the pipeline, so cost and runtime compare per-decision values rather than raw totals."
+}

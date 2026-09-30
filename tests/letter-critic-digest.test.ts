@@ -24,6 +24,7 @@ import {
   parseSince,
   parseVerdictText,
   requisitionCodesNotInJd,
+  sha256Text,
   themeKey,
   UNPARSEABLE,
   verbClass,
@@ -72,6 +73,35 @@ const NOW = new Date("2026-09-17T00:00:00.000Z");
 
   // A pass verdict contributes nothing, even when it carries warn findings.
   assert.equal(digest.themes.some((t) => /stale|jd phrasing/i.test(t.sample)), false);
+}
+
+// The Codex child is isolated and its output is still subject to the exact
+// letter hash and deterministic checks. Fake only the CLI transport here.
+{
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "letter-critic-codex-test-"));
+  try {
+    const letterPath = path.join(tmp, "cover-letter.md");
+    const childPath = path.join(tmp, "codex-stub.mjs");
+    const outPath = path.join(tmp, "verdict.json");
+    const letter = "Dear hiring manager,\n\nI would like to apply.\n\nRegards\n";
+    await fs.writeFile(letterPath, letter);
+    await fs.writeFile(childPath, `#!/usr/bin/env node\nimport fs from 'node:fs';\nconst args=process.argv.slice(2);const at=args.indexOf('--output-last-message');fs.writeFileSync(args[at+1], process.env.CRITIC_STUB_OUTPUT ?? '{"verdict":"pass","findings":[]}');\n`, { mode: 0o755 });
+    const env = { ...process.env, LETTER_CRITIC_CLI: "codex", CODEX_CLI_BIN: childPath };
+    const pass = await run(repoPath("tools/letter-critic.ts"), ["--letter", letterPath, "--out", outPath], env);
+    assert.equal(pass.code, 0, pass.stderr);
+    const recorded = JSON.parse(await fs.readFile(outPath, "utf8"));
+    assert.equal(recorded.model, "gpt-6-sol");
+    assert.equal(recorded.letter_sha256, sha256Text(letter));
+    await fs.writeFile(letterPath, letter.replace("apply.", "apply — today."));
+    const blocked = await run(repoPath("tools/letter-critic.ts"), ["--letter", letterPath, "--out", outPath], env);
+    assert.equal(blocked.code, 1);
+    assert.equal(JSON.parse(await fs.readFile(outPath, "utf8")).verdict, "block");
+    const malformed = await run(repoPath("tools/letter-critic.ts"), ["--letter", letterPath, "--out", path.join(tmp, "bad.json")], { ...env, CRITIC_STUB_OUTPUT: "not json" });
+    assert.equal(malformed.code, 2);
+    assert.equal(await exists(path.join(tmp, "bad.json")), false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 }
 
 // --- digest: a window that excludes everything is empty, not an error --------

@@ -66,36 +66,7 @@ function ok(name: string): void {
   console.log(`  ok  ${name}`);
 }
 
-// --- 1. merge-classifications: the canonical map -----------------------------
-{
-  const root = newRoot();
-  const target = path.join(root, "state", "pipeline", "classifications.json");
-  const source = path.join(root, "source.json");
-  write(source, fs.readFileSync(path.join(fixtures, "classifications-valid.json"), "utf8"));
-
-  // Missing target: allowed to default, but the report must say so.
-  const fresh = run("tools/merge-classifications.ts", ["--target", target, source], { root });
-  assert.equal(fresh.status, 0, fresh.stderr);
-  const freshReport = JSON.parse(fresh.stdout);
-  assert.equal(freshReport.target_existed, false, "a defaulted-from-nothing merge must declare it");
-  assert.match(String(freshReport.note), /did not exist/);
-  assert.equal(freshReport.total, 1);
-  ok("merge-classifications: missing canonical map defaults and says so");
-
-  // Corrupt target: must not silently become {} and drop prior classifications.
-  write(target, fs.readFileSync(path.join(fixtures, "classifications-corrupt.json"), "utf8"));
-  const corrupt = run("tools/merge-classifications.ts", ["--target", target, source], { root });
-  assert.notEqual(corrupt.status, 0, "a corrupt canonical map must not merge");
-  assert.ok(corrupt.stderr.includes(target), `reason must name ${target}, got: ${corrupt.stderr}`);
-  assert.equal(
-    fs.readFileSync(target, "utf8"),
-    fs.readFileSync(path.join(fixtures, "classifications-corrupt.json"), "utf8"),
-    "the corrupt map must be left exactly as found, not overwritten",
-  );
-  ok("merge-classifications: corrupt canonical map exits nonzero and names the file");
-}
-
-// --- 2. verify-plan: --plan is required --------------------------------------
+// --- 1. verify-plan: --plan is required --------------------------------------
 {
   const noPlan = run("tools/verify-plan.ts", []);
   assert.equal(noPlan.status, 2, `--plan absent must be a usage error, got ${noPlan.status}`);
@@ -346,7 +317,6 @@ function ok(name: string): void {
     resumeId: "solution-architect",
     searchKeywords: ["Solution Architect"],
     archiveDir: path.join(dbRoot, "archive"),
-    classificationsPath: path.join(dbRoot, "classifications.json"),
   });
   assert.equal(fromStore.matchingRows, 1, "the default corpus must come from the pipeline store, not a renamed JSON file");
   ok("lexicon-mine: default corpus comes from the pipeline store");
@@ -360,7 +330,6 @@ function ok(name: string): void {
     searchKeywords: ["Solution Architect"],
     pipelinePath: jsonPath,
     archiveDir: path.join(dbRoot, "archive"),
-    classificationsPath: path.join(dbRoot, "classifications.json"),
   });
   assert.equal(fromJson.matchingRows, 2, "--pipeline <json> must keep working for fixtures");
   ok("lexicon-mine: an explicit --pipeline <json> still overrides the store");

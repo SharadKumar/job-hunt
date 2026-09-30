@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "benchmark": "jev-decision-layer",
+  "label": "before",
+  "captured_at": "2026-09-19T08:30:18+10:00",
+  "repository": {
+    "commit": "d246d2385a17cb319d2c358ed6456b37fcb09857",
+    "working_tree_clean_before_capture": true
+  },
+  "sources": {
+    "pipeline": "state/pipeline/pipeline.db",
+    "daily_logs": [
+      "state/journal/launchd/2026-09-14.log",
+      "state/journal/launchd/2026-09-15.log",
+      "state/journal/launchd/2026-09-16.log",
+      "state/journal/launchd/2026-09-17.log",
+      "state/journal/launchd/2026-09-18.log"
+    ],
+    "classification_workload_notes": [
+      "state/journal/2026-09-15.md",
+      "state/journal/2026-09-16.md",
+      "state/journal/2026-09-17.md",
+      "state/journal/2026-09-18.md"
+    ]
+  },
+  "pipeline_snapshot": {
+    "opportunities": 2198,
+    "classifications": {
+      "total_present": 2195,
+      "agent": 2195,
+      "regex": 0,
+      "none": 3,
+      "discipline_fit_field_absent": 693,
+      "matched_resume_id_field_absent": 0,
+      "matched_resume_id_explicit_null": 1727
+    },
+    "jd_store": {
+      "rows": 2136,
+      "rows_over_200_characters": 706,
+      "average_characters": 1258,
+      "maximum_characters": 11582
+    },
+    "duplicated_classification_source": {
+      "rows_with_both_fields": 2195,
+      "contradictions": 0
+    }
+  },
+  "current_runtime_architecture": {
+    "default_semantic_classifier": "generic-agent",
+    "generic_agent_required_for_daily_front_half": true,
+    "intermediate_classification_map": "state/pipeline/classifications.json",
+    "score_has_implicit_regex_fallback": true,
+    "classification_phase_has_separate_telemetry": false
+  },
+  "legacy_runtime_reference_counts": {
+    "search_scope": "AGENTS.md README.md package.json agents tools tests .claude/skills/apply .claude/skills/daily .claude/skills/hunt references docs templates, excluding keyword-triage-workspace snapshots, docs/jev-integration-plan.md and docs/benchmarks",
+    "classificationSource": 26,
+    "state/pipeline/classifications.json": 11,
+    "classifications:merge": 2,
+    "classify:diagnostic": 2,
+    "classifyJdRegex": 4,
+    "assertAgentClassificationForApplication": 4,
+    "after_target_for_retired_symbols": 0
+  },
+  "whole_daily_run_baseline": {
+    "scope": "Successful Claude daily runs. These values include hunting, classification, drafting, critique and submission. They are not classification-only measurements.",
+    "runs": [
+      {
+        "date": "2026-09-14",
+        "duration_api_ms": 884217,
+        "total_cost_usd": 5.0577009,
+        "input_tokens": 62,
+        "cache_creation_input_tokens": 79966,
+        "cache_read_input_tokens": 2105879,
+        "output_tokens": 13785,
+        "turns": 32,
+        "subagents_spawned": 4
+      },
+      {
+        "date": "2026-09-15",
+        "duration_api_ms": 780614,
+        "total_cost_usd": 5.204036600000002,
+        "input_tokens": 116,
+        "cache_creation_input_tokens": 105351,
+        "cache_read_input_tokens": 4627982,
+        "output_tokens": 24418,
+        "turns": 59,
+        "subagents_spawned": 4
+      },
+      {
+        "date": "2026-09-16",
+        "duration_api_ms": 5360783,
+        "total_cost_usd": 24.299484999999997,
+        "input_tokens": 88,
+        "cache_creation_input_tokens": 111932,
+        "cache_read_input_tokens": 7724712,
+        "output_tokens": 28498,
+        "turns": 43,
+        "subagents_spawned": 24
+      },
+      {
+        "date": "2026-09-17",
+        "duration_api_ms": 4109109,
+        "total_cost_usd": 17.824591899999998,
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 2907,
+        "cache_read_input_tokens": 362695,
+        "output_tokens": 1290,
+        "turns": 2,
+        "subagents_spawned": 17
+      },
+      {
+        "date": "2026-09-18",
+        "duration_api_ms": 5636610,
+        "total_cost_usd": 36.10767954999998,
+        "input_tokens": 4360,
+        "cache_creation_input_tokens": 390845,
+        "cache_read_input_tokens": 32516331,
+        "output_tokens": 111933,
+        "turns": 157,
+        "subagents_spawned": 21
+      }
+    ],
+    "aggregate": {
+      "run_count": 5,
+      "total_duration_api_ms": 16771333,
+      "mean_duration_api_ms": 3354266.6,
+      "median_duration_api_ms": 4109109,
+      "total_cost_usd": 88.49349394999999,
+      "mean_cost_usd": 17.698698789999998,
+      "median_cost_usd": 17.824591899999998,
+      "total_cache_read_input_tokens": 47337599,
+      "total_output_tokens": 179924,
+      "total_subagents_spawned": 70
+    }
+  },
+  "classification_workload_observations": [
+    {
+      "date": "2026-09-15",
+      "rows": 372,
+      "path": "four parallel Sonnet agents",
+      "reported_elapsed_minutes_approx": 7,
+      "scope": "separate reclassification batch, not the whole daily run"
+    },
+    {
+      "date": "2026-09-16",
+      "rows": 190,
+      "path": "in-agent",
+      "reported_elapsed_minutes_approx": null,
+      "scope": "daily classification workload"
+    },
+    {
+      "date": "2026-09-17",
+      "rows": 301,
+      "path": "in-agent",
+      "full_jd_rows": 71,
+      "title_only_outside_rows": 230,
+      "reported_elapsed_minutes_approx": null,
+      "scope": "daily classification workload"
+    },
+    {
+      "date": "2026-09-18",
+      "rows": 289,
+      "path": "mixed narrow opportunity-finder passes and in-agent title triage",
+      "reported_elapsed_minutes_approx": null,
+      "scope": "new SEEK and LinkedIn rows in the daily classification workload"
+    }
+  ],
+  "classification_only_baseline": {
+    "status": "not_separately_instrumented",
+    "latency_ms_per_100_changed_rows": null,
+    "generic_agent_tokens_per_100_changed_rows": null,
+    "cost_usd_per_100_changed_rows": null,
+    "reason": "Existing daily logs combine classification with drafting, critique, subagents and submission. Phase 0 must capture an identical frozen-cohort current-path replay before cutover."
+  },
+  "comparison_contract": {
+    "current_path_replay": "docs/benchmarks/jev-current-path-replay.json",
+    "after_jev": "docs/benchmarks/jev-after.json",
+    "computed_comparison": "docs/benchmarks/jev-comparison.json",
+    "same_cohort_required": true,
+    "same_content_hashes_required": true,
+    "same_profile_policy_and_resume_hashes_required": true,
+    "estimates_must_not_replace_unavailable_values": true
+  },
+  "promotion_targets": {
+    "automatic_low_apply_worthy_error_rate_max": 0.02,
+    "consequential_error_count_on_submitted_or_later": 0,
+    "matched_resume_id_agreement_min": 0.85,
+    "expected_calibration_error_max": 0.1,
+    "healthy_agent_classification_rate_max": 0.05,
+    "generic_agent_classification_token_reduction_min": 0.9,
+    "classification_cost_reduction_min": 0.5,
+    "front_half_cli_unavailable_success_rate": 1,
+    "unchanged_row_jev_calls": 0,
+    "classification_runtime_regression_max": 0.1,
+    "jev_only_send_authorisations": 0,
+    "retired_legacy_runtime_references": 0
+  },
+  "after_jev": {
+    "status": "pending_implementation"
+  }
+}

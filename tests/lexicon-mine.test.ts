@@ -18,7 +18,7 @@ assert.ok(jdA.length >= MIN_FULL_TEXT_CHARS, "fixture JDs must clear the full-te
 
 const pipeline = [
   { id: "seek-a", title: "Senior Solution Architect", description: jdA, resumeId: "solution-architect" },
-  { id: "seek-b", title: "Solution Architect - Integration", description: jdB },
+  { id: "seek-b", title: "Solution Architect - Integration", description: jdB, classification: { matched_resume_id: "solution-architect" } },
   { id: "seek-c", title: "Solution Architect", description: "short teaser" },
   { id: "seek-d", title: "Marketing Coordinator", description: unrelated },
   { id: "seek-e", title: "Principal Solution Architect", description: "" },
@@ -26,13 +26,11 @@ const pipeline = [
 mkdirSync(path.join(archive, "seek-c"), { recursive: true });
 writeFileSync(path.join(archive, "seek-c", "jd.md"), jdC);
 writeFileSync(path.join(root, "opportunities.json"), JSON.stringify(pipeline));
-writeFileSync(path.join(root, "classifications.json"), JSON.stringify({ "seek-b": { matched_resume_id: "solution-architect" } }));
 
 const corpus = await collectCorpus({
   resumeId: "solution-architect",
   searchKeywords: ["Solution Architect"],
   pipelinePath: path.join(root, "opportunities.json"),
-  classificationsPath: path.join(root, "classifications.json"),
   archiveDir: archive,
 });
 

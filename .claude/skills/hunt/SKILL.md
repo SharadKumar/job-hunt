@@ -1,11 +1,11 @@
 ---
 name: hunt
-description: Search the user's enabled job channels for new roles, classify them in-agent, score with persisted agent classification, and ingest the keepers. Use whenever the user asks to "find roles", "scan jobs", "check Seek/LinkedIn/HN", "look for new contracts", "see what's out there", or wants fresh roles for a specific channel. Args: `[channel|all] [--since=Nd]`, defaulting to `all` and `--since=7d`.
+description: Search the user's enabled job channels for new roles, classify them through Jev, score deterministically, and ingest the keepers. Use whenever the user asks to "find roles", "scan jobs", "check Seek/LinkedIn/HN", "look for new contracts", "see what's out there", or wants fresh roles for a specific channel. Args: `[channel|all] [--since=Nd]`, defaulting to `all` and `--since=7d`.
 ---
 
 # /hunt: discover new roles
 
-Search the user's enabled job channels for fresh roles, classify them with agent judgement, then score and ingest the keepers.
+Search the user's enabled job channels for fresh roles, classify them through the bounded decision layer, then score and ingest the keepers.
 
 ## What to do
 
@@ -16,7 +16,7 @@ Invoke the `opportunity-finder` subagent. Pass it any channel filter from the ar
 1. Reads `state/profile/channels.yaml`.
 2. Runs `npm run hunt:<channel> -- --upsert` for each enabled (or filtered) channel. A `hunt:` script exists only for `seek`, `linkedin-jobs` (alias `linkedin_jobs`), `linkedin-posts` and `hn`; any other enabled channel has no scraper and is reported, not improvised.
 3. Dedups against the pipeline store (`state/pipeline/pipeline.db`), read through `npm run pipeline -- list` / `get`.
-4. Classifies each new discovered role in-agent, writes `state/pipeline/classifications.json`, then runs `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`.
+4. Runs `npm run jev:classify`. This persists ClassificationV2 directly in SQLite, leaves uncertain rows unpromoted, and applies deterministic scoring.
 5. Hands off to `state-syncer` to mirror to the Sheet.
 
 ## Surface to the user

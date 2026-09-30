@@ -7,7 +7,8 @@
  *   state/profile/skills-taxonomy.yaml
  *   state/profile/profile.md (frontmatter for target rate, location, arrangement)
  *
- * Inputs: a Role object (or JSON via --role-json or --role-file).
+ * Inputs: a pipeline-style object carrying both role fields and a current
+ * ClassificationV2, or { role, classification }.
  *
  * Output: {score: 0-100, reasons: string[], red_flag_blocker: bool, breakdown: {...}}
  *
@@ -19,7 +20,7 @@
 import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
-import { classifyJdRegex, type Classification } from "./classify-jd.ts";
+import { extractMechanicalClassification, isExplicitFixedTermEmployment, type ClassificationV2 } from "./classification.ts";
 
 export type Role = {
   id: string;
@@ -73,8 +74,8 @@ export type ScoreResult = {
    * existing constructors of a bare ScoreResult (tests, fixtures) still typecheck.
    */
   fit_verdict?: FitVerdict;
-  /** Set when the role fits but is held for a logistics reason the user has ruled on (e.g. interstate onsite). */
-  parked_reason?: string;
+  /** A confirmed logistics mismatch, not a temporary hold. */
+  ineligible_reason?: string;
 };
 
 export type SkillTaxonomy = {
@@ -189,7 +190,7 @@ function recencyFit(role: Role): { score: number; reason: string } {
   return { score: 0.2, reason: `posted ${days.toFixed(0)} days ago — likely stale` };
 }
 
-function contractFlexibility(classification: Classification): { score: number; reason: string } {
+function contractFlexibility(classification: ClassificationV2): { score: number; reason: string } {
   const signals: string[] = [];
   if (classification.bonuses.includes("fully_remote")) signals.push("fully_remote");
   if (classification.bonuses.includes("fractional_or_part_time_explicit")) signals.push("fractional_or_part_time");
@@ -274,20 +275,15 @@ export function computeFitVerdict(input: {
   };
 }
 
-export async function scoreRole(role: Role, providedClassification?: Classification): Promise<ScoreResult & { classification: Classification }> {
+export async function scoreRole(role: Role, providedClassification?: ClassificationV2): Promise<ScoreResult & { classification: ClassificationV2 }> {
   const weights = await readYaml<Weights>(repoPath("state/profile/scoring-weights.yaml"));
   const taxonomy = await readYaml<SkillTaxonomy>(repoPath("state/profile/skills-taxonomy.yaml"));
   const profile = await loadProfile();
 
-  // Classification policy:
-  //   - If the caller (typically the agent running a skill) supplies a
-  //     classification, use it. The agent has already reasoned about
-  //     profile_relevance against the active targets and red flags using
-  //     its own LLM context.
-  //   - Otherwise, fall back to the regex triage classifier. This is fast
-  //     and weak — appropriate for pre-filtering a large hunt batch before
-  //     the agent does grounded reclassification on the subset.
-  const classification = providedClassification ?? await classifyJdRegex(role.title, role.description);
+  if (!providedClassification) {
+    throw new Error(`Opportunity ${role.id} has no ClassificationV2; classify it before scoring`);
+  }
+  const classification = providedClassification;
 
   // Merge classifier-derived day_rate into the role (channel scrape may not have it)
   if (classification.day_rate.stated_explicitly && classification.day_rate.min) {
@@ -304,7 +300,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   }
 
   const breakdown: Record<string, number> = {};
-  const reasons: string[] = [`classifier: ${classification._classifier}`];
+  const reasons: string[] = [`classification: ${classification.source}/${classification.status}`];
 
   // Skills overlap (still keyword-based — the taxonomy is finite + explicit)
   const so = skillOverlap(`${role.title} ${role.description}`, taxonomy);
@@ -398,11 +394,19 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
 
   // A role with no credible resume positioning cannot be applied to, so it
   // can never be a shortlist candidate whatever the numbers say.
-  const noPositioning = classification._classifier === "agent" && !classification.matched_resume_id;
+  const noPositioning = !classification.matched_resume_id;
   if (noPositioning) reasons.push("blocker: no active resume positioning fits (matched_resume_id null)");
 
-  const red_flag_blocker =
-    classification.red_flags.some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time")
+  // Recheck explicit current advert terms even when semantic fit is cached.
+  const fixedTermEmployee = isExplicitFixedTermEmployment(`${role.title}\n${role.description ?? ""}`);
+  // Enrichment can replace a search-card blurb after a semantic decision was
+  // cached. Explicit terms in the current advert must take effect immediately,
+  // without spending another model call or treating stale semantic output as
+  // authority to keep a role in the apply queue.
+  const currentFacts = extractMechanicalClassification(role.title, role.description ?? "", { location: role.location });
+  const currentRedFlags = new Set([...classification.red_flags, ...currentFacts.red_flags]);
+  const red_flag_blocker = fixedTermEmployee ||
+    [...currentRedFlags].some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time" || f === "clearance_required")
     || relevance < 25   // wholly-irrelevant roles are also blockers
     || noPositioning;
 
@@ -414,23 +418,29 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     score = lowRelevanceCap;
   }
 
-  // Interstate roles (2026-09-15): the user applies to roles outside the
-  // home city only when the ad is remote or reads as location-flexible. An
-  // interstate role that requires routine onsite attendance keeps its fit
-  // score but is reported with a parked_reason, and the rescore moves it to
-  // the `parked` status so the shortlist stays the actionable queue.
+  // Unknown flexibility is not a blocker. Only confirmed routine attendance
+  // outside the home location fails eligibility; saved-job policy is applied
+  // by the lifecycle and submission gate.
   const homeCity = profile.homeCity;
-  const locFlex = (classification as { location_flexibility?: string }).location_flexibility;
+  const locFlex = currentFacts.location_flexibility !== "unknown"
+    ? currentFacts.location_flexibility
+    : role.workArrangement === "remote"
+      ? "remote"
+    : role.workArrangement === "hybrid" || role.workArrangement === "onsite"
+      ? "onsite"
+      : (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
-  let parked_reason: string | undefined;
-  if (isInterstate && locFlex === "onsite") {
-    parked_reason = `interstate onsite (${role.location}); apply only if remote or flexible`;
-    reasons.push(`parked: ${parked_reason}`);
-  } else if (isInterstate && locFlex === "unknown") {
-    parked_reason = `interstate (${role.location}) with card-only blurb; location flexibility unknown`;
-    reasons.push(`parked: ${parked_reason}`);
+  let ineligible_reason: string | undefined;
+  if (fixedTermEmployee) {
+    ineligible_reason = "fixed-term employee engagement, not independent contracting";
+    reasons.push(`ineligible: ${ineligible_reason}`);
+  } else if (isInterstate && locFlex === "onsite") {
+    ineligible_reason = `routine interstate attendance (${role.location})`;
+    reasons.push(`ineligible: ${ineligible_reason}`);
+  } else if (isInterstate && (!locFlex || locFlex === "unknown")) {
+    reasons.push("location flexibility unknown; proceed subject to other eligibility gates");
   } else if (isInterstate && (locFlex === "remote" || locFlex === "flexible")) {
-    reasons.push(`interstate but ${locFlex}: ${(classification as { location_flexibility_quote?: string }).location_flexibility_quote ?? ""}`.trim());
+    reasons.push(`interstate but ${locFlex}: ${currentFacts.location_flexibility_quote || (classification as { location_flexibility_quote?: string }).location_flexibility_quote || ""}`.trim());
   }
 
   // Blockers cap the score so the Sheet ordering matches the pipeline decision.
@@ -441,18 +451,18 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   }
 
   // SEEK cards frequently omit rate, posting timestamp and detailed skill text.
-  // Keep a guarded floor for a blocker-free contract the agent has explicitly
-  // judged an excellent match. The floor only applies to production agent
-  // classifications, never regex triage.
-  const highRelevanceMin = weights.thresholds?.high_agent_relevance_min ?? 90;
+  // Keep a guarded floor for a blocker-free contract with a high-confidence
+  // automatic Jev decision.
+  const highRelevanceMin = weights.thresholds?.high_automatic_relevance_min ?? 90;
   if (
-    classification._classifier === "agent"
+    classification.source === "jev"
+    && classification.status === "automatic"
     && classification.is_contract
     && !red_flag_blocker
     && classification.matched_resume_id
     && relevance >= highRelevanceMin
   ) {
-    const generalFloor = weights.thresholds?.high_agent_relevance_score_floor ?? 60;
+    const generalFloor = weights.thresholds?.high_automatic_relevance_score_floor ?? 60;
     const appliedAiFloor = weights.thresholds?.applied_ai_high_relevance_score_floor ?? generalFloor;
     const floor = classification.matched_resume_id === "applied-ai" ? appliedAiFloor : generalFloor;
     if (score < floor) {
@@ -472,7 +482,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     overallOverlapPct: skillsNorm * 100,
   });
 
-  return { score, reasons, red_flag_blocker, breakdown, classification, fit_verdict, parked_reason };
+  return { score, reasons, red_flag_blocker, breakdown, classification, fit_verdict, ineligible_reason };
 }
 
 async function main() {
@@ -495,8 +505,13 @@ async function main() {
     console.error("Usage: tsx tools/score.ts (--role-file <path> | --stdin)");
     process.exit(2);
   }
-  const role: Role = JSON.parse(roleJson);
-  const result = await scoreRole(role);
+  const parsed = JSON.parse(roleJson) as Role & { role?: Role; classification?: ClassificationV2 };
+  const role = parsed.role ?? parsed;
+  const classification = parsed.classification;
+  if (!classification || classification.schema_version !== 2) {
+    throw new Error("score:diagnostic requires a current ClassificationV2 in `classification`");
+  }
+  const result = await scoreRole(role, classification);
   console.log(JSON.stringify(result, null, 2));
 }
 

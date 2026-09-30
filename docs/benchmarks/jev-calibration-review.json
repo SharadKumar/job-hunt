@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T06:43:29.219Z",
+  "purpose": "Human adjudication of Jev automatic decisions that disagree with the weak historical negative proxy.",
+  "allowed_adjudication": [
+    "apply_worthy",
+    "not_apply_worthy",
+    "insufficient_evidence"
+  ],
+  "items": []
+}

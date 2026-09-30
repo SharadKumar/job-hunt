@@ -3,10 +3,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { Classification } from "../tools/classify-jd.ts";
-import { assertAgentClassificationForApplication, matchedResumeId } from "../tools/classification-policy.ts";
+import type { ClassificationV2 } from "../tools/classification.ts";
+import { assertAutomaticClassificationForApplication, matchedResumeId } from "../tools/classification-policy.ts";
 import type { Opportunity } from "../tools/pipeline.ts";
 import { opportunityWithScoreResult } from "../tools/rescore-pipeline.ts";
+import { classificationV2 } from "./fixtures/classification-v2.ts";
 
 function opportunity(extra: Partial<Opportunity> = {}): Opportunity {
   return {
@@ -22,38 +23,10 @@ function opportunity(extra: Partial<Opportunity> = {}): Opportunity {
   };
 }
 
-function classification(extra: Partial<Classification> = {}): Classification {
-  return {
-    red_flags: [],
-    bonuses: [],
-    work_arrangement: "remote",
-    day_rate: { min: null, max: null, currency: "AUD", inc_super: null, stated_explicitly: false },
-    seniority: "senior",
-    contract_length_months: 6,
-    is_contract: true,
-    requires_exclusivity: false,
-    requires_payg: false,
-    industry: "technology",
-    short_summary: "Senior architecture contract.",
-    profile_relevance: 90,
-    profile_relevance_reason: "Strong architecture fit.",
-    detected_domain: "enterprise architecture",
-    discipline_fit: "core",
-    location_flexibility: "remote",
-    location_flexibility_quote: "fully remote",
-    matched_resume_id: "solution-architect",
-    resume_match_explanation: "Best match.",
-    requires_tailoring: false,
-    tailoring_rationale: "Baseline is sufficient.",
-    _classifier: "agent",
-    ...extra,
-  };
-}
-
-function scoreResult(c: Classification, score = 80, red = false) {
+function scoreResult(c: ClassificationV2, score = 80, red = false) {
   return {
     score,
-    reasons: [`classifier: ${c._classifier}`],
+    reasons: [`classification: ${c.source}/${c.status}`],
     red_flag_blocker: red,
     breakdown: {},
     classification: c,
@@ -61,41 +34,40 @@ function scoreResult(c: Classification, score = 80, red = false) {
 }
 
 const tests: [string, () => void][] = [
-  ["agent classification is persisted and can promote", () => {
-    const resultOpportunity = opportunityWithScoreResult(opportunity({ workArrangement: "unknown" }), scoreResult(classification({
+  ["automatic Jev classification is persisted and can promote", () => {
+    const resultOpportunity = opportunityWithScoreResult(opportunity({ workArrangement: "unknown" }), scoreResult(classificationV2({
       work_arrangement: "hybrid",
       day_rate: { min: 1200, max: 1400, currency: "AUD", inc_super: false, stated_explicitly: true },
     })), 55);
     assert.equal(resultOpportunity.status, "shortlisted");
-    assert.equal(resultOpportunity.classificationSource, "agent");
+    assert.equal(resultOpportunity.classification?.source, "jev");
     assert.equal(resultOpportunity.classification?.matched_resume_id, "solution-architect");
     assert.equal(resultOpportunity.workArrangement, "hybrid");
     assert.equal(resultOpportunity.dayRate?.min, 1200);
   }],
 
-  ["regex classification cannot promote", () => {
-    const resultOpportunity = opportunityWithScoreResult(opportunity(), scoreResult(classification({
-      _classifier: "regex",
+  ["uncertain classification cannot promote", () => {
+    const resultOpportunity = opportunityWithScoreResult(opportunity(), scoreResult(classificationV2({
+      status: "uncertain",
       profile_relevance: 50,
       profile_relevance_reason: "regex diagnostic default",
       matched_resume_id: null,
     })), 55);
     assert.equal(resultOpportunity.status, "discovered");
-    assert.equal(resultOpportunity.classificationSource, "regex");
+    assert.equal(resultOpportunity.classification?.status, "uncertain");
   }],
 
-  ["application helper rejects non-agent classifications", () => {
+  ["application helper rejects non-automatic classifications", () => {
     assert.throws(
-      () => assertAgentClassificationForApplication(opportunity({
-        classification: classification({ _classifier: "regex" }),
-        classificationSource: "regex",
+      () => assertAutomaticClassificationForApplication(opportunity({
+        classification: classificationV2({ status: "uncertain" }),
       })),
-      /requires persisted agent classification/,
+      /requires an automatic persisted ClassificationV2 decision/,
     );
   }],
 
   ["matched resume helper returns the classified resume id", () => {
-    const classified = opportunity({ classification: classification({ matched_resume_id: "applied-ai" }) });
+    const classified = opportunity({ classification: classificationV2({ matched_resume_id: "applied-ai" }) });
     assert.equal(matchedResumeId(classified), "applied-ai");
   }],
 

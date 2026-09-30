@@ -102,9 +102,16 @@ export function shortDate(value) {
   return !value || Number.isNaN(d.getTime()) ? "" : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
-/** The clock on its own, 24 hour: "08:12". */
+/** The clock on its own: "8:12 am", with ordinary spaces and no leading zero. */
 export const clockTime = (value) => (!value || Number.isNaN(asDate(value).getTime()) ? ""
-  : asDate(value).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit", hour12: false }));
+  : asDate(value).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase().replace(/\s+/g, " "));
+
+/** A schedule's local HH:mm is a wall-clock time, not a UTC timestamp. */
+export function scheduleClock(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? ""));
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return "";
+  return clockTime(new Date(2000, 0, 1, Number(match[1]), Number(match[2])));
+}
 
 /** "Thu 17 Sep", and with the clock when it is asked for. */
 export function dayStamp(value, withTime) {
@@ -118,8 +125,8 @@ export function dayStamp(value, withTime) {
  * The one time format in the UI (the brief, section 6, Global components).
  * Four formats were in use and the same instant read four ways on one screen:
  *
- *   today            08:19
- *   this week        Tue 08:19
+ *   today            8:19 am
+ *   this week        Tue 8:19 am
  *   this year        17 Sep
  *   before that      17 Sep 2025
  *
@@ -135,7 +142,7 @@ export function when(iso, now) {
   const day = (value) => `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`;
   if (day(d) === day(at)) return clockTime(d);
   // Within a week either side the weekday and clock say enough; a next run on
-  // Monday reads "Mon 07:00", not a bare date.
+  // Monday reads "Mon 7:00 am", not a bare date.
   const daysAway = Math.abs(Math.floor((at.getTime() - d.getTime()) / 86400000));
   if (daysAway < 7) {
     return `${d.toLocaleDateString("en-AU", { weekday: "short" })} ${clockTime(d)}`;
@@ -164,4 +171,3 @@ export const APPLY_METHODS = {
   easy_apply: "easy apply",
   external: "external",
 };
-

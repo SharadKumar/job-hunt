@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T06:45:00.070Z",
+  "contract": "Two live TypeSafe Jev evaluations of the same content, profile, policy and question schema through Vercel AI Gateway.",
+  "repeated": 115,
+  "discipline_same": 111,
+  "discipline_stability": 0.965217,
+  "resume_same": 111,
+  "resume_stability": 0.965217,
+  "status_same": 115,
+  "status_stability": 1,
+  "changed_ids": [
+    "recruiter-06eae7f65091",
+    "seek-488c4362235d",
+    "seek-e227851c8fc7",
+    "seek-786adedbd933",
+    "seek-22468a22e32e",
+    "seek-eb5b64043da2",
+    "seek-4bf7ab8df5f8"
+  ]
+}
