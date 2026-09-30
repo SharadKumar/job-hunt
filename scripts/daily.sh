@@ -1,8 +1,7 @@
 #!/bin/bash
 # scripts/daily.sh — wrapper used by launchd to fire the daily orchestrator.
 #
-# Picks the agent CLI via HARNESS_CLI (defaults to "claude"; AGENTS.md §10 makes
-# Claude Code primary and Codex best-effort, and the launchd plist sets claude).
+# Picks the agent CLI via HARNESS_CLI (defaults to "claude" for existing installs).
 # Logs to state/journal/launchd/YYYY-MM-DD.log.
 #
 # Three things launchd needs that a bare `claude -p` does not give us:
@@ -16,7 +15,9 @@
 #
 # Env overrides: HARNESS_CLI, HARNESS_CLI_BIN (the binary/path to execute, for
 # tests), HARNESS_TIMEOUT_MIN, HARNESS_TIMEOUT_SEC (wins; tests use seconds),
-# HARNESS_LOG_RETENTION_DAYS, REPO_DIR.
+# HARNESS_LOG_RETENTION_DAYS, REPO_DIR, HARNESS_DAILY_MODEL (Sonnet for Claude,
+# gpt-6-sol for Codex), HARNESS_REUSE_FRONT_HALF=1 (resume a completed,
+# healthy report from this local day without repeating discovery or Jev calls).
 
 set -euo pipefail
 
@@ -26,6 +27,7 @@ REPO_DIR="${REPO_DIR:-$(bash "$(dirname "$0")/../.claude/hooks/repo-root.sh" "$(
 cd "$REPO_DIR"
 
 DATE=$(date '+%Y-%m-%d')
+unset HARNESS_SEEK_VERIFICATION_REQUIRED
 LOG_DIR="$REPO_DIR/state/journal/launchd"
 LOG_FILE="$LOG_DIR/$DATE.log"
 SUMMARY_DIR="$REPO_DIR/state/journal/summary"
@@ -46,7 +48,7 @@ esac
 
 TIMEOUT_SEC="${HARNESS_TIMEOUT_SEC:-$(( ${HARNESS_TIMEOUT_MIN:-150} * 60 ))}"
 KILL_GRACE_SEC="${HARNESS_KILL_GRACE_SEC:-30}"
-PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and follow it end-to-end. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
+PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in state/journal/front-half/$DATE.json. Also read state/journal/priority/$DATE.json if present: include its confirmed sends and blockers in today's journal, and never retry an uncertain priority attempt. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
 EXIT=0
 TIMED_OUT=0
 
@@ -77,14 +79,72 @@ run_cli() {
   if [ "$CLI" = "claude" ]; then
     # --output-format stream-json keeps logs parseable; --permission-mode auto +
     # the allowlist in .claude/settings.json keeps the headless run safe.
-    exec "$CLI_BIN" -p --verbose --output-format=stream-json --permission-mode=auto "$PROMPT"
+    exec "$CLI_BIN" -p --model "${HARNESS_DAILY_MODEL:-sonnet}" --verbose --output-format=stream-json --permission-mode=auto "$PROMPT"
   else
-    exec "$CLI_BIN" exec "$PROMPT"
+    # The scheduled run needs network access for channel adapters and Vercel,
+    # plus local writes for pipeline state. Send authority remains in
+    # autopilot:submit and its deterministic gates, not in this CLI setting.
+    export LETTER_CRITIC_CLI="${LETTER_CRITIC_CLI:-codex}"
+    export CODEX_CLI_BIN="${CODEX_CLI_BIN:-$CLI_BIN}"
+    # Writer and resume-critic subagents need a persisted parent thread.
+    # --ephemeral prevents their spawn in the current Codex CLI.
+    CODEX_MODEL="${HARNESS_DAILY_MODEL:-gpt-6-sol}"
+    export HARNESS_DAILY_MODEL="$CODEX_MODEL"
+    exec "$CLI_BIN" exec --json --model "$CODEX_MODEL" --sandbox danger-full-access -C "$REPO_DIR" \
+      "$PROMPT The running Codex model is $CODEX_MODEL. Record that exact model id in agent-fallback provenance; never claim a different model."
   fi
 }
 
 {
   echo "=== $(date -Iseconds) starting daily run via $CLI (timeout ${TIMEOUT_SEC}s) ==="
+
+  FRONT_EXIT=0
+  PRIORITY_EXIT=0
+  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
+    REPORT="$REPO_DIR/state/journal/front-half/$DATE.json"
+    if node -e '
+      const fs = require("node:fs");
+      const [file, localDate] = process.argv.slice(1);
+      const report = JSON.parse(fs.readFileSync(file, "utf8"));
+      const finished = new Date(report.finished_at);
+      const date = new Intl.DateTimeFormat("en-CA", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(finished);
+      if (report.schema_version !== 2 || report.running !== false || report.ok !== true ||
+          report.degraded === true || !Number.isFinite(finished.getTime()) || date !== localDate) process.exit(1);
+    ' "$REPORT" "$DATE"; then
+      echo "=== $(date -Iseconds) reusing completed front half $REPORT ==="
+    else
+      echo "=== $(date -Iseconds) cannot reuse front half: missing, stale or unhealthy report $REPORT ===" >&2
+      FRONT_EXIT=2
+    fi
+  else
+    # Prepared, critic-passed packages should not wait behind a long channel
+    # discovery scan. The priority pass re-pulls decisions and expires explicit
+    # deadlines before using the ordinary autopilot gate and adapter.
+    PRIORITY_STARTED=$(date -u +%s)
+    npm run -s daily:priority || PRIORITY_EXIT=$?
+    echo "=== $(date -Iseconds) priority pass exit $PRIORITY_EXIT ==="
+    PRIORITY_REPORT="$REPO_DIR/state/journal/priority/$DATE.json"
+    if [ -f "$PRIORITY_REPORT" ] && node -e '
+      const report = require(process.argv[1]);
+      if (new Date(report.started_at).getTime() < (Number(process.argv[2]) - 1) * 1000 ||
+          report.channel_health?.seek?.verification_required !== true ||
+          report.channel_health?.seek?.observed_this_pass !== true) process.exit(1);
+    ' "$PRIORITY_REPORT" "$PRIORITY_STARTED"; then
+      export HARNESS_SEEK_VERIFICATION_REQUIRED=1
+      echo "=== $(date -Iseconds) SEEK verification required in priority pass; skipping SEEK in front half ==="
+    fi
+    npm run -s daily:front-half || FRONT_EXIT=$?
+  fi
+  echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
+
+  # An explicit reuse request must never fall through to the agent when its
+  # source report is missing or unhealthy. The ordinary run still lets the
+  # back half recover already-valid packages after a fresh front-half error.
+  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ] && [ "$FRONT_EXIT" -ne 0 ]; then
+    EXIT="$FRONT_EXIT"
+  else
 
   run_cli &
   CLI_PID=$!
@@ -112,6 +172,11 @@ run_cli() {
 
   wait "$CLI_PID" || EXIT=$?
   if [ "$TIMED_OUT" -eq 1 ]; then EXIT=124; fi
+  fi
+  # A successful back half cannot turn a failed priority or discovery pass
+  # into a healthy run. Still let it recover already-valid packages first.
+  if [ "$EXIT" -eq 0 ] && [ "$FRONT_EXIT" -ne 0 ]; then EXIT="$FRONT_EXIT"; fi
+  if [ "$EXIT" -eq 0 ] && [ "$PRIORITY_EXIT" -ne 0 ]; then EXIT="$PRIORITY_EXIT"; fi
 
   if [ "$EXIT" -ne 0 ]; then
     mkdir -p "$SUMMARY_DIR"
@@ -127,12 +192,16 @@ run_cli() {
         echo
         if [ "$TIMED_OUT" -eq 1 ]; then
           echo "Run failed (exit $EXIT): $CLI exceeded the ${TIMEOUT_SEC}s watchdog and was killed."
+        elif [ "$FRONT_EXIT" -ne 0 ]; then
+          echo "Run failed (exit $EXIT): deterministic front half exited $FRONT_EXIT; see the log for back-half recovery outcomes."
+        elif [ "$PRIORITY_EXIT" -ne 0 ]; then
+          echo "Run failed (exit $EXIT): prepared-package priority pass exited $PRIORITY_EXIT; see the priority report and log for recovery outcomes."
         else
           echo "Run failed (exit $EXIT): $CLI exited nonzero before the orchestrator finished."
         fi
         echo
         echo "- Log: $LOG_FILE"
-        echo "- Nothing was submitted by this run. Re-run \`bash scripts/daily.sh\` or work the pipeline by hand."
+        echo "- Submission totals are unverified. Check the pipeline and channel confirmations before retrying; never retry an uncertain send."
       } >"$SUMMARY_DIR/$DATE.md"
     fi
   fi

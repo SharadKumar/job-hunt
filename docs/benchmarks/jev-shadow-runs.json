@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-19T09:36:37+10:00",
+  "cohort_file": "docs/benchmarks/jev-shadow-500-cohort.json",
+  "cohort_size": 500,
+  "rollout_percent": 0,
+  "network_shadow_executions": [
+    {
+      "sequence": 1,
+      "requested": 407,
+      "cache_hits": 93,
+      "automatic": 209,
+      "uncertain": 281,
+      "degraded": 10,
+      "input_tokens": 1763510,
+      "estimated_cost_usd": 0.0705404,
+      "result": "provider capacity failures surfaced; no state applied"
+    },
+    {
+      "sequence": 2,
+      "requested": 11,
+      "cache_hits": 489,
+      "automatic": 211,
+      "uncertain": 289,
+      "degraded": 0,
+      "input_tokens": 48963,
+      "estimated_cost_usd": 0.00195852,
+      "result": "degraded rows recovered; no state applied"
+    },
+    {
+      "sequence": 3,
+      "requested": 1,
+      "cache_hits": 499,
+      "automatic": 211,
+      "uncertain": 289,
+      "degraded": 0,
+      "input_tokens": 4222,
+      "estimated_cost_usd": 0.00016888,
+      "result": "identical-content decision-id collision repaired; no state applied"
+    }
+  ],
+  "replay_executions": [
+    {
+      "sequence": 1,
+      "requested": 0,
+      "cache_hits": 500,
+      "replay_misses": 0,
+      "input_tokens": 0,
+      "estimated_cost_usd": 0
+    },
+    {
+      "sequence": 2,
+      "requested": 0,
+      "cache_hits": 500,
+      "replay_misses": 0,
+      "input_tokens": 0,
+      "estimated_cost_usd": 0
+    }
+  ],
+  "requirements": {
+    "at_least_500_changed_opportunities": true,
+    "three_daily_runs": false,
+    "three_same_day_shadow_executions": true,
+    "unchanged_calls_zero": true,
+    "state_changes_from_shadow": 0
+  },
+  "note": "The three executions validate batching, recovery and cache behaviour, but they are not three scheduled daily runs. Promotion remains blocked. The cohort total in jev-shadow-500.json includes 93 decisions already recorded by the frozen 120-row benchmark."
+}

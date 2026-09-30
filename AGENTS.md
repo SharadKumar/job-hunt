@@ -16,7 +16,7 @@ There are two lanes, and the lane is decided by the channel, never by who asked.
 **Autopilot lane.** Channels listed in `autopilot.channels` in `state/profile/submission-policy.yaml` (one-click adapters only: SEEK Quick Apply via `tools/channels/seek-submit.ts`, LinkedIn Easy Apply via `tools/channels/linkedin-submit.ts`). An unattended run may import, classify, score, draft, validate and then submit through `npm run autopilot:submit` when the machine gates pass:
 
 - `autopilot.enabled: true` and `kill_switch: false`
-- status `approved`, agent classification present, core discipline **or** a job the person saved on the channel
+- status `approved`, automatic ClassificationV2 present from the supported in-agent verification path; a Jev decision may classify and prioritise a role but never satisfies unattended send authority; core discipline **or** a job the person saved on the channel
 - no `red_flag_blocker` (bypassed for saved jobs)
 - baseline CV approved and unchanged since approval
 - `tools/letter-critic.ts` pass on the exact letter (sha256 matched)
@@ -37,14 +37,15 @@ Kill switch, caps and gates are defence in depth on both lanes. `kill_switch: tr
 4. **Local files in `state/` are the source of truth.** Pipeline rows live in SQLite at `state/pipeline/pipeline.db`; read them with `npm run pipeline -- get <id> | list` and never from `opportunities.json`, which is only an on-demand export. The local UI (`npm run ui`) is the primary approval surface and writes through the same pipeline CLI. The Google Sheet, when enabled, is a one-way mirror except the Tray tab's `Action` and `Edits` columns, which are pulled in on each run; nothing else in the Sheet is authoritative. `sheet.enabled: false` in `state/profile/submission-policy.yaml` retires the mirror altogether, and every Sheet step then skips with `skipped: "sheet.enabled=false"`; a profile with no `sheet:` block keeps mirroring.
 5. **Market narrative first.** Every positioning is written against current keyword clouds (`state/org/keyword-clouds.yaml`, weighted per type in `market_lens.clouds`), researched from the title outward. A cloud is refreshed once and every positioning that references it moves with it. Unmatched but important terms are put to the person, never silently dropped; minor gaps may become familiarity.
 6. **Tool discipline.** Prefer the scripts in `tools/` (cached, dedup-aware, lint-aware) over ad-hoc `curl` or `grep`. The npm scripts in `package.json` are the canonical entry points. Every tool prints one compact JSON object; parse it, do not grep prose.
-7. **Deterministic tools decide mechanical facts; agents decide semantics.** Page fill, line width, ATS structure, term grounding, provenance and the submission gate are tool verdicts and are never argued down. Section soundness, heading choice, duplicate or contradictory bullets, register and unsupported claims are agent judgements (`resume-critic`, `letter-critic`).
+7. **Use the narrowest decision mechanism that fits.** Deterministic tools decide mechanical facts, scoring arithmetic, gates, hashes and explicit JD terms. Jev makes bounded semantic choices for opportunity classification and only after deterministic matching fails for screening-answer and duplicate candidates. Generative agents retain open-ended writing, critique, research and evidence interpretation. No model authorises a send by itself. An unsubmitted active row that no longer has an automatic core-fit decision returns to `discovered`; its history and package remain available, but it must not linger in Queue or Needs you.
 8. **Never narrate a tool `fail` into a pass.** A green report over a red tool exit is a hard stop. The orchestrator re-runs the gates itself after any subagent returns and trusts the exit code, not the summary.
 9. **Update `state/journal/YYYY-MM-DD.md`** at the end of any non-trivial session: what changed, what was sent (full letter text under "Sent unattended"), what was parked and why.
 10. **After any state mutation, invoke `state-syncer`** to validate the pipeline and, while `sheet.enabled` is true, push the Sheet. Do not leave an enabled Sheet stale.
+11. **Keep the working pipeline current.** Before classification, close every unsent active row whose explicit closing date has passed, or whose channel explicitly reports the advert expired. Use `npm run pipeline:expire -- --apply`; never infer expiry from posting age. Submitted and later-stage rows remain untouched, and closed rows retain their audit history.
 
 ## 4. Pipeline state machine
 
-Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Rows live in the SQLite store (`state/pipeline/pipeline.db`): read them with `npm run pipeline -- get <id> | list | summary`, mutate them only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue and nothing else: fit, no blocker, a positioning to apply with, doable from the home city. Interstate roles needing routine onsite attendance sit in `parked`.
+Statuses, transitions and who may move a row are in `docs/pipeline-state-machine.md`; `VALID_TRANSITIONS` in `tools/pipeline.ts` enforces them and every transition appends an audit event. Rows live in the SQLite store (`state/pipeline/pipeline.db`): read them with `npm run pipeline -- get <id> | list | summary`, mutate them only through `npm run pipeline -- upsert | set-status`. `shortlisted` is the apply queue: fit, no blocker and a positioning to apply with. Unknown location flexibility is non-blocking. Confirmed routine interstate attendance is ineligible, except for saved-job overrides. `parked` is reserved for explicit temporary holds; new holds record `parkedBy: user` or `harness` so rescoring does not mistake missing information for a user instruction.
 
 ## 5. Resume pipeline contract
 
@@ -57,6 +58,8 @@ Statuses, transitions and who may move a row are in `docs/pipeline-state-machine
 - Pin subagent scope. `resume-writer` will otherwise "improve" content nobody asked for: say "no other changes; report, do not act", and diff the composition after every run.
 
 ## 6. Session-start protocol
+
+For a bounded writer task, read the profile and the opportunity's `agent:context` bundle, not the global pipeline digest or historical journals. For `/daily`, use `npm run -s agent:context -- daily` plus the current front-half report instead of historical journal bodies (which contain full letters). This is the scoped exception to the general session grounding below.
 
 A `SessionStart` hook prints a short brief. If it did not fire, run `bash .claude/hooks/session-start.sh`. Then read `state/pipeline/opportunities.md` and the latest entry under `state/journal/` to ground yourself.
 
@@ -73,7 +76,7 @@ Each user-invokable workflow lives in `.claude/skills/<name>/SKILL.md` and is di
 | Intent | Subagent or tool | Notes |
 |---|---|---|
 | First run on a new machine, connect Sheet / channels, turn on autopilot | `setup` skill (drives `npm run setup:check`) | asks in batches; never logs in for the person |
-| Find opportunities, scan a channel | `opportunity-finder` | discover, classify, score, ingest in one context |
+| Find opportunities, scan a channel | `opportunity-finder` | discover, classify through Jev, score, ingest |
 | Render or re-render a CV baseline or tailored CV | `resume-writer` | owns the quality contract; audits and looks at the pages |
 | Critique a rendered CV before approval | `resume-critique` skill (spawns `resume-critic`) | mandatory before any approval |
 | Cover letter or follow-up nudge | `cover-letter-writer` | never write a production letter inline |
@@ -85,6 +88,8 @@ Each user-invokable workflow lives in `.claude/skills/<name>/SKILL.md` and is di
 
 Subagent files in `agents/<name>.md` start with YAML frontmatter (`name`, `description`, `model`, `tools`) followed by the system prompt. Codex wrappers in `.codex/agents/*.toml` are generated by `npm run codex:sync-agents`; never edit them by hand.
 
+Writer dispatch: use `cover-letter-writer` with Haiku in Claude and `gpt-6-luna` / medium in Codex. Give it a fresh context, opportunity id, template, profile id if applicable, and exact repair findings or their file path. Do not copy the orchestration history, journals, whole pipeline, or JD into its prompt; it reads current scoped inputs itself. Codex calls use `fork_turns: "none"` with the explicit model and reasoning effort. Do not silently escalate to a heavier writer. The independent critic and caller's gate rechecks remain mandatory.
+
 ## 9. Asking the person
 
 Drive with crisp choices; do not interrogate. When a fork burns time, an application or reputation, use the structured question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex): 2 to 4 mutually exclusive options, recommended first with " (Recommended)", related questions bundled (max 4), never an open "what would you like?". If the answer is already in `profile.md` or a policy YAML, decide.
@@ -95,7 +100,7 @@ Ask when: two CV variants score within 0.5; a draft trips slop after four regene
 
 ## 10. Cross-CLI
 
-Claude Code is primary; Codex is best-effort. The quality contract depends on isolated subagents; under Codex expect inline invocation, a heavier main context and lower artefact quality. Skills, agents and tools are shared; `scripts/daily.sh` reads `HARNESS_CLI=claude|codex` for the unattended run.
+The deterministic daily front half, including discovery, Jev classification, scoring and dedup, does not depend on either agent CLI. Claude Code is primary for the agentic back half; Codex is best-effort. The writing quality contract depends on isolated subagents. Skills, agents and tools are shared; `scripts/daily.sh` reads `HARNESS_CLI=claude|codex` for the back half.
 
 ## 11. Never
 

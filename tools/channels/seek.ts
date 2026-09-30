@@ -22,10 +22,12 @@
 
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { load as loadPipeline, list as listPipeline, patchMany, setStatus, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
+import { isSeekHumanVerification } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
 export const seek: HuntChannel = {
@@ -155,49 +157,83 @@ export type SeekEnrichment = {
  * The pipeline is loaded and saved once. That keeps this pass linear instead
  * of repeatedly rewriting the entire state file for every advert.
  */
+export function isPendingSavedSeekRole(role: Opportunity): boolean {
+  return role.channel === "seek" && role.userSaved === true && !role.submittedAt && !role.channelExpiredAt
+    && !["submission_pending", "submitted", "responded", "interview", "offered", "won", "withdrawn"].includes(role.status);
+}
+
+/** Match the channel's closed-advert heading, never wording inside a job description. */
+export async function closeSeekAdvertFromHeadings(role: Opportunity, headings: string[]): Promise<boolean> {
+  if (role.submittedAt || role.status === "submission_pending") return false;
+  if (!headings.some(text => /^This job is no longer advertised[.!]?$/i.test(text.trim()))) return false;
+  return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
+}
+
+/** SEEK sometimes renders its closed-advert notice as ordinary page text. */
+export async function closeSeekAdvertFromPageText(role: Opportunity, bodyText: string): Promise<boolean> {
+  if (role.submittedAt || role.status === "submission_pending") return false;
+  const start = bodyText.slice(0, 1200).replace(/\s+/g, " ");
+  if (!/This job is no longer advertised[.!]?\s+Jobs remain on SEEK for 30 days, unless the advertiser removes them sooner\./i.test(start)) return false;
+  return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
+}
+
 export async function enrichSeekRoles(options: {
   id?: string;
+  savedPending?: boolean;
   status?: string;
   minScore?: number;
   concurrency?: number;
   limit?: number;
   /** Only rows matched to this resume id (pipeline resumeId or classification matched_resume_id). */
   resume?: string;
-} = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number }> {
+} = {}): Promise<{ selected: number; enriched: number; unchanged: number; expired: number; failed: number; challenge: boolean; deferred: number }> {
   const roles = await loadPipeline();
-  const status = options.status ?? "shortlisted";
-  const minScore = options.minScore ?? 20;
+  const status = options.status ?? (options.savedPending ? "any" : "shortlisted");
+  const minScore = options.minScore ?? (options.savedPending ? 0 : 20);
   const concurrency = Math.max(1, Math.min(6, options.concurrency ?? 4));
-  const classifiedResume = options.resume ? await loadClassifiedResumeIds() : null;
   const candidates = roles
     .filter((role) => role.channel === "seek")
+    .filter((role) => !options.savedPending || isPendingSavedSeekRole(role))
     .filter((role) => !options.id || role.id === options.id)
-    .filter((role) => !options.resume || role.resumeId === options.resume || classifiedResume?.get(role.id) === options.resume)
+    .filter((role) => !options.resume || role.resumeId === options.resume || role.classification?.matched_resume_id === options.resume)
     .filter((role) => status === "any" || role.status === status)
     .filter((role) => (role.score ?? 0) >= minScore)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
 
-  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
+  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, expired: 0, failed: 0, challenge: false, deferred: 0 };
 
   const ctx = await openChromeContext("seek-enrich", { headless: true });
   const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0;
   let unchanged = 0;
+  let expired = 0;
   let failed = 0;
+  let challenge = false;
   let cursor = 0;
   const startedAt = Date.now();
 
   try {
     const workers = Array.from({ length: Math.min(concurrency, candidates.length) }, async () => {
       while (true) {
+        if (challenge) return;
         const index = cursor++;
         if (index >= candidates.length) return;
         const role = candidates[index];
         const page = await ctx.newPage();
         try {
           await page.goto(role.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-          await page.waitForSelector("[data-automation='jobAdDetails']", { timeout: 12_000 });
+          await page.locator("[data-automation='jobAdDetails']")
+            .or(page.getByRole("heading", { name: /^This job is no longer advertised[.!]?$/i }))
+            .first().waitFor({ state: "visible", timeout: 12_000 });
+          if (await closeSeekAdvertFromHeadings(role, await page.getByRole("heading").allTextContents())) {
+            expired++;
+            continue;
+          }
+          if (await closeSeekAdvertFromPageText(role, await page.locator("body").innerText({ timeout: 2000 }))) {
+            expired++;
+            continue;
+          }
           // Pass a browser-native expression rather than a transpiled callback.
           // tsx/esbuild can otherwise inject its `__name` helper into nested
           // functions, which does not exist inside the page JavaScript realm.
@@ -241,14 +277,26 @@ export async function enrichSeekRoles(options: {
             });
           } else unchanged++;
         } catch (error) {
+          const pageText = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+          // The close notice can appear after the initial DOM load. Read the
+          // final visible page before treating an empty advert as a failure.
+          if (await closeSeekAdvertFromPageText(role, pageText)) {
+            expired++;
+            continue;
+          }
+          if (isSeekHumanVerification(pageText)) {
+            challenge = true;
+            console.error(`[seek:enrich] SEEK human verification required at ${role.id}; stopping this channel batch before more adverts are requested`);
+            return;
+          }
           failed++;
-          console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}`);
+          console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}; page=${page.url()}; visible=${pageText.replace(/\s+/g, " ").slice(0, 500)}`);
         } finally {
           await page.close();
-          const complete = enriched + unchanged + failed;
-          if (complete % 5 === 0 || complete === candidates.length) {
+          const complete = enriched + unchanged + expired + failed;
+          if (complete > 0 && (complete % 5 === 0 || complete === candidates.length)) {
             const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-            console.error(`[seek:enrich] ${complete}/${candidates.length}: ${enriched} updated, ${unchanged} unchanged, ${failed} failed (${elapsed}s)`);
+            console.error(`[seek:enrich] ${complete}/${candidates.length}: ${enriched} updated, ${unchanged} unchanged, ${expired} expired, ${failed} failed (${elapsed}s)`);
           }
         }
       }
@@ -259,21 +307,8 @@ export async function enrichSeekRoles(options: {
   }
 
   if (patches.length) await patchMany(patches, "seek:enrich");
-  return { selected: candidates.length, enriched, unchanged, failed };
-}
-
-/** id → matched_resume_id from state/pipeline/classifications.json (absent file → empty map). */
-async function loadClassifiedResumeIds(): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  try {
-    const raw = JSON.parse(await fs.readFile("state/pipeline/classifications.json", "utf8"));
-    for (const [id, entry] of Object.entries(raw as Record<string, any>)) {
-      if (entry?.matched_resume_id) out.set(id, String(entry.matched_resume_id));
-    }
-  } catch {
-    // no classifications yet
-  }
-  return out;
+  return { selected: candidates.length, enriched, unchanged, expired, failed, challenge,
+    deferred: candidates.length - enriched - unchanged - expired - failed };
 }
 
 export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichment): boolean {
@@ -296,7 +331,7 @@ export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichmen
 /**
  * SEEK sometimes returns construction/commercial roles for broad words such as
  * "manager" and "lead". Keep this deliberately cheap: it is only a pre-ingest
- * noise gate; agent classification remains the authoritative fit decision.
+ * noise gate; ClassificationV2 remains the authoritative fit decision.
  */
 export function looksTechnicallyRelevant(title: string, description: string): boolean {
   const heading = title.toLowerCase();
@@ -373,6 +408,31 @@ export type SeekSavedJob = {
 
 const SAVED_JOBS_URL = "https://www.seek.com.au/my-activity/saved-jobs";
 
+/** A saved live advert overrides an earlier harness rejection, but never an
+ * explicit passed deadline or a channel-expired notice. */
+export function shouldReopenSavedRejection(row: Opportunity, today: string): boolean {
+  return row.status === "rejected" && !row.submittedAt && !row.channelExpiredAt
+    && (!row.closingDate || row.closingDate >= today);
+}
+
+export function assertSavedJobsPageReadable(bodyText: string, cardCount: number): void {
+  if (isSeekHumanVerification(bodyText)) {
+    throw new Error("SEEK human verification required on saved-jobs page");
+  }
+  // An empty selector result is not proof that the user has no saved jobs.
+  // SEEK can change its markup or render a login/security interstitial at
+  // the same URL. Fail closed rather than reporting a successful empty import.
+  if (cardCount === 0) {
+    throw new Error("SEEK saved-jobs page returned no cards; cannot confirm an empty saved list");
+  }
+}
+
+export function assertSavedJobIdsExtracted(cards: ReadonlyArray<{ jobId: string }>): void {
+  if (cards.some((card) => !card.jobId)) {
+    throw new Error("SEEK saved-job cards were visible but a job ID could not be extracted; page structure may have changed");
+  }
+}
+
 // Browser-realm string (see enrich for why this is not a transpiled callback).
 const EXTRACT_SAVED_CARDS_JS = `(() => {
   const clean = (s) => (s || "").replace(/\\s+/g, " ").trim();
@@ -409,7 +469,10 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
     await page.goto(SAVED_JOBS_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
     if (/\/oauth|\/login/i.test(page.url())) throw new Error("SEEK session is signed out; re-run npm run login:seek");
     await page.locator('[data-automation^="job-item-"]').first().waitFor({ state: "attached", timeout: 15_000 }).catch(() => {});
-    const totalText = await page.locator("body").innerText().then((t) => t.match(/(\d+)\s+jobs?\b/i)?.[1]).catch(() => undefined);
+    const firstCards = await page.locator('[data-automation^="job-item-"]').count();
+    const firstBodyText = await page.locator("body").innerText().catch(() => "");
+    assertSavedJobsPageReadable(firstBodyText, firstCards);
+    const totalText = firstBodyText.match(/(\d+)\s+jobs?\b/i)?.[1];
     const expected = totalText ? Number(totalText) : undefined;
 
     for (let pageNumber = 1; pageNumber <= 50; pageNumber++) {
@@ -417,6 +480,8 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
       await page.mouse.wheel(0, 20_000).catch(() => {});
       await page.waitForTimeout(600);
       const cards = (await page.evaluate(EXTRACT_SAVED_CARDS_JS)) as Array<Omit<SeekSavedJob, "url" | "quickApply"> & { applyText: string }>;
+      assertSavedJobsPageReadable(await page.locator("body").innerText().catch(() => ""), cards.length);
+      assertSavedJobIdsExtracted(cards);
       let added = 0;
       for (const c of cards) {
         if (!c.jobId || byId.has(c.jobId)) continue;
@@ -499,6 +564,7 @@ async function main() {
     }
     const result = await enrichSeekRoles({
       id: args.id,
+      savedPending: args["saved-pending"] === "true",
       status: args.status,
       minScore: args["min-score"] ? Number(args["min-score"]) : undefined,
       concurrency: args.concurrency ? Number(args.concurrency) : undefined,
@@ -506,6 +572,7 @@ async function main() {
       resume: args.resume,
     });
     console.log(JSON.stringify(result, null, 2));
+    if (result.failed) process.exitCode = 1;
     return;
   }
   if (cmd === "saved") {
@@ -515,13 +582,19 @@ async function main() {
     let created = 0;
     let alreadyKnown = 0;
     let expired = 0;
+    let expiredClosed = 0;
+    let reopened = 0;
     if (upsertFlag) {
       const known = new Map((await listPipeline()).map((r) => [r.id, r]));
       const now = new Date().toISOString();
+      const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Australia/Sydney" });
       const batch: (Partial<Opportunity> & { channel: string; url: string; title: string; company: string })[] = [];
+      const reopenIds: string[] = [];
       for (const job of jobs) {
         if (job.expired) {
           expired++;
+          const id = opportunityIdFor("seek", job.url);
+          if (known.has(id) && await closeOpportunityAsExpired(id, { source: "channel", channelName: "SEEK" }, { apply: true })) expiredClosed++;
           continue;
         }
         const id = opportunityIdFor("seek", job.url);
@@ -542,9 +615,14 @@ async function main() {
         if (!existing?.userSavedAt) partial.userSavedAt = now;
         batch.push(partial);
         ids.push(id);
+        if (existing && shouldReopenSavedRejection(existing, today)) reopenIds.push(id);
       }
       await upsertMany(batch);
-      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, ids }, null, 2));
+      for (const id of reopenIds) {
+        await setStatus(id, "discovered", "user saved live SEEK advert after prior harness rejection", { actor: "seek:saved" });
+        reopened++;
+      }
+      console.log(JSON.stringify({ saved: jobs.length, new: created, alreadyKnown, expired, expiredClosed, reopened, ids }, null, 2));
     } else {
       const known = new Set((await listPipeline()).map((r) => r.id));
       for (const job of jobs) {
@@ -569,7 +647,7 @@ async function main() {
     return;
   }
   if (cmd !== "search") {
-    console.error("Usage: tsx tools/channels/seek.ts (search [--upsert] | enrich [--status shortlisted|any] [--min-score 20] [--concurrency 4] [--limit N] [--resume <id>] | saved [--upsert] | unsave --job <jobId>)");
+    console.error("Usage: tsx tools/channels/seek.ts (search [--upsert] | enrich [--id <id>] [--saved-pending] [--status shortlisted|any] [--min-score 20] [--concurrency 4] [--limit N] [--resume <id>] | saved [--upsert] | unsave --job <jobId>)");
     process.exit(2);
   }
   const upsertFlag = argv.includes("--upsert");

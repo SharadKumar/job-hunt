@@ -1,0 +1,20 @@
+model: typesafe-ai/jev
+decision_logic_version: 3
+input_cost_per_million_usd: 0.04
+timeout_ms: 20000
+max_retries: 1
+thresholds:
+  discipline_confidence: 0.75
+  discipline_margin: 0.20
+  resume_confidence: 0.65
+  resume_margin: 0.15
+  # Every other Jev answer can affect eligibility, scoring or parking. A near
+  # tie is routed to review instead of being applied as an automatic fact.
+  operational_margin: 0.20
+# This pins the Vercel route contract only. Vercel currently does not expose
+# the underlying Jev version, so it is not a model-version pin.
+expected_gateway_route_fingerprint: 049a4eb005ca3240d98d7e78
+# Jev is live for bounded classification and deterministic queue placement.
+# This remains an operational kill switch, not an experiment percentage.
+classification_state_application_enabled: true
+gateway_daily_spend_cap_usd: 1

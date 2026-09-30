@@ -38,7 +38,9 @@ import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { type Page } from "playwright";
 import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
+import { repoPath } from "../repo-root.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
@@ -142,8 +144,19 @@ function cardToOpportunity(card: Card): DiscoveredOpportunity & { applyMethod: O
 }
 
 async function profileExists(): Promise<boolean> {
-  try { await fs.access("state/channels/chrome-profile/linkedin/Default/Cookies"); return true; }
-  catch { try { await fs.access("state/channels/chrome-profile/linkedin"); return true; } catch { return false; } }
+  try { await fs.access(repoPath("state/channels/chrome-profile/linkedin/Default/Cookies")); return true; }
+  catch { try { await fs.access(repoPath("state/channels/chrome-profile/linkedin")); return true; } catch { return false; } }
+}
+
+/** A zero-result broad scan or a login wall is a channel-health incident, not
+ * evidence that no contracts exist. Keep narrow ad-hoc searches free to be empty. */
+export function assertLinkedInSearchHealth(state: {
+  profileAvailable: boolean; loginWall: boolean; keywordCount: number; observedCards: number;
+}): void {
+  if (!state.profileAvailable || state.loginWall) throw new Error("LinkedIn session unavailable; run npm run login:linkedin");
+  if (state.keywordCount >= 3 && state.observedCards === 0) {
+    throw new Error("LinkedIn broad search returned no job cards; check search DOM or channel access");
+  }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -163,15 +176,13 @@ export const linkedinJobs: HuntChannel = {
     const postedWithinDays = config.posted_within_days ?? 7;
     const maxPages = Math.max(1, config.max_pages ?? 2);
 
-    if (!(await profileExists())) {
-      console.error(`[linkedin-jobs] no persisted login — run: npm run login:linkedin`);
-      return [];
-    }
+    assertLinkedInSearchHealth({ profileAvailable: await profileExists(), loginWall: false, keywordCount: keywords.length, observedCards: 0 });
 
     const ctx = await openChromeContext("linkedin", { headless: true });
     const byUrl = new Map<string, DiscoveredOpportunity>();
+    let observedCards = 0;
     try {
-      keywordLoop: for (let i = 0; i < keywords.length; i++) {
+      for (let i = 0; i < keywords.length; i++) {
         const kw = keywords[i];
         let found = 0;
         for (let p = 0; p < maxPages; p++) {
@@ -181,11 +192,11 @@ export const linkedinJobs: HuntChannel = {
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
             await page.waitForTimeout(jitter(2500, 1500));
             if (await loginWallDetected(page)) {
-              console.error(`[linkedin-jobs] login wall hit for "${kw}" — session expired; run: npm run login:linkedin`);
-              break keywordLoop;
+              assertLinkedInSearchHealth({ profileAvailable: true, loginWall: true, keywordCount: keywords.length, observedCards });
             }
             await page.evaluate(HYDRATE_LIST_SCRIPT);
             const cards = (await page.evaluate(EXTRACT_CARDS_SCRIPT)) as Card[];
+            observedCards += cards.length;
             let fresh = 0;
             for (const card of cards) {
               if (!card.title || !card.jobId) continue;
@@ -197,6 +208,7 @@ export const linkedinJobs: HuntChannel = {
             // A short page means the result set is exhausted.
             if (cards.length < PAGE_SIZE) break;
           } catch (e) {
+            if (/LinkedIn session unavailable/.test((e as Error).message)) throw e;
             console.error(`[linkedin-jobs] failed "${kw}" page ${p + 1}: ${(e as Error).message.slice(0, 160)}`);
             break;
           } finally {
@@ -207,6 +219,7 @@ export const linkedinJobs: HuntChannel = {
         if (found === 0) console.error(`[linkedin-jobs] "${kw}" → 0 cards; if this repeats across keywords the search DOM has changed`);
         if (i < keywords.length - 1) await sleep(jitter(4000, 3000));
       }
+      assertLinkedInSearchHealth({ profileAvailable: true, loginWall: false, keywordCount: keywords.length, observedCards });
       return [...byUrl.values()];
     } finally {
       await ctx.close();
@@ -312,21 +325,57 @@ export function applyLinkedInEnrichment(role: Opportunity, data: ViewData): bool
   return changed;
 }
 
-export async function enrichLinkedInRoles(options: { id?: string; status?: string; limit?: number; force?: boolean } = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number }> {
+/** Persist verified channel evidence, including expiry even when a closed ad has no JD. */
+export async function persistLinkedInEnrichment(role: Opportunity, data: ViewData): Promise<{ changed: boolean; expired: boolean }> {
+  const hasDescription = !!data.description && data.description.length >= 80;
+  if (!hasDescription && !data.closed) throw new Error("job description empty or too short (DOM change?)");
+  const changed = hasDescription && applyLinkedInEnrichment(role, data);
+  if (changed) await patchMany([{ id: role.id, fields: {
+    description: role.description, postedAt: role.postedAt, applyMethod: role.applyMethod,
+    workArrangement: role.workArrangement, location: role.location, notes: role.notes,
+  } }], "linkedin:enrich");
+  const expired = data.closed
+    ? !!await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "LinkedIn" }, { apply: true })
+    : false;
+  return { changed, expired };
+}
+
+/** Give scored backlog a bounded share of visits while preserving room for
+ * fresh search cards that have not had a classification pass yet. This changes
+ * only which adverts receive a full-JD read, never eligibility or send gates. */
+export function selectLinkedInEnrichmentCandidates<T extends Opportunity>(rows: T[], limit: number, priorityMinScore = 55): T[] {
+  const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : rows.length;
+  const newest = [...rows].sort((a, b) => Number(a.applyMethod === "external") - Number(b.applyMethod === "external")
+    || String(b.history?.[0]?.at ?? b.postedAt ?? "").localeCompare(String(a.history?.[0]?.at ?? a.postedAt ?? "")));
+  const scoredSlots = Math.ceil(count * 0.6);
+  const scored = rows.filter(row => row.applyMethod !== "external" && Number.isFinite(row.score) && (row.score ?? 0) >= priorityMinScore).sort((a, b) => {
+    const priority = (row: T) => (row.score ?? 0) + (row.classification?.is_contract ? 8 : 0) + (row.applyMethod === "easy_apply" ? 4 : 0);
+    return priority(b) - priority(a)
+      || String(b.history?.[0]?.at ?? b.postedAt ?? "").localeCompare(String(a.history?.[0]?.at ?? a.postedAt ?? ""));
+  });
+  const selected = scored.slice(0, scoredSlots);
+  const seen = new Set(selected.map(row => row.id));
+  for (const row of newest) {
+    if (selected.length >= count) break;
+    if (!seen.has(row.id)) { selected.push(row); seen.add(row.id); }
+  }
+  return selected;
+}
+
+export async function enrichLinkedInRoles(options: { id?: string; status?: string; limit?: number; force?: boolean } = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number; expired_closed: number }> {
   const roles = await loadPipeline();
   const status = options.status ?? "discovered";
-  const candidates = roles
+  const eligible = roles
     .filter((r) => r.channel === CHANNEL_ID)
     .filter((r) => !options.id || r.id === options.id)
     .filter((r) => status === "any" || r.status === status)
     // Without --force only rows that still lack a real JD are visited.
-    .filter((r) => options.force || !!options.id || (r.description ?? "").length < 200)
-    .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
-  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
+    .filter((r) => options.force || !!options.id || (r.description ?? "").length < 80);
+  const candidates = selectLinkedInEnrichmentCandidates(eligible, options.limit ?? Number.POSITIVE_INFINITY);
+  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0, expired_closed: 0 };
 
   const ctx = await openChromeContext("linkedin", { headless: true });
-  const patches: { id: string; fields: Partial<Opportunity> }[] = [];
-  let enriched = 0, unchanged = 0, failed = 0;
+  let enriched = 0, unchanged = 0, failed = 0, expiredClosed = 0;
   const startedAt = Date.now();
   try {
     for (let i = 0; i < candidates.length; i++) {
@@ -334,22 +383,9 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
       const page = await ctx.newPage();
       try {
         const data = await fetchLinkedInJob(page, role.url);
-        if (!data.description || data.description.length < 80) throw new Error("job description empty or too short (DOM change?)");
-        if (applyLinkedInEnrichment(role, data)) {
-          enriched++;
-          // Queue the enriched fields; they are written back in one transaction.
-          patches.push({
-            id: role.id,
-            fields: {
-              description: role.description,
-              postedAt: role.postedAt,
-              applyMethod: role.applyMethod,
-              workArrangement: role.workArrangement,
-              location: role.location,
-              notes: role.notes,
-            },
-          });
-        } else unchanged++;
+        const result = await persistLinkedInEnrichment(role, data);
+        if (result.changed) enriched++; else unchanged++;
+        if (result.expired) expiredClosed++;
       } catch (error) {
         failed++;
         const msg = (error as Error).message;
@@ -368,8 +404,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
   } finally {
     await ctx.close();
   }
-  if (patches.length) await patchMany(patches, "linkedin:enrich");
-  return { selected: candidates.length, enriched, unchanged, failed };
+  return { selected: candidates.length, enriched, unchanged, failed, expired_closed: expiredClosed };
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +412,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
 // ---------------------------------------------------------------------------
 
 async function loadConfig(): Promise<LinkedInSearchConfig> {
-  const file = await fs.readFile("state/profile/channels.yaml", "utf8");
+  const file = await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8");
   const all = YAML.parse(file);
   return all.channels?.linkedin_jobs?.search ?? {};
 }
@@ -393,7 +428,9 @@ async function main() {
   if (cmd === "search") {
     const upsertFlag = argv.includes("--upsert");
     const cfg = await loadConfig();
+    const searchStartedAt = Date.now();
     const roles = await linkedinJobs.search(cfg);
+    const searchMs = Date.now() - searchStartedAt;
     console.error(`[linkedin-jobs] discovered ${roles.length} roles`);
     if (!upsertFlag) { console.log(JSON.stringify(roles, null, 2)); return; }
     const newIds: string[] = [];
@@ -409,11 +446,14 @@ async function main() {
     // One transaction for the whole result page, not one pipeline rewrite per card.
     await upsertMany(batch);
     console.error(`[linkedin-jobs] upserted ${roles.length} (${newIds.length} new)`);
+    let enrichment: Awaited<ReturnType<typeof enrichLinkedInRoles>> | undefined;
     if (!argv.includes("--no-enrich") && newIds.length) {
       const limit = cfg.enrich_limit ?? 60;
-      const result = await enrichLinkedInRoles({ status: "discovered", limit });
-      console.error(`[linkedin-jobs] enriched ${result.enriched}/${result.selected} new rows (${result.failed} failed)`);
+      enrichment = await enrichLinkedInRoles({ status: "discovered", limit });
+      console.error(`[linkedin-jobs] enriched ${enrichment.enriched}/${enrichment.selected} new rows (${enrichment.failed} failed)`);
     }
+    console.log(JSON.stringify({ channel: CHANNEL_ID, discovered: roles.length, new: newIds.length,
+      upserted: batch.length, search_ms: searchMs, enrichment: enrichment ?? null }));
     return;
   }
   if (cmd === "enrich") {

@@ -132,7 +132,7 @@ function fileLink(label, url, note) {
  * looking at, not a failed render, and the tall red bars this replaced read as
  * the second thing (the brief, section 6, Resumes cards).
  */
-function pageFill(page) {
+function pageFill(page, approved = false) {
   const pct = typeof page.fill === "number" ? Math.max(0, Math.min(100, Math.round(page.fill))) : null;
   const floor = typeof page.threshold === "number" ? Math.round(page.threshold) : null;
   const figure = h("figure", { class: page.low ? "fill low" : "fill" });
@@ -144,7 +144,7 @@ function pageFill(page) {
   }, h("span", { style: `width: ${pct === null ? 0 : pct}%` })));
   const caption = h("figcaption", {});
   caption.append(h("span", { class: "fill-page", text: `Page ${page.page}` }));
-  if (page.low && floor !== null) caption.append(h("span", { class: "fill-low", text: `under ${floor}%` }));
+  if (page.low && floor !== null) caption.append(h("span", { class: "fill-low", text: approved ? `recorded under ${floor}%` : `under ${floor}%` }));
   figure.append(caption);
   return figure;
 }
@@ -322,10 +322,14 @@ function resumeBrowserItem(item, selected, query) {
   });
   if (selected) link.setAttribute("aria-current", "true");
   const findings = (item.critic || {}).findings_count || 0;
+  const approved = (item.stamp || {}).kind === "approved";
+  const quality = approved
+    ? `${plural(openQualityCount(item), "recorded warning")}, ${plural(findings, "review note")}`
+    : `${plural(openQualityCount(item), "open gate")}, ${plural(findings, "critic finding")}`;
   link.append(
     h("div", { class: "resume-browser-title" }, h("strong", { text: label }), stampFor(item)),
     h("p", { class: "resume-browser-positioning", text: item.positioning || "No positioning recorded" }),
-    h("p", { class: "resume-browser-quality", text: `${plural(openQualityCount(item), "open gate")}, ${plural(findings, "critic finding")}` }),
+    h("p", { class: "resume-browser-quality", text: quality }),
   );
   return link;
 }
@@ -333,13 +337,15 @@ function resumeBrowserItem(item, selected, query) {
 function resumeOverview(item) {
   const panel = h("section", { class: "resume-overview", "aria-label": "Resume overview" });
   const pages = item.pages || [];
+  const approved = (item.stamp || {}).kind === "approved";
   panel.append(h("div", { class: "resume-section-head" },
     h("p", { class: "eyebrow", text: "Page fill" }),
     h("p", { class: "resume-section-note", text: `${plural(pages.length, "rendered page")}` })));
   if (pages.length) {
     const fills = h("div", { class: "fills" });
-    for (const page of pages.slice(0, 4)) fills.append(pageFill(page));
+    for (const page of pages.slice(0, 4)) fills.append(pageFill(page, approved));
     panel.append(fills);
+    if (approved) panel.append(h("p", { class: "verdict-why", text: "Recorded measurements from the approved render. They are evidence, not current approval blockers." }));
   } else {
     panel.append(h("p", { class: "verdict-why", text: "No rendered pages on disk." }));
   }
@@ -373,7 +379,9 @@ function resumeQuality(item) {
     h("header", { class: "resume-quality-head" },
       h("p", { class: "eyebrow", text: "Quality evidence" }),
       h("h2", { text: "Gates and review" }),
-      h("p", { text: "Recorded evidence for this exact render." })),
+      h("p", { text: (item.stamp || {}).kind === "approved"
+        ? "Recorded evidence for this exact approved render. Warnings below do not reopen its approval."
+        : "Recorded evidence for this exact render." })),
     h("section", { class: "resume-quality-section" }, h("p", { class: "eyebrow", text: "Deterministic gates" }), gatesBlock(item.gates || [])),
     h("section", { class: "resume-quality-section" }, h("p", { class: "eyebrow", text: "Independent critic" }), criticBlock(item.critic || {})),
     cloudsBlock(item.clouds),

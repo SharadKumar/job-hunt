@@ -1,6 +1,6 @@
 # Weights for tools/score.ts. All weights are 0-1; the final score is the
 # weighted sum normalised to 0-100. Edit and re-score the pipeline with
-# `npm run pipeline:rescore -- --classifications state/pipeline/classifications.json`.
+# `npm run pipeline:rescore` using ClassificationV2 stored in SQLite.
 #
 # How to tune
 # -----------
@@ -18,7 +18,7 @@
 # gated by the classifier's discipline_fit band. The seven base weights below
 # shape the base term only.
 weights:
-  profile_relevance: 0.65        # share of the composite carried by the agent's evidence-based relevance
+  profile_relevance: 0.65        # share of the composite carried by the bounded semantic relevance decision
   skills_overlap: 0.30           # tag matches against skills-taxonomy.yaml (with synonyms)
   work_arrangement_fit: 0.25     # remote / hybrid / onsite against profile.md "Work arrangement"
   seniority_match: 0.20          # role title matches profile's target role families
@@ -36,8 +36,8 @@ thresholds:
   low_relevance_max: 50           # relevance below this caps the score at low_relevance_score_cap
   low_relevance_score_cap: 40
   blocker_score_cap: 30           # any red-flag blocker (incl. no resume positioning) caps the score here
-  high_agent_relevance_min: 90    # agent reasoning can rescue sparse channel-card metadata
-  high_agent_relevance_score_floor: 60
+  high_automatic_relevance_min: 90    # a high-confidence Jev decision can rescue sparse channel-card metadata
+  high_automatic_relevance_score_floor: 60
   applied_ai_high_relevance_score_floor: 65
   draft_min_score: 70             # auto-fire the application drafter at score >= this
   top_decile_alert_score: 90      # eligible for optional push channel alert
@@ -52,6 +52,7 @@ red_flag_penalties:
   no_remote_at_all: 20
   unknown_recruiter_low_quality: 5
   permanent_or_full_time: 60     # set to 0 if you are open to permanent roles
+  clearance_required: 60        # active clearance required; eligibility to obtain is not this flag
 
 # Points added when the classifier detects the pattern.
 bonuses:

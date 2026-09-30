@@ -47,10 +47,10 @@ import { repoPath } from "./repo-root.ts";
 
 // Override with AUDIT_DIR for test isolation (so tests never pollute the real
 // append-only audit trail). Defaults to the production location.
-const AUDIT_DIR = process.env.AUDIT_DIR || repoPath("state/audit");
-const LOG_PATH = path.join(AUDIT_DIR, "audit-log.jsonl");
-const DEDUP_PATH = path.join(AUDIT_DIR, "dedup-index.json");
-const CONTACTS_PATH = path.join(AUDIT_DIR, "contacts.jsonl");
+function auditPaths(): { dir: string; log: string; dedup: string; contacts: string } {
+  const dir = process.env.AUDIT_DIR || repoPath("state/audit");
+  return { dir, log: path.join(dir, "audit-log.jsonl"), dedup: path.join(dir, "dedup-index.json"), contacts: path.join(dir, "contacts.jsonl") };
+}
 
 export type AuditEventType =
   | "policy_change"
@@ -63,7 +63,9 @@ export type AuditEventType =
   | "dedup_skipped" | "duplicate_detected"
   | "voice_check_failed" | "slop_check_failed" | "lint_failed"
   | "channel_login_expired" | "channel_search_failed"
-  | "policy_kill_switch_blocked" | "daily_cap_hit" | "validation_gate_failed";
+  | "policy_kill_switch_blocked" | "daily_cap_hit" | "validation_gate_failed"
+  | "jev_call" | "jev_decision" | "jev_uncertain" | "jev_degraded" | "jev_degradation_acknowledged"
+  | "jev_adjudication_recorded";
 
 export type Contact = {
   name?: string;
@@ -84,6 +86,20 @@ export type AuditEvent = {
   contact?: Contact | null;
   provenance?: { url?: string; channel?: string; source_pipeline_id?: string } | null;
 };
+
+/** Count a submitted role once even if both a state transition and a receipt
+ * append a submitted event. Events without a role id cannot be reconciled and
+ * remain separate. Filter by actor before calling when measuring a lane. */
+export function distinctSubmittedEvents(events: AuditEvent[]): AuditEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (event.event_type !== "submitted") return false;
+    if (!event.role_id) return true;
+    if (seen.has(event.role_id)) return false;
+    seen.add(event.role_id);
+    return true;
+  });
+}
 
 function normaliseCompany(company: string): string {
   return company
@@ -126,9 +142,10 @@ const TRAILING_EVENTS: AuditEventType[] = ["discovered", "drafted", "approved", 
  */
 export async function logMany(events: (Omit<AuditEvent, "ts"> & { ts?: string })[]): Promise<void> {
   if (!events.length) return;
-  await fs.mkdir(AUDIT_DIR, { recursive: true });
+  const paths = auditPaths();
+  await fs.mkdir(paths.dir, { recursive: true });
   const stamped: AuditEvent[] = events.map((event) => ({ ts: event.ts ?? new Date().toISOString(), ...event }));
-  await fs.appendFile(LOG_PATH, stamped.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  await fs.appendFile(paths.log, stamped.map((e) => JSON.stringify(e)).join("\n") + "\n");
 
   let idx: Awaited<ReturnType<typeof loadDedupIndex>> | null = null;
   for (const e of stamped) {
@@ -144,24 +161,24 @@ export async function logMany(events: (Omit<AuditEvent, "ts"> & { ts?: string })
       idx[fp].push({ role_id: e.role_id, ts: e.ts, status: e.event_type });
     }
   }
-  if (idx) await fs.writeFile(DEDUP_PATH, JSON.stringify(idx, null, 2));
+  if (idx) await fs.writeFile(paths.dedup, JSON.stringify(idx, null, 2));
 
   const contacts = stamped.filter((e) => e.contact);
   if (contacts.length) {
     await fs.appendFile(
-      CONTACTS_PATH,
+      paths.contacts,
       contacts.map((e) => JSON.stringify({ ts: e.ts, role_id: e.role_id, contact: e.contact, event_type: e.event_type, actor: e.actor })).join("\n") + "\n",
     );
   }
 }
 
 export async function loadDedupIndex(): Promise<Record<string, { role_id: string; ts: string; status: string }[]>> {
-  try { return JSON.parse(await fs.readFile(DEDUP_PATH, "utf8")); } catch { return {}; }
+  try { return JSON.parse(await fs.readFile(auditPaths().dedup, "utf8")); } catch { return {}; }
 }
 
 export async function query(filters: { type?: AuditEventType; sinceISO?: string; role_id?: string; company?: string } = {}): Promise<AuditEvent[]> {
   let text: string;
-  try { text = await fs.readFile(LOG_PATH, "utf8"); } catch { return []; }
+  try { text = await fs.readFile(auditPaths().log, "utf8"); } catch { return []; }
   const out: AuditEvent[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
@@ -201,7 +218,7 @@ async function summary(days: number): Promise<void> {
   const events = await query({ sinceISO });
   const byType: Record<string, number> = {};
   const byActor: Record<string, number> = {};
-  const submitted = events.filter((e) => e.event_type === "submitted");
+  const submitted = distinctSubmittedEvents(events);
   const contacts = new Map<string, number>();
   for (const e of events) {
     byType[e.event_type] = (byType[e.event_type] ?? 0) + 1;

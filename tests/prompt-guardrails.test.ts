@@ -76,7 +76,7 @@ const REQUIRED: Record<string, string[]> = {
     "**Never embellish facts**",
     "Don't fabricate.",
     "**Never auto-send.**",
-    "**Never reuse a previously-drafted letter**",
+    "**Never reuse another opportunity's letter.**",
     "**Never touch pipeline state.**",
     // Quality-gate process.
     "npm run slop:check -- --file <path>",

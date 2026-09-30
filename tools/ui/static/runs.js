@@ -16,7 +16,7 @@
  */
 
 import {
-  clockTime, dayStamp, duration, fetchInto, h, pageHeader, placeholderRows, richMarkdown, when, whenFull,
+  api, clockTime, dayStamp, duration, fetchInto, h, pageHeader, placeholderRows, richMarkdown, when, whenFull,
 } from "./app.js";
 import { soFar } from "./home.js";
 
@@ -34,11 +34,12 @@ const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
  */
 export function verdictPill(run) {
   if (run.running) return h("span", { class: "pill pill-you", text: "Running" });
+  if (run.exit_code === 0 && run.preparation_issues) return h("span", { class: "pill pill-warn", text: "Finished with issues" });
   if (run.exit_code === 0) return h("span", { class: "pill pill-pass", text: "Finished" });
   if (typeof run.exit_code === "number") {
     return h("span", { class: "pill pill-fail", text: `Failed, exit ${run.exit_code}` });
   }
-  return h("span", { class: "pill pill-none", text: run.has_log ? "No finish line" : "No log" });
+  return h("span", { class: "pill pill-none", text: run.has_log ? "Progress unconfirmed" : "No log" });
 }
 
 /** The one meta line a list row shows: what it did, and how long it took. */
@@ -145,7 +146,16 @@ function stoppedSection(groups) {
     section.append(h("h3", { class: "group-heading" },
       h("span", {}, group.label, h("span", { class: "tally", text: ` ${group.rows.length}` }))));
     const list = h("div", { class: "list" });
-    for (const entry of group.rows) list.append(rowFor(entry, entry.next ? `next: ${entry.next}` : null));
+    const next = {
+      question: "Answer the screening question in Needs you.",
+      letter: "The daily run will rewrite and recheck the letter.",
+      portal: "Open the advert and complete the application on the employer's portal.",
+      duplicate: "Review the row and choose whether to continue or close it.",
+      gate: "Review the row and choose whether to continue or close it.",
+      channel: "Sign in to the channel before the next run.",
+      sending: "Check whether the channel recorded the application before retrying.",
+    }[group.kind] || null;
+    for (const entry of group.rows) list.append(rowFor(entry, next));
     section.append(list);
     box.append(section);
   }
@@ -190,18 +200,43 @@ function runLede(run) {
     const going = soFar(run.duration_s);
     return `Still running${run.started_at ? `, started ${when(run.started_at)}` : ""}${going ? `, ${going}` : ""}.`;
   }
+  if (run.exit_code === null && run.has_log) {
+    return `Started ${run.started_at ? when(run.started_at) : "at an unknown time"}. No completion recorded. The log alone cannot tell whether work is still running or has stopped.`;
+  }
   const took = duration(run.duration_s);
   const verdict = run.exit_code === 0
-    ? "Finished cleanly"
+    ? "Run wrapper finished"
     : typeof run.exit_code === "number"
       ? `Failed, exit ${run.exit_code}`
-      : run.has_log ? "Wrote no finish line, so it was stopped before it could" : "Left no log";
+      : run.has_log ? "No completion recorded. The log alone cannot tell whether work is still running or has stopped" : "Left no log";
   return `${verdict}${took ? ` in ${took}` : ""}${run.started_at ? `, started ${when(run.started_at)}` : ""}.`;
 }
 
 function runOverview(data, date) {
   const run = data.run || { date, running: false, exit_code: null, has_log: false, has_summary: false };
   const panel = h("section", { class: "run-overview", "aria-label": "Run overview" });
+  const current = data.current_pipeline;
+  const live = h("section", { class: "run-section" }, sectionHead("Pipeline now", null));
+  live.append(h("p", { class: "list-meta", text: current
+    ? `Updated ${when(current.generated_at)}. Current totals, not changes caused by this run.`
+    : "Current pipeline counts are unavailable. This does not mean the queue is empty." }));
+  if (current) {
+    const grid = h("div", { class: "run-numbers" });
+    for (const [label, value, href] of [
+      ["Queued", current.segments?.queue, "#/pipeline/queue"],
+      ["Needs you", current.needs_you, "#/pipeline/needs"],
+      ["Parked", current.segments?.parked, "#/pipeline/parked"],
+      ["Sent today", current.sent_today, "#/pipeline/sent"],
+    ]) {
+      grid.append(h("a", { href, text: label }), h("span", { text: typeof value === "number" ? String(value) : "Unavailable" }));
+    }
+    live.append(grid);
+  }
+  panel.append(live);
+  if (run.last_activity_at) panel.append(h("p", { class: "list-meta", text: `Last log update: ${whenFull(run.last_activity_at)}. Log activity is not a process heartbeat.` }));
+  if (run.exit_code === null && !run.running && run.has_log) {
+    panel.append(h("p", { class: "empty", text: "Next: the harness needs to check the running process and last completed stage before any retry. Do not start a second run based on this status alone." }));
+  }
   if (!run.has_summary && !run.has_log) {
     panel.append(h("p", { class: "empty", text: "Nothing was written for this day. A run writes its summary when it finishes." }));
     return panel;
@@ -212,14 +247,51 @@ function runOverview(data, date) {
       text: "This run is still working, so what follows is only what it has written so far.",
     }));
   }
-  if (data.from_audit) {
+  if (!run.running && run.has_summary) {
     panel.append(h("p", {
       class: "empty",
-      text: "No summary was written for this day, so what follows is read from the audit log.",
+      text: "Historical snapshot from this run. Today and Pipeline show the work that is current now.",
     }));
   }
-  panel.append(sentSection(data.sent || [], data.from_audit === true));
-  panel.append(stoppedSection(data.stopped || []));
+  if (data.front_half) {
+    const front = data.front_half;
+    const stages = h("section", { class: "run-section" }, sectionHead("Discovery and preparation", null));
+    if (front.running && front.current_step) stages.append(h("p", { class: "list-reason", text: `Last reported stage: ${String(front.current_step).replaceAll("_", " ")}. Heartbeats confirm the worker is present, not that useful work has completed.` }));
+    if (front.error) stages.append(h("p", { class: "list-reason", text: `Preparation stopped: ${front.error}` }));
+    const names = { sheet_pull: "Read saved decisions", seek_saved: "Import saved jobs", expire_closed_openings: "Close expired openings", jev_classify_score: "Classify and score", tag_duplicates: "Check exact duplicates", fuzzy_duplicate_candidates: "Check similar openings", flush_old_unclassified: "Clear old unclassified openings", state_sync: "Synchronise pipeline" };
+    for (const entry of front.steps || []) {
+      stages.append(h("p", { class: "list-reason", text: `${names[entry.name] || (entry.name.startsWith("hunt:") ? `Search ${entry.name.slice(5).replaceAll("_", " ")}` : entry.name)}: ${entry.ok === false ? "Failed" : entry.partial ? "Partial, remaining work deferred" : entry.ok === true ? "Completed" : "Unconfirmed"}${typeof entry.duration_ms === "number" ? ` (${duration(entry.duration_ms / 1000)})` : ""}` }));
+    }
+    panel.append(stages);
+    const step = (front.steps || []).find((entry) => entry.name === "jev_classify_score");
+    const result = step && step.result ? step.result : front.classification_progress || {};
+    const box = h("section", { class: "run-section" });
+    box.append(sectionHead("Decision layer", null));
+    box.append(h("p", { class: "list-meta", text: [
+      !step ? "Classification not finished" : step.ok === false ? "Classification needs attention" : step.partial ? "Classification partially completed" : "Classification completed",
+      `${result.requested ?? "Unknown"} calls`,
+      `${result.cache_hits ?? "Unknown"} cache hits`,
+      `${result.automatic ?? "Unknown"} automatic`,
+      `${result.uncertain ?? "Unknown"} uncertain`,
+      `${result.degraded ?? "Unknown"} failed decisions`,
+      `${result.deferred ?? "Not recorded"} deferred`,
+      typeof result.estimated_cost_usd === "number" ? `US$${result.estimated_cost_usd.toFixed(4)}` : "Cost unavailable",
+    ].join(", ") }));
+    const telemetry = front.telemetry || {};
+    box.append(h("p", { class: "list-reason", text: `${telemetry.rows_seen ?? "Unknown"} pipeline rows examined; ${telemetry.new_or_unclassified ?? "unknown"} lacked a classification. Calls and failures are not counts of new openings.` }));
+    if (telemetry.eligible_rows != null) box.append(h("p", { class: "list-meta", text: `${telemetry.eligible_rows} active candidates; ${telemetry.excluded_rows} completed, closed or held rows excluded. Up to ${result.request_limit ?? telemetry.request_limit ?? "unlimited"} new requests per run; valid cache hits do not use this allowance.` }));
+    if (result.circuit_open) box.append(h("p", { class: "list-reason", text: "Repeated service failures stopped further calls. Unfinished work is retained for a later run; send gates remain in force." }));
+    const reasons = result.cache_miss_reasons || telemetry.cache_miss_reasons || {};
+    const reasonNames = { new_or_changed_content: "New or changed advert", previous_service_failure: "Previous service failure", decision_policy_changed: "Decision rules changed", profile_evidence_changed: "Profile evidence changed", resume_choices_changed: "CV choices changed", question_contract_changed: "Classification questions changed", model_or_route_changed: "Model or route changed", forced_refresh: "Explicit refresh" };
+    for (const [reason, count] of Object.entries(reasons)) box.append(h("p", { class: "list-meta", text: `${reasonNames[reason] || reason.replaceAll("_", " ")}: ${count} cache misses (first mismatch per row).` }));
+    panel.append(box);
+  }
+  if (run.has_summary) {
+    panel.append(sentSection(data.sent || [], data.from_audit === true));
+    panel.append(stoppedSection(data.stopped || []));
+  } else {
+    panel.append(h("p", { class: "empty", text: "No completed run summary yet. Run-specific sends, blocked work and queue movement are unconfirmed, not zero. Day-level audit events are not proof that this run caused them." }));
+  }
   const numbers = numbersSection(data.numbers || []);
   if (numbers) panel.append(numbers);
   return panel;
@@ -253,15 +325,11 @@ function runSelected(data, date, query) {
       body.append(h("p", { class: "grey small", text: "The middle of this log is not read: only the two ends are." }));
     }
     body.append(h("pre", { class: "run-log", text: data.log }));
-    if (data.log_path) body.append(h("p", { class: "grey small", text: data.log_path }));
     }
   } else if (data.markdown) {
     body.append(h("div", { class: "prose" }, richMarkdown(data.markdown)));
   } else {
     body.append(h("p", { class: "empty", text: "This run has no written summary." }));
-  }
-  if (data.summary_path || (data.run || {}).summary_path) {
-    body.append(h("p", { class: "grey small", text: data.summary_path || data.run.summary_path }));
   }
   panel.append(head, tabs, body);
   return panel;
@@ -281,7 +349,7 @@ export async function viewRuns(view, id, query) {
     ? `${total > runs.length ? `Last ${runs.length} of ${total} runs` : plural(runs.length, "run")}, newest first.`
     : "";
   if (!runs.length) {
-    host.append(h("p", { class: "empty", text: "No runs yet. Start one with npm run daily." }));
+    host.append(h("p", { class: "empty", text: "No runs yet. The first scheduled run will appear here." }));
     return;
   }
   const selected = runs.find((run) => run.date === id) || runs[0];
@@ -291,6 +359,7 @@ export async function viewRuns(view, id, query) {
   host.append(loading);
   const detail = await fetchInto(loading, `runs/${encodeURIComponent(selected.date)}`, `Could not load the run for ${runDay(selected.date)}.`);
   if (!detail) return;
+  detail.current_pipeline = await api("summary").catch(() => null);
   loading.remove();
   const browser = h("section", { class: "run-browser", "aria-label": "Run history" },
     h("header", { class: "run-browser-head" }, h("p", { class: "eyebrow", text: "History" }), h("h2", { text: "Daily runs" })),

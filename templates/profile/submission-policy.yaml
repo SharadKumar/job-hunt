@@ -25,7 +25,7 @@ per_channel_rate_limit_per_hour: 5          # Spacing between sends on one chann
 
 # Unattended one-click submission. tools/submission-gate.ts accepts provenance
 # `autopilot:<run-id>` only while `enabled` is true, and then requires: status
-# approved, agent classification, core discipline (or user-saved), no
+# approved, automatic ClassificationV2 decision, core discipline (or user-saved), no
 # red_flag_blocker, a letter-critic pass whose sha256 matches the exact
 # cover-letter.md, kill switch off, and `max_per_day` not reached (counted on
 # audit `submitted` events with actor "autopilot", separately from the attended cap).

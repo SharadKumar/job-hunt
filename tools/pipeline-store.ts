@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS history (
   reason      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_history_id ON history(id);
+
+CREATE TABLE IF NOT EXISTS classification_decisions (
+  decision_id    TEXT PRIMARY KEY,
+  role_id        TEXT NOT NULL,
+  content_hash   TEXT NOT NULL,
+  created_at     TEXT NOT NULL,
+  classification TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_classification_role_content ON classification_decisions(role_id, content_hash);
 `;
 
 type Row = {
@@ -142,6 +151,13 @@ export function openStore(dbPath?: string) {
     count: db.prepare("SELECT COUNT(*) AS n FROM opportunities"),
     counts: db.prepare("SELECT status, COUNT(*) AS n FROM opportunities GROUP BY status"),
     allHistory: db.prepare("SELECT id, at, from_status, to_status, reason FROM history ORDER BY seq"),
+    getDecision: db.prepare("SELECT classification FROM classification_decisions WHERE role_id = ? AND content_hash = ? ORDER BY created_at DESC LIMIT 1"),
+    putDecision: db.prepare(
+      `INSERT INTO classification_decisions (decision_id, role_id, content_hash, created_at, classification)
+       VALUES (?, ?, ?, ?, ?) ON CONFLICT(decision_id) DO NOTHING`,
+    ),
+    decisionCount: db.prepare("SELECT COUNT(*) AS n FROM classification_decisions"),
+    decisionsSince: db.prepare("SELECT role_id, classification FROM classification_decisions WHERE created_at >= ? ORDER BY created_at"),
   };
 
   let depth = 0;
@@ -314,6 +330,32 @@ export function openStore(dbPath?: string) {
 
     ids(): string[] {
       return (db.prepare("SELECT id FROM opportunities").all() as any[]).map((r) => String(r.id));
+    },
+
+    getClassificationDecision(roleId: string, contentHash: string): Opportunity["classification"] | null {
+      const row = st.getDecision.get(roleId, contentHash) as { classification: string } | undefined;
+      return row ? JSON.parse(row.classification) as Opportunity["classification"] : null;
+    },
+
+    putClassificationDecision(roleId: string, classification: NonNullable<Opportunity["classification"]>): void {
+      st.putDecision.run(
+        classification.provenance.decision_id,
+        roleId,
+        classification.provenance.content_hash,
+        classification.provenance.created_at,
+        JSON.stringify(classification),
+      );
+    },
+
+    classificationDecisionCount(): number {
+      return Number((st.decisionCount.get() as { n: number }).n);
+    },
+
+    listClassificationDecisionsSince(sinceIso: string): { roleId: string; classification: NonNullable<Opportunity["classification"]> }[] {
+      return (st.decisionsSince.all(sinceIso) as { role_id: string; classification: string }[]).map((row) => ({
+        roleId: row.role_id,
+        classification: JSON.parse(row.classification) as NonNullable<Opportunity["classification"]>,
+      }));
     },
   };
 }

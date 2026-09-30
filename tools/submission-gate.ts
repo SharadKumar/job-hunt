@@ -26,9 +26,9 @@
  *   1. provenance present and, for autopilot, enabled in policy → else needs_approval
  *   2. kill_switch off                                  → else blocked  (+ audit policy_kill_switch_blocked)
  *   3. [autopilot only] status is `approved`            → else gate_failed
- *   4. [autopilot only] classification._classifier is "agent" → else gate_failed
+ *   4. [autopilot only] current automatic agent verification    → else gate_failed
  *   5. [autopilot only] userSaved, OR discipline_fit core and not an
- *      interstate onsite/unknown-flexibility row        → else gate_failed
+ *      confirmed routine interstate attendance         → else gate_failed
  *   6. [autopilot only] <archive>/letter-critic.json is a pass whose letter
  *      sha256 matches the current cover-letter.md      → else gate_failed
  *   7. tailored CV explicitly approved when required    → else gate_failed
@@ -62,10 +62,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
-import { log as auditLog, query as auditQuery, checkDuplicate } from "./audit.ts";
+import { log as auditLog, query as auditQuery, checkDuplicate, distinctSubmittedEvents } from "./audit.ts";
 import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
 import { sha256 } from "./lib/hash.ts";
+import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
+import { classificationFreshnessIssue, type ClassificationIdentity } from "./jev/classification-freshness.ts";
+import { currentJevCacheIdentity } from "./jev/classifier.ts";
+import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
 
 const exec = promisify(execFile);
 
@@ -162,7 +166,7 @@ async function submittedToday(nowISO: string, actor?: string): Promise<number> {
   const start = new Date(nowISO);
   start.setHours(0, 0, 0, 0);
   const events = await auditQuery({ type: "submitted", sinceISO: start.toISOString() });
-  return actor ? events.filter((e) => e.actor === actor).length : events.length;
+  return distinctSubmittedEvents(actor ? events.filter((e) => e.actor === actor) : events).length;
 }
 
 /** Home city from profile.md (`city:` in the front matter); mirrors score.ts. */
@@ -174,15 +178,15 @@ async function homeCityFromProfile(): Promise<string | undefined> {
 }
 
 /**
- * Interstate onsite / unknown-flexibility rows are what `pipeline:rescore`
- * parks. Same test as score.ts so the gate and the scorer cannot disagree.
+ * Only confirmed routine interstate attendance fails location eligibility.
+ * Unknown flexibility is non-blocking, consistently with score.ts.
  */
 function isParkedInterstate(opportunity: Opportunity, homeCity: string | undefined): { parked: boolean; detail: string } {
   const loc = opportunity.location ?? "";
   const flex = (opportunity.classification as { location_flexibility?: string } | undefined)?.location_flexibility ?? "unknown";
   const isInterstate = Boolean(homeCity && loc && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(loc));
   if (!isInterstate) return { parked: false, detail: `location '${loc || "unstated"}' is home/NSW/remote` };
-  if (flex === "onsite" || flex === "unknown") return { parked: true, detail: `interstate (${loc}) with location_flexibility '${flex}'` };
+  if (flex === "onsite") return { parked: true, detail: `routine interstate attendance (${loc})` };
   return { parked: false, detail: `interstate (${loc}) but location_flexibility '${flex}'` };
 }
 
@@ -197,6 +201,8 @@ export type EvaluateOpts = {
   policy?: Policy;           // injectable for tests
   archiveDir?: string;       // injectable for tests; default state/pipeline/archive/<id>
   homeCity?: string;         // injectable for tests; default from profile.md
+  jevDegradation?: JevDegradation | null;
+  classificationIdentity?: ClassificationIdentity; // injectable for tests
 };
 
 export function parseProvenance(approvedBy: string | undefined): { kind: Provenance; ref: string } | null {
@@ -291,6 +297,20 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       return decide("needs_approval", false, "autopilot provenance supplied but autopilot.enabled is not true in submission-policy.yaml");
     }
     checks.push({ gate: "autopilot_enabled", ok: true, detail: `run ${prov.ref}` });
+    let degradation: JevDegradation | null;
+    try {
+      degradation = opts.jevDegradation === undefined ? await readDegradation() : opts.jevDegradation;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Jev health state could not be verified";
+      checks.push({ gate: "jev_health", ok: false, detail: reason });
+      return decide("blocked", false, reason);
+    }
+    if (degradationBlocksAutopilot(degradation)) {
+      const blocking = blockingDegradation(degradation)!;
+      checks.push({ gate: "jev_health", ok: false, detail: `${blocking.scope}: ${blocking.incident.reason}` });
+      return decide("blocked", false, "Jev is degraded and the incident has not been acknowledged");
+    }
+    checks.push({ gate: "jev_health", ok: true, detail: "classification healthy" });
   }
 
   // 2. Kill switch: never bypass.
@@ -324,12 +344,27 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     if (opportunity.status !== "approved") return failGate("autopilot_status_approved", `status is '${opportunity.status}', expected 'approved'`);
     checks.push({ gate: "autopilot_status_approved", ok: true, detail: "approved" });
 
-    // (b) agent classification; regex triage never authorises a send.
-    const classifier = opportunity.classification?._classifier;
-    if (classifier !== "agent") return failGate("autopilot_agent_classified", `classification._classifier is '${classifier ?? "missing"}'`);
-    checks.push({ gate: "autopilot_agent_classified", ok: true, detail: "agent" });
+    // (b) Classification rollout and send authority are separate. The latter
+    // remains false until the 30-day outcome gate and explicit human decision.
+    if (!canSatisfyAutopilotClassificationGate(opportunity.classification)) {
+      const detail = opportunity.classification ? `${opportunity.classification.source}/${opportunity.classification.status}` : "missing";
+      return failGate("autopilot_classified", `classification is '${detail}'`);
+    }
+    checks.push({ gate: "autopilot_classified", ok: true, detail: `${opportunity.classification!.source}/automatic` });
+    if (opportunity.classification!.source === "jev") {
+      return failGate("jev_autopilot_authority", "Jev can classify and prioritise, but cannot authorise an unattended send");
+    } else {
+      checks.push({ gate: "jev_autopilot_authority", ok: true, detail: "not applicable to agent_fallback" });
+    }
 
-    // (c) user-saved (an order to apply) OR core discipline and not parked interstate.
+    let classificationIdentity: ClassificationIdentity;
+    try { classificationIdentity = opts.classificationIdentity ?? await currentJevCacheIdentity(); }
+    catch (error) { return failGate("autopilot_classification_current", `decision context could not be verified: ${(error as Error).message}`); }
+    const freshnessIssue = classificationFreshnessIssue(opportunity, classificationIdentity);
+    if (freshnessIssue) return failGate("autopilot_classification_current", freshnessIssue);
+    checks.push({ gate: "autopilot_classification_current", ok: true, detail: "advert and decision context unchanged" });
+
+    // (d) user-saved (an order to apply) OR core discipline and not parked interstate.
     if (userSaved) {
       checks.push({ gate: "autopilot_fit", ok: true, detail: `userSaved at ${opportunity.userSavedAt ?? "unknown"}; fit gates bypassed` });
     } else {
@@ -337,7 +372,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       if (ap.core_discipline_only !== false && fit !== "core") return failGate("autopilot_fit", `discipline_fit is '${fit ?? "missing"}' and the row is not user-saved`);
       const homeCity = opts.homeCity ?? (await homeCityFromProfile());
       const parked = isParkedInterstate(opportunity, homeCity);
-      if (parked.parked) return failGate("autopilot_fit", `${parked.detail}; the row belongs in parked, not the autopilot queue`);
+      if (parked.parked) return failGate("autopilot_fit", `${parked.detail}; ineligible for the autopilot queue`);
       checks.push({ gate: "autopilot_fit", ok: true, detail: `discipline_fit core; ${parked.detail}` });
     }
 

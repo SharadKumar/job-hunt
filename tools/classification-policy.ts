@@ -1,19 +1,20 @@
 import type { Opportunity } from "./pipeline.ts";
+import { canAuthoriseApplication, canPromoteFromClassification } from "./classification.ts";
 
-export function hasAgentClassification(opportunity: Pick<Opportunity, "classification" | "classificationSource">): boolean {
-  return opportunity.classification?._classifier === "agent" && (opportunity.classificationSource == null || opportunity.classificationSource === "agent");
+export function hasAutomaticClassification(opportunity: Pick<Opportunity, "classification">): boolean {
+  return canPromoteFromClassification(opportunity.classification);
 }
 
 export function matchedResumeId(opportunity: Pick<Opportunity, "classification">): string | null {
   return opportunity.classification?.matched_resume_id ?? null;
 }
 
-export function assertAgentClassificationForApplication(opportunity: Pick<Opportunity, "id" | "classification" | "classificationSource">): void {
-  if (!hasAgentClassification(opportunity)) {
-    const source = opportunity.classification?._classifier ?? opportunity.classificationSource ?? "none";
-    throw new Error(`Opportunity ${opportunity.id} requires persisted agent classification before drafting/apply; current source: ${source}`);
+export function assertAutomaticClassificationForApplication(opportunity: Pick<Opportunity, "id" | "classification">): void {
+  if (!canAuthoriseApplication(opportunity.classification)) {
+    const source = opportunity.classification ? `${opportunity.classification.source}/${opportunity.classification.status}` : "none";
+    throw new Error(`Opportunity ${opportunity.id} requires an automatic persisted ClassificationV2 decision before drafting/apply; current source: ${source}`);
   }
   if (!matchedResumeId(opportunity)) {
-    throw new Error(`Opportunity ${opportunity.id} has agent classification but no matched resume id`);
+    throw new Error(`Opportunity ${opportunity.id} has automatic classification but no matched resume id`);
   }
 }

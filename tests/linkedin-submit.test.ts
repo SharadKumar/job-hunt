@@ -13,7 +13,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
-import { chooseQuestionLabel, isOptionEcho, numericFromAnswer, submitLinkedIn } from "../tools/channels/linkedin-submit.ts";
+import { chromium } from "playwright";
+import { chooseQuestionLabel, discoverModalQuestions, isOptionEcho, numericFromAnswer, submitLinkedIn, waitForSubmissionConfirmation } from "../tools/channels/linkedin-submit.ts";
 import { decideQuestion, loadScreeningAnswers, normaliseQuestion, type PageQuestion, type ScreeningEntry } from "../tools/channels/seek-submit.ts";
 import { appendUnknownQuestion } from "../tools/autopilot-submit.ts";
 
@@ -38,6 +39,62 @@ function numeric(label: string): PageQuestion {
 }
 
 const tests: [string, () => void][] = [
+  ["explicit banked binary answers override heuristics without inventing qualified consent", () => {
+    const q: PageQuestion = { kind: "radio", label: "Are you willing to relocate?", id: "", name: "move", required: true,
+      options: [{ label: "Yes", id: "y" }, { label: "No", id: "n" }] };
+    assert.deepEqual(decideQuestion(q, [{ id: "move", patterns: ["relocate"], answer: "No." }]), { kind: "option", option: q.options[1] });
+    assert.deepEqual(decideQuestion({ ...q, label: "Located locally?" }, [{ id: "local", patterns: ["locally"], answer: "Yes." }]), { kind: "option", option: q.options[0] });
+    assert.equal(decideQuestion({ ...q, label: "Located locally?" }, [{ id: "local", patterns: ["locally"], answer: "Yes, only occasionally" }]).kind, "unmatched");
+  }],
+  ["SDUI radio options remain separate from the question, including inside shadow DOM", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      const markup = `<dialog open>
+        <fieldset><legend>Are you legally authorized to work in Australia?</legend>
+          <div><div><input id="yes" type="radio" name="rights" aria-label="Are you legally authorized to work in Australia?"><label for="yes"></label></div><div><p>Yes</p></div></div>
+          <div><div><input id="no" type="radio" name="rights" aria-label="Are you legally authorized to work in Australia?" checked><label for="no"></label></div><div><p>No</p></div></div>
+        </fieldset>
+        <fieldset><legend>Resume</legend><div><input id="cv" name="cv" type="radio" aria-label="Example.docx"><label for="cv"></label></div></fieldset>
+        <fieldset><legend>Another question?</legend><input id="a" type="radio" name="ambiguous"><input id="b" type="radio" name="ambiguous"><p>Yes No</p></fieldset>
+        <fieldset><legend>Choose availability</legend><input id="now" type="radio" name="available"><label for="now">Immediately</label></fieldset>
+      </dialog>`;
+      for (const shadow of [false, true]) {
+        await page.setContent(shadow ? '<div id="host"></div>' : markup);
+        if (shadow) await page.locator('#host').evaluate((el, html) => { el.attachShadow({ mode: 'open' }).innerHTML = html; }, markup);
+        const questions = await discoverModalQuestions(page);
+        const rights = questions.find((q) => q.name === "rights")!;
+        assert.equal(rights.label, "Are you legally authorized to work in Australia?");
+        assert.deepEqual(rights.options.map((o) => o.label), ["Yes", "No"]);
+        assert.equal(rights.value, "No");
+        assert.equal(questions.find((q) => q.name === "cv")!.options[0].label, "Example.docx");
+        assert.deepEqual(questions.find((q) => q.name === "ambiguous")!.options.map((o) => o.label), ["", ""]);
+        assert.equal(questions.find((q) => q.name === "available")!.options[0].label, "Immediately");
+      }
+    } finally { await browser.close(); }
+  }],
+  ["confirmation waits for delayed success without any send action", async () => {
+    let reads = 0;
+    let pauses = 0;
+    assert.equal(await waitForSubmissionConfirmation(async () => {
+      reads++;
+      return { text: reads < 3 ? "Review your application" : "Your application was sent to Example", submitVisible: reads < 3 };
+    }, async () => { pauses++; }, 4), true);
+    assert.equal(reads, 3);
+    assert.equal(pauses, 2);
+  }],
+  ["stalled submit stays unconfirmed and polling is bounded", async () => {
+    let reads = 0;
+    assert.equal(await waitForSubmissionConfirmation(async () => {
+      reads++;
+      return { text: "Review your application", submitVisible: true };
+    }, async () => {}, 3), false);
+    assert.equal(reads, 3);
+    assert.equal(await waitForSubmissionConfirmation(async () => ({ text: "Your application was sent", submitVisible: true }), async () => {}, 1), false);
+  }],
+  ["confirmation transport failure is not a successful send", async () => {
+    await assert.rejects(waitForSubmissionConfirmation(async () => { throw new Error("page closed"); }, async () => {}), /page closed/);
+  }],
   ["numericFromAnswer takes the leading number and never rounds up", () => {
     assert.equal(numericFromAnswer("3+ years — led the ESM transformation."), "3");
     assert.equal(numericFromAnswer("More than 5 years."), "5");
@@ -131,6 +188,19 @@ const tests: [string, () => void][] = [
     assert.match((r as { reason: string }).reason, /cannot derive LinkedIn job id/);
   }],
 ];
+
+tests.push(["portal failures finish diagnostics before browser cleanup and dialog lookup supports native dialogs", async () => {
+  const channelDir = new URL("../tools/channels/", import.meta.url);
+  for (const name of ["linkedin-submit.ts", "seek-submit.ts"]) {
+    const source = await fs.readFile(new URL(name, channelDir), "utf8");
+    assert.doesNotMatch(source, /return fail\(/, `${name} must await failure screenshots before finally closes the context`);
+  }
+  const source = await fs.readFile(new URL("linkedin-submit.ts", channelDir), "utf8");
+  assert.doesNotMatch(source, /div\[role="dialog"\]/);
+  assert.match(source, /page\.getByRole\("dialog"\)/);
+  assert.match(source, /e\.matches\('dialog, \[role="dialog"\]'\)/);
+  assert.doesNotMatch(source, /heading === lastHeading/);
+}]);
 
 let failed = 0;
 for (const [name, fn] of tests) {

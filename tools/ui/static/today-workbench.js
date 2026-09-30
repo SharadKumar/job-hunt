@@ -29,6 +29,7 @@ function facts(row, data) {
 
 function stateNote(row, action) {
   const kind = String(action.kind || "none");
+  if (kind === "in_flight" && action.note) return action.note;
   if (kind === "answer") return "The application is prepared and waiting for an answer. Saving an answer does not submit it.";
   if (kind === "portal" || kind === "mark_sent") return "This application stays attended. The external portal is the next step.";
   if (kind === "retry") return "The package is prepared, but the letter is blocked and needs review.";
@@ -106,9 +107,20 @@ export async function todayWorkDetail(summary, changed = () => render()) {
     const question = await screeningCard({ row, reason: data.reason || row.notes, send: null, onBanked: () => render() });
     if (question) shell.append(question);
   } else if (data.reason) {
-    shell.append(h("section", { class: "workbench-reason" },
-      h("p", { class: "eyebrow", text: String(row.status) === "submitted" ? "Submission record" : "Why it stopped" }),
-      h("p", { text: data.reason })));
+    const status = String(row.status);
+    const heading = status === "submitted" ? "Submission record"
+      : ["responded", "interview", "offered", "won"].includes(status) ? "Latest outcome"
+      : ["rejected", "withdrawn"].includes(status) ? "Why it closed"
+      : ["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending", "parked"].includes(status) ? "Latest activity"
+      : "Why it stopped";
+    const content = h("p", { text: data.reason });
+    if (String(data.reason).length > 280) {
+      shell.append(h("section", { class: "workbench-reason" },
+        h("details", {}, h("summary", { text: heading }), content)));
+    } else {
+      shell.append(h("section", { class: "workbench-reason" },
+        h("p", { class: "eyebrow", text: heading }), content));
+    }
   }
 
   const pkg = data.package || {};

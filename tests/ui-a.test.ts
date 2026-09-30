@@ -192,6 +192,18 @@ await test("a question the worker parked is offered with its shape", async () =>
   assert.match(snapshot.path, /screening-answers\.yaml$/);
 });
 
+await test("a general bank entry resolves an old unknown without rewriting it", async () => {
+  const before = fs.readFileSync(screeningFile, "utf8");
+  try {
+    fs.writeFileSync(screeningFile, `answers:\n  - id: delivery\n    patterns: ['^do you have project delivery experience']\n    answer: 'Yes.'\nunknown_questions:\n  - opportunity_id: seek-known\n    question: 'Do you have Project Delivery experience?'\n    answer: null\n  - opportunity_id: seek-unknown\n    question: 'Do you hold a specialist certification?'\n    answer: null\n`);
+    const input = fs.readFileSync(screeningFile, "utf8");
+    const snapshot = await screening.getScreening();
+    assert.equal(snapshot.unknown[0].answer, "Yes.");
+    assert.equal(snapshot.unknown[1].answer, null);
+    assert.equal(fs.readFileSync(screeningFile, "utf8"), input, "resolution is read-only");
+  } finally { fs.writeFileSync(screeningFile, before); }
+});
+
 await test("banking an answer writes it into the parked row and keeps the comments", async () => {
   const before = auditLines().length;
   const result = await screening.postScreeningAnswer({
@@ -364,6 +376,9 @@ await test("health reports the last run, the next one and the logins", async () 
   assert.equal(linkedin?.note, "session file missing");
   assert.ok(!health.channels.some((c) => c.id === "hn"), "a channel that is switched off is not probed");
   assert.equal(health.notify_url_set, false);
+  assert.equal(health.jev.model, "typesafe-ai/jev");
+  assert.ok(["healthy", "degraded", "unconfigured"].includes(health.jev.state));
+  assert.ok("benchmark" in health.jev, "health must carry the benchmark used by the Decision layer tab");
 });
 
 /**
@@ -517,8 +532,8 @@ await test("a time reads as one format, whichever screen asks", () => {
   // screen. `when()` is now the only one (section 6, Global components).
   const now = new Date("2026-09-18T09:00:00+10:00");
   const at = (iso: string) => labels.when(iso, now);
-  assert.equal(at("2026-09-18T08:19:00+10:00"), "08:19", "today is the clock alone");
-  assert.equal(at("2026-09-15T08:19:00+10:00"), "Tue 08:19", "this week is the weekday and the clock");
+  assert.equal(at("2026-09-18T08:19:00+10:00"), "8:19 am", "today is the clock alone");
+  assert.equal(at("2026-09-15T08:19:00+10:00"), "Tue 8:19 am", "this week is the weekday and the clock");
   assert.equal(at("2026-02-17T08:19:00+11:00"), "17 Feb", "earlier this year is the day and the month");
   assert.equal(at("2025-09-17T08:19:00+10:00"), "17 Sep 2025", "anything older carries its year");
   assert.equal(at(""), "", "nothing is said about nothing");

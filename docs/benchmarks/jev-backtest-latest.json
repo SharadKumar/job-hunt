@@ -1,0 +1,1846 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-19T00:47:59.748Z",
+  "mode": "live",
+  "cohort_file": "docs/benchmarks/jev-cohort.json",
+  "cohort_requested": 120,
+  "cohort_found": 120,
+  "identity": {
+    "policy_hash": "2efb79ffb185ed95fa22517fea9464d8d0579e915ade8632340d4da67888b6e5",
+    "profile_hash": "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f",
+    "resume_set_hash": "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c",
+    "requested_model": "typesafe-ai/jev",
+    "expected_model_fingerprint": "049a4eb005ca3240d98d7e78"
+  },
+  "summary": {
+    "considered": 120,
+    "requested": 120,
+    "cache_hits": 0,
+    "automatic": 57,
+    "uncertain": 62,
+    "degraded": 1,
+    "insufficient_input": 0,
+    "input_tokens": 538612,
+    "estimated_cost_usd": 0.02154448,
+    "deterministic_fields_resolved": 192,
+    "deterministic_fields_ambiguous": 408,
+    "extraction_ms": 235,
+    "jev_ms": 81101,
+    "scoring_ms": 701,
+    "changed": 120,
+    "unchanged": 0,
+    "decision_differs_from_pipeline": 120,
+    "promoted": 0,
+    "demoted": 0,
+    "rollout_percent": 0,
+    "rollout_eligible": 0,
+    "state_applied": 0,
+    "replay_misses": 0,
+    "latency_p50_ms": 685,
+    "latency_p95_ms": 825,
+    "total_ms": 41394,
+    "requested_models": [
+      "typesafe-ai/jev"
+    ],
+    "effective_models": [
+      "typesafe-ai/jev"
+    ],
+    "model_fingerprints": [
+      "049a4eb005ca3240d98d7e78"
+    ],
+    "policy_hashes": [
+      "2efb79ffb185ed95fa22517fea9464d8d0579e915ade8632340d4da67888b6e5"
+    ],
+    "profile_hashes": [
+      "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f"
+    ],
+    "resume_set_hashes": [
+      "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c"
+    ],
+    "content_set_hash": "c8318913cae3f110fbbfeaec1bae7dfc896c056a03b5eea13fb95281b4e6f0b5",
+    "gateway_daily_spend_cap_usd": 1
+  },
+  "changed_decisions": 117,
+  "unavailable_decisions": 1,
+  "changes": [
+    {
+      "id": "recruiter-06eae7f65091",
+      "before": null,
+      "after": {
+        "decision_id": "5cda90adb0e6485d1fdc899e",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6d2632d3a215",
+      "before": null,
+      "after": {
+        "decision_id": "00c682b17f7dcfff18733b92",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-5f21d707b4ab",
+      "before": {
+        "decision_id": "migrated-13ee2514d5c78346719d",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "58495f59d6c74035b81285fc",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-488c4362235d",
+      "before": null,
+      "after": {
+        "decision_id": "eb51c5c9d207feeae75578d1",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-72bfe3fe6484",
+      "before": {
+        "decision_id": "migrated-9632db85fb327ffb89b2",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 68
+      },
+      "after": {
+        "decision_id": "86e0b19c9214cec9258c5403",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-3a97d3081d0f",
+      "before": null,
+      "after": {
+        "decision_id": "f6a6962d7a8bfc3135e2efcf",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-2ba4759c3830",
+      "before": null,
+      "after": {
+        "decision_id": "5942762dae9061481298cb94",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-bae77f790962",
+      "before": null,
+      "after": {
+        "decision_id": "287bbbe22e7cbabd2736bcc5",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-8cf74389f90f",
+      "before": null,
+      "after": {
+        "decision_id": "62ed9a0f70a94bb31f8e7642",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-a5a253504df1",
+      "before": null,
+      "after": {
+        "decision_id": "569f5070960ffe458d121ad7",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 100,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-67efbd6b9854",
+      "before": null,
+      "after": {
+        "decision_id": "0b02fce27911568696ef54ba",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-bed2ed9a02b9",
+      "before": null,
+      "after": {
+        "decision_id": "976d7be0a2bae6b160c3e629",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-ad85c143c43e",
+      "before": null,
+      "after": {
+        "decision_id": "ae50773d79f20001b7f701db",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-b71198421fff",
+      "before": null,
+      "after": {
+        "decision_id": "d0bc802551f4dc51da92b9a1",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-0df549e3a27c",
+      "before": null,
+      "after": {
+        "decision_id": "11657d5298c3774c0311f8ce",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6930257d995a",
+      "before": null,
+      "after": {
+        "decision_id": "708b7f0ce87c10b6df83e464",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-ffc370433cb2",
+      "before": null,
+      "after": {
+        "decision_id": "beb8453acc1664e2ccd6c309",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d6897974e7e6",
+      "before": null,
+      "after": {
+        "decision_id": "82ef10d2bbfba983975abb8e",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-e227851c8fc7",
+      "before": null,
+      "after": {
+        "decision_id": "42a1bf9a8138febcdcd51282",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-abccef293cfd",
+      "before": null,
+      "after": {
+        "decision_id": "31357ac49b49f6ec08c93331",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6f2a8e58bb9c",
+      "before": null,
+      "after": {
+        "decision_id": "09ba8561eeffabdb1214fa18",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-988238332844",
+      "before": null,
+      "after": {
+        "decision_id": "cd155be195f5f039c1ab4269",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-756ab2fd8e8b",
+      "before": {
+        "decision_id": "migrated-e70005808da0c127cead",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "0ba101235a56b3277ffbae24",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": null,
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-1abe1556f253",
+      "before": {
+        "decision_id": "migrated-bcf0026e8f3ac7e02a66",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 8
+      },
+      "after": {
+        "decision_id": "c574c490921206196b7a588b",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-8f8e699b5866",
+      "before": null,
+      "after": {
+        "decision_id": "34b5fac870b1a598362288be",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-786adedbd933",
+      "before": null,
+      "after": {
+        "decision_id": "6f5ecdf2f88438de13927a8d",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-568b92adfdad",
+      "before": null,
+      "after": {
+        "decision_id": "b1287a3ad23f2c6ff0e9120d",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d48f3a86a6f4",
+      "before": null,
+      "after": {
+        "decision_id": "200c21c5cc5e1acb811587c3",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-21a7172264c0",
+      "before": null,
+      "after": {
+        "decision_id": "19b548d0fcc0437053c1e4c0",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-af549076fc61",
+      "before": null,
+      "after": {
+        "decision_id": "f9a92d30cc38bc916cb0e11e",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-68786692f2b0",
+      "before": null,
+      "after": {
+        "decision_id": "15365f5255dd6e5a059885cd",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-655f40c956e2",
+      "before": null,
+      "after": {
+        "decision_id": "f2a1175f68f2bd23a9577b5e",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-9bdd9b7c88d1",
+      "before": null,
+      "after": {
+        "decision_id": "34b62e6452712b2bce65a87f",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "microsoft-consultant",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-4a8b235adb80",
+      "before": {
+        "decision_id": "migrated-2d6cdc6c727c907043b7",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 82
+      },
+      "after": {
+        "decision_id": "248ac4a70e1a865fe0b4df3d",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-12083acb8872",
+      "before": null,
+      "after": {
+        "decision_id": "70f3608a08c6059419cc775e",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-68928e8906ff",
+      "before": null,
+      "after": {
+        "decision_id": "677837781cd99032a527a4bb",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-4250125e7dca",
+      "before": {
+        "decision_id": "migrated-caeba293fd0e94d1a6cb",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "56fa8bb0d1a4ed344a6e2ce5",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": null,
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-195afa0e16b4",
+      "before": null,
+      "after": {
+        "decision_id": "155a83a7e19dc363d94b800f",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-893ce926900a",
+      "before": null,
+      "after": {
+        "decision_id": "4f7e514723f5f82e9c8aaf69",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-63493809e71b",
+      "before": {
+        "decision_id": "migrated-2d4b8548b6eb45ffab05",
+        "discipline_fit": "outside",
+        "matched_resume_id": "microsoft-consultant",
+        "profile_relevance": 12
+      },
+      "after": {
+        "decision_id": "33f41f041afacad089ac506f",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-b58722fbc180",
+      "before": null,
+      "after": {
+        "decision_id": "fa68b77b2268a71008b92f14",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-734055fdc83d",
+      "before": null,
+      "after": {
+        "decision_id": "621259c4b88b29f6dae9c90d",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d548c20a03b4",
+      "before": {
+        "decision_id": "migrated-4fc21176ef1f4229cc3b",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 32
+      },
+      "after": {
+        "decision_id": "23b894ee38b02abbe675f62c",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": null,
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-e9a79387a74a",
+      "before": null,
+      "after": {
+        "decision_id": "8c09ca3dc8ba3f9b98a9cc03",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-9780f13f6663",
+      "before": {
+        "decision_id": "migrated-0892f25614bc5c53e0ce",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 8
+      },
+      "after": {
+        "decision_id": "111855a48d9db2071922a2e0",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-ef7009ee4d06",
+      "before": null,
+      "after": {
+        "decision_id": "3c43d6b1b72a1b03aa5ef01e",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 100,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-7d902fba9627",
+      "before": null,
+      "after": {
+        "decision_id": "1de650b32e71d605310d0fd3",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 100,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-4ed20b5ef616",
+      "before": {
+        "decision_id": "migrated-eab43f948637e1a3e548",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 60
+      },
+      "after": {
+        "decision_id": "7d16dabe35765d3adbfae2bb",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-c3a08bb99404",
+      "before": {
+        "decision_id": "migrated-9a7ddfdae3111d7369e9",
+        "discipline_fit": "outside",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "05740d46cdf4f07aaaed9718",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-618889bcb6a9",
+      "before": null,
+      "after": {
+        "decision_id": "dba3518f6062c78a436d5055",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 100,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-968ba70c105c",
+      "before": null,
+      "after": {
+        "decision_id": "f1da1eaaf24518b887cd4fde",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-22468a22e32e",
+      "before": {
+        "decision_id": "migrated-6954342bd271dce69f5a",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 65
+      },
+      "after": {
+        "decision_id": "8263555efa63d6274078ebe7",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-f4df600037f2",
+      "before": {
+        "decision_id": "migrated-9e9df09090c4b5850465",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 76
+      },
+      "after": {
+        "decision_id": "e82fbb14b3a1bb7ec8ed94b7",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-cd4b41411184",
+      "before": {
+        "decision_id": "migrated-a728a58b5a37946bd8d3",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 78
+      },
+      "after": {
+        "decision_id": "0fc8a3c7a89c6ca2aac6c138",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-73fd70f199ae",
+      "before": {
+        "decision_id": "migrated-220302772b9206bf2580",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 85
+      },
+      "after": {
+        "decision_id": "2b8e3416ec70c614cd95e577",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-eb5b64043da2",
+      "before": null,
+      "after": {
+        "decision_id": "af57f154aac3d1c8856fa37e",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-a3a710bd5624",
+      "before": {
+        "decision_id": "migrated-3e25fa5c9f472cbd7fb6",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 80
+      },
+      "after": {
+        "decision_id": "5120bf72e26fce059c28e54c",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-96d3fa49bb52",
+      "before": {
+        "decision_id": "migrated-dfd6c5f0d5c274029efe",
+        "discipline_fit": "core",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 88
+      },
+      "after": {
+        "decision_id": "63bdcd5c1c12e6356deb1689",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-942a95526c0c",
+      "before": null,
+      "after": {
+        "decision_id": "2a4a9430cab7c72d4d5a6442",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-51b26ac65fd7",
+      "before": null,
+      "after": {
+        "decision_id": "f7674118d11698c7008a1104",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-950bf39bf482",
+      "before": {
+        "decision_id": "migrated-91655235974e20ab82b0",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75
+      },
+      "after": {
+        "decision_id": "9c29484ae01db61b87e399a5",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-43c28f9de63f",
+      "before": {
+        "decision_id": "migrated-dc901a7aa481ad78a97f",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75
+      },
+      "after": {
+        "decision_id": "71eca9b572ecebe66a43f72e",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-e23afe132ab8",
+      "before": null,
+      "after": {
+        "decision_id": "7b370cad32370f481aaa73f0",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-80d0a9b712cf",
+      "before": null,
+      "after": {
+        "decision_id": "cb3def6b6d57eb0dfa59d3b2",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-4bf7ab8df5f8",
+      "before": null,
+      "after": {
+        "decision_id": "8d0daa0e566d6fb8c1139a11",
+        "discipline_fit": "core",
+        "matched_resume_id": "microsoft-consultant",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-5d96937123b0",
+      "before": null,
+      "after": {
+        "decision_id": "6510fa5ef5134ca3730feb0c",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-e112220b10ed",
+      "before": {
+        "decision_id": "migrated-caa35e9ed8ade8f10f79",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 74
+      },
+      "after": {
+        "decision_id": "bcf106b7795c4f64a14342a0",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d4dace46c66b",
+      "before": null,
+      "after": {
+        "decision_id": "320c4e6efe44f845415d320c",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-9a1989147b42",
+      "before": {
+        "decision_id": "migrated-31ac07344d80c01b7ad9",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75
+      },
+      "after": {
+        "decision_id": "9591b534c15caae1bca0aa54",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-1e1e7b48837b",
+      "before": null,
+      "after": {
+        "decision_id": "58e271fb449edaf6523229ec",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-8c393c02d2db",
+      "before": null,
+      "after": {
+        "decision_id": "9502e58a1e95521950c2b8e3",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-92b0754521a2",
+      "before": null,
+      "after": {
+        "decision_id": "0cd2f17ddc3e344386394b7f",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d866cb6cc61e",
+      "before": {
+        "decision_id": "migrated-59befcd54327c1a35514",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 6
+      },
+      "after": {
+        "decision_id": "738919cedaf8b8f3ff32fd00",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-b3132229bf11",
+      "before": {
+        "decision_id": "migrated-698af9f3012d0ac27f64",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 62
+      },
+      "after": {
+        "decision_id": "4e751980c344845038e5a699",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-f07c85b256f6",
+      "before": {
+        "decision_id": "migrated-b8964c6013b2d37e0c18",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 2
+      },
+      "after": {
+        "decision_id": "b0b84da78760defffdc056c2",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6307e5745d20",
+      "before": {
+        "decision_id": "migrated-b1c829d0ee84d01a1aa8",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 3
+      },
+      "after": {
+        "decision_id": "53ad950bd94110acf07eee75",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-5176dc6141ce",
+      "before": {
+        "decision_id": "migrated-aff85ce10fdeb5a1c5b3",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 78
+      },
+      "after": {
+        "decision_id": "931953413f3db51482f2c808",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-db8689945928",
+      "before": {
+        "decision_id": "migrated-1a21e1820b9acd6e1180",
+        "discipline_fit": "outside",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 18
+      },
+      "after": {
+        "decision_id": "e391c7988eccab9388ce7d1c",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-38e91514d943",
+      "before": {
+        "decision_id": "migrated-89be8c9bf46ac4f837ca",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 42
+      },
+      "after": null,
+      "changed": null
+    },
+    {
+      "id": "seek-fadac63242ce",
+      "before": {
+        "decision_id": "migrated-75edee1fbccf49daf2d2",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 80
+      },
+      "after": {
+        "decision_id": "7204cd193f24cb3cfc4d7292",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-7f7fd958cd2c",
+      "before": {
+        "decision_id": "migrated-c50e691a0a37240edad9",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 60
+      },
+      "after": {
+        "decision_id": "1859d2625a5e4e6a1fae1582",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-a84838bcd86a",
+      "before": {
+        "decision_id": "migrated-8ef073116a707b05c0d5",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 30
+      },
+      "after": {
+        "decision_id": "d572bf28ba5288645ac5c939",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-219d240bb664",
+      "before": {
+        "decision_id": "migrated-806cda541c11cffce8dd",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 78
+      },
+      "after": {
+        "decision_id": "be11b88c80635394d13eb867",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-a8f33242e8ee",
+      "before": {
+        "decision_id": "migrated-826ad3b8a447397aaeff",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 55
+      },
+      "after": {
+        "decision_id": "07f08971fd14d739542fc031",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-63b342cd21da",
+      "before": {
+        "decision_id": "migrated-05f156c7d14c8a8b4f9b",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 58
+      },
+      "after": {
+        "decision_id": "a1bf4f86a828c8532731b32d",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-f21f2738dcf2",
+      "before": {
+        "decision_id": "migrated-43ccd650a8c76401690d",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 68
+      },
+      "after": {
+        "decision_id": "1fd8c44f6983809db8470221",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-dee54a2c3927",
+      "before": {
+        "decision_id": "migrated-ffbf6d52302ebbfda7fb",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 65
+      },
+      "after": {
+        "decision_id": "665579f04dca896137685bd7",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 30,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-6dbf43bc613e",
+      "before": {
+        "decision_id": "migrated-4408b781d15bc29d89ba",
+        "discipline_fit": "core",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 85
+      },
+      "after": {
+        "decision_id": "58acf438d18f3b5fc3208afd",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-334a67fe7115",
+      "before": {
+        "decision_id": "migrated-f33b3b4b0b4460aa0b3d",
+        "discipline_fit": "core",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 82
+      },
+      "after": {
+        "decision_id": "82740cea7ee740c00313abc7",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-c34234663d5f",
+      "before": {
+        "decision_id": "migrated-bf3321cad4f5d900317e",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 78
+      },
+      "after": {
+        "decision_id": "285568302bfc84eb54344559",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-4609b9278dc2",
+      "before": {
+        "decision_id": "migrated-f90ef0cd0c4f2fdb813e",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 48
+      },
+      "after": {
+        "decision_id": "22789e9fcea65247e85e842d",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-3e7c600bc40d",
+      "before": {
+        "decision_id": "migrated-6d3edb1f7f81335b02dc",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 58
+      },
+      "after": {
+        "decision_id": "bf27334e8860361f7a542f60",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 75,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-19ecba30b634",
+      "before": {
+        "decision_id": "migrated-73d9d4405057ec96d9a8",
+        "discipline_fit": "core",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 62
+      },
+      "after": {
+        "decision_id": "1a95da8caedf2bbc1bb50798",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-3ef562107e4c",
+      "before": {
+        "decision_id": "migrated-40a34c83b87432d06e32",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 20
+      },
+      "after": {
+        "decision_id": "c24c08b9171e05f6bdb68db8",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": null,
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-5d3a12d952f5",
+      "before": {
+        "decision_id": "migrated-0dfa9eeb9860ce6f84d9",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "3592d291cd47779ef8da02de",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-bcc916d0abe3",
+      "before": {
+        "decision_id": "migrated-9a3763e878c399388aee",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 8
+      },
+      "after": {
+        "decision_id": "7a54652669bfe6538c788677",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-7c6208a4d9b9",
+      "before": {
+        "decision_id": "migrated-459a22bd2210026bce93",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "de6957029c798d0270f452e3",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-1962cfef1bf0",
+      "before": {
+        "decision_id": "migrated-30973e0ea1e90a75f94a",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "5add3e07bdbc78c31ed26724",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-fd3e7bc55784",
+      "before": {
+        "decision_id": "migrated-fe39495ca58288e454c5",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5
+      },
+      "after": {
+        "decision_id": "1435ca07235dfb5df594c1a4",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": false
+    },
+    {
+      "id": "linkedin_jobs-2c0889d58ecf",
+      "before": {
+        "decision_id": "migrated-ea30b28f0a7973f717f6",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5
+      },
+      "after": {
+        "decision_id": "cb8626dda6a6d9f96719b34b",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": false
+    },
+    {
+      "id": "linkedin_jobs-65fc2bf577c4",
+      "before": {
+        "decision_id": "migrated-3919fd705cb9402a16ac",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 72
+      },
+      "after": {
+        "decision_id": "9b0e15461bd74a1fdd86b656",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-92d463fb5939",
+      "before": {
+        "decision_id": "migrated-6082a83a3006ca3f3542",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "33b7430fa34a8c22900c055e",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-b3c7716668e6",
+      "before": {
+        "decision_id": "migrated-e91cd9490badd3708180",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "34b169c5186ebb042e490b99",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-fb525df2bed3",
+      "before": {
+        "decision_id": "migrated-18f105604bdf0e8e79a3",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 78
+      },
+      "after": {
+        "decision_id": "88372a76997ff657a78f6deb",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-d39fa6c6a237",
+      "before": {
+        "decision_id": "migrated-253dbc3ec28bb0989ba3",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 72
+      },
+      "after": {
+        "decision_id": "6224bc45e5fb106ed8735ff1",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-7f08b8f79071",
+      "before": {
+        "decision_id": "migrated-74fb8d4cbd7780ad5a49",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "fbbe75c3743eb31b760a2893",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-eed4aa440aae",
+      "before": {
+        "decision_id": "migrated-6703e8c92607ad9dfa13",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "ecfc6ddb541200df6b02e8c7",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-c221ccc07d91",
+      "before": {
+        "decision_id": "migrated-88a584c8a5b1388fe8b9",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "86a87c0a56a8be7d69736da3",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": null,
+        "profile_relevance": 55,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-3302889e6c02",
+      "before": {
+        "decision_id": "migrated-20c4fca21510a3a758b6",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "3aea2553f55b9e04b4efae28",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-73dd77479867",
+      "before": {
+        "decision_id": "migrated-9130e5115656697e496b",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "3c62469fa8bd365ba664ca67",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-2d0d9baa5117",
+      "before": {
+        "decision_id": "migrated-324a3e84b4280881ace1",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 15
+      },
+      "after": {
+        "decision_id": "31695114775bb10236138d4b",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-545ab8115b78",
+      "before": {
+        "decision_id": "migrated-863c2a4314ac9b7c5e61",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 70
+      },
+      "after": {
+        "decision_id": "001cdce31e882fc38f8f39c8",
+        "discipline_fit": "core",
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-267133aebfb4",
+      "before": {
+        "decision_id": "migrated-453773ffce9b2533dfc1",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "fb9d993dee76150f9117197d",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-72de71fa9874",
+      "before": {
+        "decision_id": "migrated-c464ecdebcd7924dc667",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "79a1de10946b9c0e1d83e086",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-757cca1c0e61",
+      "before": {
+        "decision_id": "migrated-e77b37ca4032ee902319",
+        "discipline_fit": "core",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 82
+      },
+      "after": {
+        "decision_id": "032bdfd68526d3b14b5e7d6e",
+        "discipline_fit": "adjacent",
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 42,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-a961d3d7e43b",
+      "before": {
+        "decision_id": "migrated-cba6e9d96f245ac44b81",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "da7bb849934cf7989b32622e",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "seek-e1f780d8f6a2",
+      "before": {
+        "decision_id": "migrated-ab12ba2d6cad3de8ee23",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "f8f31369705d4b37f007d789",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "automatic"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-367be89898f4",
+      "before": {
+        "decision_id": "migrated-a75454ef5ea894713279",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "fb92cd66480b988af5da3e66",
+        "discipline_fit": "platform_gap",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-7d97aaaf429d",
+      "before": {
+        "decision_id": "migrated-ac71617e2a8e861dd9a6",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "7b0253d0fc17c765f2f6fb00",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "status": "uncertain"
+      },
+      "changed": true
+    },
+    {
+      "id": "linkedin_jobs-b62605135aeb",
+      "before": {
+        "decision_id": "migrated-3ca5df8ec9765115b318",
+        "discipline_fit": "outside",
+        "matched_resume_id": null,
+        "profile_relevance": 10
+      },
+      "after": {
+        "decision_id": "c463d6b125b393ca1b351248",
+        "discipline_fit": "core",
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "status": "uncertain"
+      },
+      "changed": true
+    }
+  ]
+}

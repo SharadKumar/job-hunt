@@ -1,0 +1,961 @@
+{
+  "schema_version": 1,
+  "measurement_schema": "jev-decision-replay-v1",
+  "captured_at": "2026-09-22T06:38:13.871Z",
+  "decider": "persisted legacy agent classifications",
+  "cohort": 115,
+  "classified": 64,
+  "isolated_runtime_ms": null,
+  "isolated_input_tokens": null,
+  "isolated_output_tokens": null,
+  "isolated_cost_usd": null,
+  "unavailable_reason": "The legacy path did not isolate classification telemetry from the full agent run.",
+  "context": {
+    "policy_hash": "ebc21b0f5d5b079d0ead9c5b1e8bf95a88b77b30b8cdd5320f480a89d9966ee5",
+    "profile_hash": "54d01ce931cfdaed5cb9ae60953c9d5e3bfd4a4cf4ae5293b38757164f2f572f",
+    "resume_set_hash": "db5f178661444f6b5bb93b303de20b2caf41196321d8afa64f348da7fbb9fe2c",
+    "question_schema_hash": "a266b766fc72b554ba8b6b87236b2b795273e64d221d6e1fd56da248517dd4a3",
+    "content_set_hash": "20c48d4e7ffa260ce0ff5b045e1a507ebd2776aa2873586ca749b76c86f5ea0f"
+  },
+  "execution": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.18.0",
+    "concurrency": null
+  },
+  "metrics": {
+    "cohort_size": 115,
+    "measured_decisions": 64,
+    "automatic_decisions": null,
+    "uncertain_decisions": null,
+    "degraded_decisions": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "classification_latency_ms": null,
+    "classification_cost_usd": null,
+    "generic_agent_classification_tokens": null,
+    "generic_agent_classification_cost_usd": null
+  },
+  "records": [
+    {
+      "id": "recruiter-06eae7f65091",
+      "content_hash": "7bcfb31eeb8e40003dab6668a9a66a40f9282dfea34d256874213619e5bb4d05",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-6d2632d3a215",
+      "content_hash": "939437221deefe2146cd00b0abeddaa5bdffe5c6871a59afe97a661a46666b38",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-488c4362235d",
+      "content_hash": "195dda5bf2fd2dad81e8eb2b979a86d662a7b80c756a6daa825527aa79716e3d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-72bfe3fe6484",
+      "content_hash": "4cb9d12b572b91b13896a9ae76f09247f36f3cbdad1e411567b341be85146a35",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 68,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-3a97d3081d0f",
+      "content_hash": "7a4671d4063d1a089f660cfd2f2d5b60f68e1b6b6aeb9238fb3846f64481866d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-2ba4759c3830",
+      "content_hash": "7ebd38059a1dae80e7f426f4bf2d52b3af03d6e0136373f5591ae1eff60191ff",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-bae77f790962",
+      "content_hash": "3c2719c3bbe0f374e6975e4a49de0365c3aa05958fc2c4a2b34afbd41327e37c",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-8cf74389f90f",
+      "content_hash": "66a3d8ac035de35337fe31f03f9df2d950ea5972331ed4bdae55c09d170dd825",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-a5a253504df1",
+      "content_hash": "ab2000dc3a5a35d1a67459709f612d47f6b2257b142e4f9856d3177f9d558fd0",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-67efbd6b9854",
+      "content_hash": "71ebdaa02301dbca832f208145ef79e1c251e186aa101cad128b9bdfc2a206df",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-bed2ed9a02b9",
+      "content_hash": "d9ef08c008a102109f179ae13281bbe99de6f36111c6fda3786f1d2196045f15",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-ad85c143c43e",
+      "content_hash": "b53970db9f7166aa08f405dd22a8e35c13a34d727bfaf80e910c9ca0a9f3fc6d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-b71198421fff",
+      "content_hash": "245e1a7e4365ca781a7e1d669267f1944a92d2198750163bcbba1fbf2517bcf9",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-0df549e3a27c",
+      "content_hash": "502dcece1bd5754d28fd1956e6848c3d5a052f6d01a7e293bcbab2fdbe573345",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-6930257d995a",
+      "content_hash": "4d775864e289b7e02ea0385bfffee88aef3d133f11f0077a2554d5c81be73758",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-ffc370433cb2",
+      "content_hash": "14f4d928f7b51c5702efa426e43b60514f63a49dedc2b0a78fb7be7ae6d94208",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d6897974e7e6",
+      "content_hash": "8a6ae277fd8d408b1e43876dfdeb3ab3a8127b93799276816b8f427b179acecb",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-e227851c8fc7",
+      "content_hash": "90882958cebd80b5fbb9626bde09076d502733703271cd4bd2fffc2f9903d4e1",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-abccef293cfd",
+      "content_hash": "3b0ea7b2dca9e747ea9f08afc1867b37efa9d3d837b4bde914b65986b6913939",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-6f2a8e58bb9c",
+      "content_hash": "06a62e45cfcf74835988313d4b06968b4d882457691c066c1f6052e297860fc6",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-988238332844",
+      "content_hash": "9a0dcfaaeae6b23d918c13e13eb6e77430e6dbb7dcbe8e525ec84db5565dd7e3",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-8f8e699b5866",
+      "content_hash": "9348b6e007e4c7b34c37566e23047f134305b251885fbc9268cfc7073ef448a9",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-786adedbd933",
+      "content_hash": "41e5ad6d8e6bf72ffe1e9be136e28e6b66a8052add61316574f66b24db28f882",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-568b92adfdad",
+      "content_hash": "61fffcfff0a5021a0d30323fbbccc0f1b802b857b6f4e607f3004abb0d63313f",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d48f3a86a6f4",
+      "content_hash": "8e7f34aab2fc42c46e41307e33a5969cd95d0adc7d8dd965fba67b3316e79c47",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-21a7172264c0",
+      "content_hash": "81f32e5eb535622158f6eaee6000a33f2cf769ba514a603f6415c4d9a92bd1fe",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-af549076fc61",
+      "content_hash": "21907fb2ee3d430352626ada2c3ffe9368eb98f5b10c241afd3460e06324c0af",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-68786692f2b0",
+      "content_hash": "48cb1754af5f8815b17f62e88ea23f6d0dae5107a47d66f699a5b6ea8b99af1d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-655f40c956e2",
+      "content_hash": "e256b20689242719762ca569213c1c98911deb7c85dcbef4b9d3e548c0e315ee",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-9bdd9b7c88d1",
+      "content_hash": "0506ab5f1c875de3c77bd5146f7410f67f468040c0b6a3e08115214c726c1620",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-4a8b235adb80",
+      "content_hash": "476d505d2e94dfd199ab2e78fa64038a31eecb151fdd53bca8de2bfd6bac69b6",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 82,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-12083acb8872",
+      "content_hash": "ec794f912dfb56cbde9627b59a947108163629212458af24cc4f87a4a41248f6",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-68928e8906ff",
+      "content_hash": "6d73fa210db1580d6b047a3ee05ba873bfbf518ede334bdf09e53847a66407e7",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-195afa0e16b4",
+      "content_hash": "83d44dd3d9447b006bd0450da0384785e7d057b56f0921ed363a8c4409b398e7",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-893ce926900a",
+      "content_hash": "1826025473b8bd897da79d5a2f0d933950a5d7b4dbf8160a7bb54aa940a88160",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-63493809e71b",
+      "content_hash": "9b7548c6691304aeafa2643f615b59dd8cf799dd6723f157db803b927fdc91d6",
+      "discipline_fit": "outside",
+      "matched_resume_id": "microsoft-consultant",
+      "profile_relevance": 12,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-b58722fbc180",
+      "content_hash": "a967155ddef3b8151c781ba4c7b41339f9e8dede82d3af16cdd176be57e2663e",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-734055fdc83d",
+      "content_hash": "10bfb80443a6b3c810830335b0903872f196febe50265dc8b8ba11e8ea2726ac",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d548c20a03b4",
+      "content_hash": "b7cfaef5d7e24d4f50323f6632220fee5704455b28363e93a27cccd1558bc2ee",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 32,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-e9a79387a74a",
+      "content_hash": "633c8e2ea21ec07f20b271bc286d0b1c7890cdc4ef02e1c51274b91ab977f683",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-ef7009ee4d06",
+      "content_hash": "e7934e73810da6642d27c9f58a3d7a59f5d153054e8a7f75b434d0bc39df1422",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-7d902fba9627",
+      "content_hash": "1c35afdc4685b3faae59fa3a441dece3627f9d372aabdd7927c8bf08d32e7704",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-4ed20b5ef616",
+      "content_hash": "742cda58725e3f91ad41bc5e0212f48aad5a5122699f308122d786ffc9af0fe3",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 60,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-c3a08bb99404",
+      "content_hash": "4aece0dfeaa69a33c89f339167fba7bd00abcfbbcf5f39ded1fbaa28dfeb8edf",
+      "discipline_fit": "outside",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 15,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-618889bcb6a9",
+      "content_hash": "718046a890c623a861322b2a1ac8e957e48352b4737e850fb9f5d20f54e4cf80",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-968ba70c105c",
+      "content_hash": "a2cd90342b6ee330b65fc9967692a5c136ceb9f291c2ab4a7359b61726fc1b65",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-22468a22e32e",
+      "content_hash": "9cc21853e7daab5f535c13e59e4bea6824ded2200ec32121b9433ff64ce41b9c",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 65,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-f4df600037f2",
+      "content_hash": "4ce3a676070128898d90567b592f18977e9441261c1ff4f09e66e40eee37965d",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 76,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-cd4b41411184",
+      "content_hash": "67eaa77dffce4a476dbf2db1deb4e8b064edc21871d07c6aa6e31f14c3730515",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 78,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-73fd70f199ae",
+      "content_hash": "fdcac770cce13e7be666088386f6c2af0388b0f683b5e3e455a7567073210de4",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 85,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-eb5b64043da2",
+      "content_hash": "18dfe3b845405bbd87a0ebf87093b814fcee7b341cf85aa2a76700e040a7548a",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-a3a710bd5624",
+      "content_hash": "4e71242896eb3e9b1121964439ad2e208daac2e9159b9710422c82c166fdc9c8",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 80,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-96d3fa49bb52",
+      "content_hash": "252e334e45ca58992df613085c943317db7fb77c0d7929da4926f167505ddf51",
+      "discipline_fit": "core",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 88,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-942a95526c0c",
+      "content_hash": "5ed5e60fe88d7115a0d3898477f315ae33eda482dd8eaa3b5ada21c41b36a02d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-51b26ac65fd7",
+      "content_hash": "c9ed9f0bcd0c2340a16559c1b2a9a558f2418acef51ab2d4b4ba3d66a555e095",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-950bf39bf482",
+      "content_hash": "b75a4e593c83c850c1598d13d8210dabe7907affe33eccf34b129d0c15278a86",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-43c28f9de63f",
+      "content_hash": "fb27f5a21922a5614478d644588c8939aa096ffa06fd75d48978fd74d44614d6",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-e23afe132ab8",
+      "content_hash": "0d0c8450e7ce41f485fe4dd9613cf97485e172240f3819e42ec45d10e85a7d14",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-80d0a9b712cf",
+      "content_hash": "afdce766f2e99619a50ccc3439a18c1dad9de26176b86072c8185848473b278b",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-4bf7ab8df5f8",
+      "content_hash": "94740085ea1d980cf05b884492a328d2b436602591ec73ea83e000f40ddbed6d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-5d96937123b0",
+      "content_hash": "36288c4acb4ede6cf3fc12f63c28aa265ed4a8b6d9a502f1e11877fc7d0f8c6a",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-e112220b10ed",
+      "content_hash": "80c1b3cfc448a4d22c5c6524ed38921824a8196f50126c5e664bd8142b3c0223",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 74,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d4dace46c66b",
+      "content_hash": "97a10bfaa007c05b21f002d22283c1b33bede7b047e98e193fc4d2e36b0ee6f2",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-9a1989147b42",
+      "content_hash": "da76bbb5ebe7e15d173ebdd7de67d168d0a6dd72012b2efd23c8eaa6236fad21",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 75,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-1e1e7b48837b",
+      "content_hash": "e9cbf9304dc3d137de29ff01149acbc2fa86ab5a342bc2f25be4c2d6ee9ea780",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-8c393c02d2db",
+      "content_hash": "1855916d941e1393ae8b177add18315f89364908db761c18a36c74433af7a753",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-92b0754521a2",
+      "content_hash": "2e99443dcff261589e9358aadb6006e68d5015c49bcb8dbc80edd0af366ee39d",
+      "discipline_fit": null,
+      "matched_resume_id": null,
+      "profile_relevance": null,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d866cb6cc61e",
+      "content_hash": "f263f997a97af388f9812e119caff16a0883546265564ea04dcaf8914be936e6",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 6,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-b3132229bf11",
+      "content_hash": "5ae52b6dd366c220fd1058705dca992b7d95adb9ae5d4abb056eb55725d04b24",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 62,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-f07c85b256f6",
+      "content_hash": "8430cda436ec803aae607d20b9470709e4778b5281092dd28794ababd93aff29",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 2,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-6307e5745d20",
+      "content_hash": "02de1f072de8269a4a18a83085dffed402a38b9e6a105f98836f046474cd4c29",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 3,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-5176dc6141ce",
+      "content_hash": "581a7d63e0689ba0705f958e37f524a64a6da32d0e6ccc3ea76158ce51b74082",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 78,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-db8689945928",
+      "content_hash": "3b4c3798723c4cfc47c9ef729875788f8ea685ce7537582742c3271065ba0a63",
+      "discipline_fit": "outside",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 18,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-38e91514d943",
+      "content_hash": "c74d169c4ae61daa3fd79124091e6eecb22caeb1bc65323c178635025b99d70f",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 42,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-fadac63242ce",
+      "content_hash": "f26947d2e503301465edd2e55b5a69ffdea7f84fa97b797dab4bcca0a288b876",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 80,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-7f7fd958cd2c",
+      "content_hash": "f9c48f83453f3355dafea56985dced301260656ffc21eac9d6e8c272c9a9fbd0",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 60,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-a84838bcd86a",
+      "content_hash": "56cd6a9fa43829e7d74aefb54935bdaccc6add7ab961737e920509367c5c19eb",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 30,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-219d240bb664",
+      "content_hash": "23337b1e4716189d3fbbdf53bc8b3c71da6971d269ec0ff216e4fbe12d357dc7",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 78,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-a8f33242e8ee",
+      "content_hash": "b0772660f5be3d9ab3fffae731c324cd25934a3b54e6811e02dda4f282f9da70",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 55,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-63b342cd21da",
+      "content_hash": "eebcf915b204c2aaf67664c58ad0110b5830d58b58d0ca2de13fe9a5a4aa96ed",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 58,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-f21f2738dcf2",
+      "content_hash": "d66e20b3ae9853a8b225855a42f23e2991cc51a8d996700cd0f47c2d6ce8fd13",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 68,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-dee54a2c3927",
+      "content_hash": "9f858cc77f0114c7dfbb4f8eab22e343d52b9d952f09a8da572394a5acf35bb1",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 65,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-6dbf43bc613e",
+      "content_hash": "627ac95a2bb7d5d1707adf829a5796350e4fe7807ed2cf5f298ec090994c130d",
+      "discipline_fit": "core",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 85,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-334a67fe7115",
+      "content_hash": "bed75ea7b5e3d84bca08ef44a66eab278973f4acab83652f0d634410f9dc9f93",
+      "discipline_fit": "core",
+      "matched_resume_id": "ai-developer",
+      "profile_relevance": 82,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-c34234663d5f",
+      "content_hash": "4990f288d39d77c3fc3cc37fd4e50f3661ebb26f18461c1c8610ac40c4e81cf8",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 78,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-4609b9278dc2",
+      "content_hash": "b7c0545800d2419f5e0e32be8bf8165ff86eab1636df6030e155c59b3030149d",
+      "discipline_fit": "adjacent",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 48,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-3e7c600bc40d",
+      "content_hash": "827dcb53169d7139a26cfccda850e73d9753729086ff8763a34764ca1b4f7816",
+      "discipline_fit": "platform_gap",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 58,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-19ecba30b634",
+      "content_hash": "172ad8dce9d591cc9ae95676b938b8b1cbf3c0b339469a54fb6d5fee66325abb",
+      "discipline_fit": "core",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 62,
+      "status": "submitted"
+    },
+    {
+      "id": "linkedin_jobs-3ef562107e4c",
+      "content_hash": "dbc852d38e2419f81827cebd91176cdb9718ded6d7f625b2feccd5c45a2bdf04",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 20,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-5d3a12d952f5",
+      "content_hash": "d843e5d9d8b0c94521bec0f038b4f57838cab7d155143dfb5662ef2f05bc6e16",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-bcc916d0abe3",
+      "content_hash": "15c2729190909770e5e94992ba7625076d438f7a3cef72f0d863d1474d3f68d1",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 8,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-7c6208a4d9b9",
+      "content_hash": "7a755192455ce6d26c88be1135801beed88f54d7da57a5cbca2d9802c0b34e79",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-1962cfef1bf0",
+      "content_hash": "50a4482daee732f10a7080b47c550cf31b9b7af45e140e2e5bb06352bdf82fcf",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-fd3e7bc55784",
+      "content_hash": "c286dd1c56379fbb9939dd198b03755d87570c37d28bdbf126ad3fdc5d77d204",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-2c0889d58ecf",
+      "content_hash": "db9e5ac0abaecc7da5f66d2a45261be63440e46c02daf30c0f221a4d5bb3a1f6",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 5,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-65fc2bf577c4",
+      "content_hash": "627dde6b05be37381f9b4e3b48bb749d6583701174d72e5d7fcd1fd6460adf08",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 72,
+      "status": "submitted"
+    },
+    {
+      "id": "linkedin_jobs-92d463fb5939",
+      "content_hash": "57e01d239110d9eb7d24567a2d11de2c8612774d5702b16ca77298c5715e01bc",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-b3c7716668e6",
+      "content_hash": "2bd574711b67a61d8df91369851e980a4324fc87656046d22cf1d76d994d13f5",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-fb525df2bed3",
+      "content_hash": "e47f24c411c83f1da6bb6ad75040d6b9841c1ad2b44c7daeeb6765d31df59d12",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 78,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-d39fa6c6a237",
+      "content_hash": "2ed0d1d4ce9b8ecf73b8f837755167b3058e888cd3aae67765c280f97edc1a93",
+      "discipline_fit": "core",
+      "matched_resume_id": "solution-architect",
+      "profile_relevance": 72,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-7f08b8f79071",
+      "content_hash": "dbdc82e6470ff4be2be6cfea514d260653814b5c4b528b3c097cbe59fed66076",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-eed4aa440aae",
+      "content_hash": "6457a4c932c242480a8c2e455d996b0447bfdbf7db1a754baac2b429f8644e61",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-c221ccc07d91",
+      "content_hash": "c32734004df30cdf642370206d3f3226303fca607143ee1793c02cfca3d6719b",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-3302889e6c02",
+      "content_hash": "89b387fa603949a2fb1370ae2fd6d118b1f01ae8815c3a2be911222ab435c232",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-73dd77479867",
+      "content_hash": "ae86f195b30dd087804aaa6860bb986fc34dfafe1118dd3589969405a77b2eae",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-2d0d9baa5117",
+      "content_hash": "9226d7f3731655d49e8d2e3f43e9fed01f491d56741b957ded5faf1bfabebdc3",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 15,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-545ab8115b78",
+      "content_hash": "13ba5994a2e9bc07636ce0ad8f5c76a0d576f05680aba0f1a483b69bfd97144c",
+      "discipline_fit": "core",
+      "matched_resume_id": "delivery-manager",
+      "profile_relevance": 70,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-267133aebfb4",
+      "content_hash": "5deba9623d8b2dc0a70a635fe8a19c29bdeb93bbe25e551a423e17b400092afc",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-72de71fa9874",
+      "content_hash": "139ddeca0c1746835d35c3cea517afe6b99b764c7c39043166e588616d59b120",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-757cca1c0e61",
+      "content_hash": "50f5a83fcff37567c3b908536f9b4af7e6e436367c1888521d32e5810e6f30e9",
+      "discipline_fit": "core",
+      "matched_resume_id": "applied-ai",
+      "profile_relevance": 82,
+      "status": "submitted"
+    },
+    {
+      "id": "seek-a961d3d7e43b",
+      "content_hash": "e102381218beb3fd812b472419f9bda5fa36c3bfa6b95da3369453fc4ab20fd6",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "seek-e1f780d8f6a2",
+      "content_hash": "921ed6ae55d73e057a4a9915741adb925cb3d526f23e775a8464fb6c4185036a",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-367be89898f4",
+      "content_hash": "9cc0bfd6a0af08863c4c3d94695cead9aabdb9c137c873c466c65882d72083a7",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-7d97aaaf429d",
+      "content_hash": "c7e3e71761eec3555c3355e88f7f382d1fc2518fc11dc100bb39c5b5c51e535e",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    },
+    {
+      "id": "linkedin_jobs-b62605135aeb",
+      "content_hash": "4ad82c46d0123a013915d6ecc979e5f8160cdda36ffd8ebb18ee5c1452b29226",
+      "discipline_fit": "outside",
+      "matched_resume_id": null,
+      "profile_relevance": 10,
+      "status": "discovered"
+    }
+  ]
+}

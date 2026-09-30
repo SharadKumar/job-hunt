@@ -1,0 +1,2734 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T06:43:29.279Z",
+  "purpose": "Human adjudication queue for frozen-cohort disagreements between the retained generic-agent fallback and Jev.",
+  "allowed_labels": {
+    "discipline_fit": [
+      "core",
+      "platform_gap",
+      "adjacent",
+      "outside",
+      "insufficient_evidence"
+    ],
+    "matched_resume_id": [
+      "active resume id",
+      "none",
+      "insufficient_evidence"
+    ],
+    "apply_worthy": [
+      "yes",
+      "no",
+      "insufficient_evidence"
+    ]
+  },
+  "counts": {
+    "items": 54,
+    "discipline_disagreements": 47,
+    "resume_disagreements": 21,
+    "jev_automatic": 2,
+    "outcome_consequential": 50,
+    "priority_1": 2
+  },
+  "items": [
+    {
+      "priority": 1,
+      "id": "seek-51b26ac65fd7",
+      "title": "Solution Architect - M365",
+      "company": "Medibank",
+      "location": "Melbourne VIC",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": true,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead workplace solution architecture, driving M365, endpoint and productivity platform transformation to deliver secure, scalable business outcomes.",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "microsoft-consultant",
+        "profile_relevance": 100,
+        "reason": "Core noun is Solution Architect and the dominant named platform is Microsoft 365 (workplace/endpoint/productivity transformation) — this is exactly the platform the candidate has the deepest sustained corpus for (3x SharePoint MVP, Goldman Sachs 35K-user M365 platform, multiple M365 migrations), so the platform is well evidenced rather than a gap."
+      },
+      "jev": {
+        "status": "automatic",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "platform_gap": 0.13,
+          "adjacent": 0.02,
+          "outside": 0,
+          "core": 0.85
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "applied-ai": 0,
+          "ai-developer": 0,
+          "microsoft-consultant": 0.1,
+          "delivery-manager": 0.02,
+          "solution-architect": 0.87,
+          "fractional-cto": 0,
+          "none": 0.01
+        },
+        "profile_relevance": 87,
+        "decision_id": "93df66c44c1d323cd97462fc"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 1,
+      "id": "seek-568b92adfdad",
+      "title": "Principal Delivery Manager - 9 month contract",
+      "company": "Genesis IT Recruitment",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": true,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead a major digital transformation program. Drive Agile delivery, Salesforce CRM modernisation and legacy system replacement initiatives - APPLY NOW!",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 64,
+        "reason": "Delivery Manager is the exact title and a core discipline strongly evidenced via NSW DoE and EY Westpac Life delivery, but the role's defining duty is Salesforce CRM modernisation and legacy replacement, a named platform not evidenced by any concrete delivered engagement in the resume corpus (Salesforce only appears as a generic taxonomy/skill tag, not a demonstrated delivery)."
+      },
+      "jev": {
+        "status": "automatic",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0,
+          "adjacent": 0.02,
+          "platform_gap": 0.11,
+          "core": 0.87
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "solution-architect": 0.04,
+          "none": 0,
+          "delivery-manager": 0.96,
+          "fractional-cto": 0,
+          "applied-ai": 0,
+          "ai-developer": 0
+        },
+        "profile_relevance": 87,
+        "decision_id": "2ddc0037fa5e2fe6bb834a17"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "recruiter-06eae7f65091",
+      "title": "Quote Extension Application — Contract (SA/Tech Lead/PM/UAT)",
+      "company": "Australian Group Insurances (AGI)",
+      "location": "Sydney CBD (Pitt St) — onsite 5 days",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "Life insurance / SMSF Quote Extension portal build for AGI (group-insurance TPA). Multi-disciplinary contract: Solution Architect + Technical Lead + PM + UAT. Adviser/member portals, quote calc (Death/TPD/IP), underwriting decisions & thresholds, cover transfer workflows, insurer/trustee integration. Full JD in draftDir jd.md.",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "reason": "Multi-hat SA + Tech Lead + PM + UAT contract sits squarely in the candidate's core role family (Solutions/Enterprise Architect, Delivery Manager). The candidate has strong end-to-end delivery and architecture evidence (NSW DoE, EY, CBA, QBE) but no direct life-insurance/SMSF quote-calculation or underwriting-threshold domain evidence, so the discipline is a clear match while the specific product domain is a gap."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.31,
+          "core": 0.33,
+          "adjacent": 0.35000000000000003,
+          "platform_gap": 0.01
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "delivery-manager": 0.13,
+          "ai-developer": 0,
+          "applied-ai": 0.01,
+          "solution-architect": 0.65,
+          "microsoft-consultant": 0,
+          "none": 0.21,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "b8b6e2fdf2254b0829b9b54f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-0df549e3a27c",
+      "title": "Lead Microservices and AI Technical Architect",
+      "company": "imate solutions",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] To provide technical leadership, influence system builds and engineering decisions, guide the adoption of AI across the service deliver lifecycle",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 64,
+        "reason": "Duties center on technical leadership guiding engineering decisions and AI adoption across the service delivery lifecycle, which maps to the candidate's Nterprise/Claudia and NSW DoE GenAI-adoption evidence, but the underlying microservices/system-build engineering named in the title is not demonstrated."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.13,
+          "core": 0.43,
+          "platform_gap": 0.01,
+          "adjacent": 0.43
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "delivery-manager": 0.05,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.85,
+          "ai-developer": 0,
+          "applied-ai": 0.08,
+          "none": 0.02
+        },
+        "profile_relevance": 42,
+        "decision_id": "507a58fdd15c982af0f4f0a6"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-12083acb8872",
+      "title": "AI Testing & Assurance Capability Lead",
+      "company": "Konnexus",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] An new and exciting opportunity has become available for someone to help this organisation shape how AI is governed, validated and released across a major enterprise. This is not a role for someone building models. This is for a leader who understands AI, ML and modern testing practices, and wants to define the frameworks, assurance standards and governance that determine whether AI solutions are safe, reliable and ready for release. You will establish a brand-new enterprise capability, bringing together AI assurance, testing, risk, governance and business validation into a scalable framework that will support AI adoption for years to come. Responsibilities: ",
+      "generic_agent": {
+        "discipline_fit": "outside",
+        "evidence_strength": 0,
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "reason": "This is a specialist AI Testing & Assurance / Quality Engineering capability-lead role centred on building governance, validation, bias/drift/explainability assurance and release-gating frameworks for AI, explicitly not an architecture or delivery-leadership brief. The candidate's evidence is in enterprise architecture, delivery management and applied agentic-system building, not in testing/QA leadership or formal AI risk/assurance framework design, so this is a different discipline the candidate is unlikely to be shortlisted for."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0,
+          "outside": 0.4,
+          "core": 0.02,
+          "adjacent": 0.58
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "applied-ai": 0.14,
+          "fractional-cto": 0,
+          "solution-architect": 0.45,
+          "none": 0.35,
+          "delivery-manager": 0.06
+        },
+        "profile_relevance": 30,
+        "decision_id": "cf16d7f0d153beebc81467a9"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-19ecba30b634",
+      "title": "Multiple AI roles - Sydney",
+      "company": "AYAN INFOTECH PTY LTD",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Ayan Infotech are looking for a range of AI candidates with below listed skills for contract job opportunities in Sydney.Due to the nature of the work involved, we can only consider candidates who hold full unrestricted work rights in Australia.Titles: AI Agents Lead, AI Change Manager, AI Solution Architect, Senior Data Scientist Location: Sydney Type: Contract (3-6 months, possibly extend 12 months) Work arrangement: Preferably hybrid Required Skills and Experience:Role 1 - Agenti AI Lead (3 months + extend 6-12 months)Own the rollout of M365 Copilot across the organisation and lead the build of safe, highvalue, high impact AI agents. Translate business nee",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 87,
+        "reason": "The posting's AI Agents Lead / AI Solutions Architect roles (agentic AI rollout, agent-orchestration frameworks, Copilot/Power Platform coordination, AI governance and reusable architecture patterns) align with the candidate's demonstrated primary discipline of applied AI architecture and delivery via Nterprise Corp and the Claudia agentic framework."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "core": 0.21,
+          "adjacent": 0.37,
+          "platform_gap": 0.28,
+          "outside": 0.14
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "microsoft-consultant": 0.01,
+          "solution-architect": 0.85,
+          "delivery-manager": 0.04,
+          "applied-ai": 0.07,
+          "ai-developer": 0,
+          "none": 0.03
+        },
+        "profile_relevance": 30,
+        "decision_id": "8af2ccf1721ef2b2e79404b2"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-22468a22e32e",
+      "title": "AI Engineer",
+      "company": "The Network",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] AI Engineer - 12 Month Fixed-Term Contract12 Month Fixed-Term Contract with room for extensionStunning harbour-view offices in the heart of Sydney CBDWork on exciting AI and automation initiatives with organisation-wide impactAbout the company:With around 700 employees, this ASX-listed organisation is well known for its supportive and people-focused culture. Once you're part of the team, you'll want to stay! This is a fantastic opportunity for someone seeking a 12-month fixed-term opportunity, with the potential for extension. The role is based in beautiful offices in the heart of Sydney's CBD, just a short walk from all major train stations. About the role:W",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "The role is a hands-on AI/GenAI engineering position (LLM apps, RAG, agents, AI evaluation) which aligns with the candidate's agentic AI practitioner evidence, but the job is dominated by a specific .NET/C#/ASP.NET Core and Microsoft Graph/SharePoint Online engineering stack that is not evidenced as current hands-on coding."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.55,
+          "platform_gap": 0.04,
+          "core": 0.06,
+          "outside": 0.35
+        },
+        "matched_resume_id": "applied-ai",
+        "resume_distribution": {
+          "microsoft-consultant": 0.01,
+          "fractional-cto": 0,
+          "delivery-manager": 0.04,
+          "applied-ai": 0.27,
+          "solution-architect": 0.22,
+          "ai-developer": 0.22,
+          "none": 0.24
+        },
+        "profile_relevance": 30,
+        "decision_id": "7478e1ebb2e69bfb3c7d1a59"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-2ba4759c3830",
+      "title": "Integration Architect",
+      "company": "Talent",
+      "location": "Richmond, Melbourne VIC",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Government agency is seeking an experienced EL1-level Senior Integration Architect with strong Salesforce, MuleSoft, iPaaS, REST API or GraphQL",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "reason": "Integration Architect is an architecture discipline that fits the candidate's core enterprise/solution architecture background, but the role is dominated by named platforms (Salesforce, MuleSoft, iPaaS) that are not evidenced as hands-on delivery in the candidate's demonstrated engagements."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "platform_gap": 0.24,
+          "outside": 0.03,
+          "core": 0.59,
+          "adjacent": 0.14
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "applied-ai": 0,
+          "ai-developer": 0,
+          "solution-architect": 0.93,
+          "delivery-manager": 0.03,
+          "none": 0.04
+        },
+        "profile_relevance": 87,
+        "decision_id": "f355d103a9fcd9112594fe0d"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-334a67fe7115",
+      "title": "Senior AI Software Engineer",
+      "company": "Nuage Technology Group",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Our med- tech client is building out its next generation of AI powered engineering capability. They're after someone who can move fluently between agentic AI systems and the infrastructure that supports them. What you'll be doing You'll design and build multi-agent systems, working with LLM fundamentals, agent design patterns, and the MCP protocol for tool use and resource discovery. On the integration side, you'll design and build APIs, work with enterprise auth and own the platform underneath it all, compute, containers (EKS), networking, and infrastructure as code via Terraform, with security engineering front of mind. What you'll bring Hands-on experience",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "Multi-agent systems, LLM fundamentals and MCP protocol work are evidenced through Nterprise/Claudia, but the role's dominant must-haves (EKS/Kubernetes, Terraform, enterprise auth platform engineering, security-by-design infrastructure) are a named platform stack not evidenced in the candidate's corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0.01,
+          "outside": 0.44,
+          "core": 0.05,
+          "adjacent": 0.5
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "fractional-cto": 0.01,
+          "delivery-manager": 0.03,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.3,
+          "ai-developer": 0.27,
+          "none": 0.15,
+          "applied-ai": 0.24
+        },
+        "profile_relevance": 30,
+        "decision_id": "6a56bc8ef83a38684950fc63"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-38e91514d943",
+      "title": "SCRUM Master",
+      "company": "Evolution Specialists",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] SCRUM Master !We are looking for an experienced technical SCRUM Master to assist with a clients needs in facilitating Scrum practices, ensuring effective team collaboration, and helping teams deliver high-quality software solutions efficiently.Having a strong experience of fast-paced environments and supporting the delivery of complex software development projects across multiple teams will be essential.Hybrid working (2-3 days in office).Key Requirements· 5+ years of experience as a Scrum Master.· Scum Master certification (CSM, PMI-ACP, PSM 1 or 2, SAFe Scrum Master).· Experience with and strong knowledge of Jira and Confluence.· Proven experience working w",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 1,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 42,
+        "reason": "Scrum Master is a neighbouring Agile-delivery discipline; candidate has run Agile ceremonies, Jira/Confluence and cross-functional team facilitation as a Delivery Manager, but has not been evidenced as a dedicated, certified Scrum Master (CSM/PSM/SAFe SM) running ceremonies as the primary role."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.8,
+          "core": 0.06,
+          "platform_gap": 0,
+          "outside": 0.14
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "applied-ai": 0,
+          "none": 0.49,
+          "ai-developer": 0,
+          "delivery-manager": 0.48,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.03
+        },
+        "profile_relevance": 30,
+        "decision_id": "5c18234ae7c206ad60f8794f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-3e7c600bc40d",
+      "title": "Solution Architect",
+      "company": "TheDriveGroup",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Become a Key Player in a High Profile Commerce Transformation Are you ready to make a significant impact on a high traffic, commerce focused platform at a leading ASX 100 Australian company? They're looking for a high performing Solution Architect to join a major transformation program. This is an opportunity to get involved early, influence the architectural direction and help shape solutions that will support millions of customer interactions. Join Something Transformative This isn't just another enterprise project. You'll be working on a high volume, customer facing commerce environment where architecture, scalability and performance genuinely matter. You'",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Title and seniority (Solution Architect, contract) match the candidate's core discipline, but the must-haves are dominated by a hands-on .NET Core/Java engineering stack (DDD, Microservices, Event-Driven Architecture, Kubernetes, Staff/Principal Engineer background) that is not evidenced in the corpus, which is built on enterprise/ServiceNow architecture and delivery leadership rather than software engineering."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "core": 0.58,
+          "adjacent": 0.09,
+          "platform_gap": 0.24,
+          "outside": 0.09
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.87,
+          "delivery-manager": 0.02,
+          "applied-ai": 0,
+          "ai-developer": 0,
+          "none": 0.11
+        },
+        "profile_relevance": 75,
+        "decision_id": "a890b1268535db670362a0e8"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-43c28f9de63f",
+      "title": "Solution Architect",
+      "company": "TheDriveGroup",
+      "location": "Melbourne VIC",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Solution Architect to shape a high scale commerce platform using DDD, Domain Modelling, Microservices, Event Driven Architecture and Azure.",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Solution Architect is a core discipline for the candidate, but this role is dominated by a specific commerce-platform technical stack (DDD, Domain Modelling, Microservices, Event Driven Architecture, Azure) that is not evidenced in the corpus beyond familiar-tier Azure AI exposure, so the named-platform/pattern gap outweighs the discipline match."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0.02,
+          "platform_gap": 0.44,
+          "core": 0.52,
+          "adjacent": 0.02
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "applied-ai": 0,
+          "none": 0.04,
+          "solution-architect": 0.94,
+          "ai-developer": 0,
+          "delivery-manager": 0.02,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 75,
+        "decision_id": "7cfa5a1abb6c47c8f48e8751"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-4609b9278dc2",
+      "title": "Applications and AI Lead",
+      "company": "xceltium",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Full time] Many organisations are experimenting with AI. Far fewer have worked out how to turn it into practical improvements across applications, processes and everyday ways of working.The Applications & AI Lead will take ownership of ARENA’s enterprise applications portfolio while helping the organisation identify where AI, automation and emerging capabilities can create genuine value.This is a business-facing product leadership opportunity spanning enterprise applications, digital products, automation and emerging AI capabilities.About ARENAThe Australian Renewable Energy Agency (ARENA) supports Australia’s transition to net zero by funding renewable energy and decarboni",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 42,
+        "reason": "Full-time permanent employee role (conflicts with contract/fractional-only engagement model) but the duties (owning an enterprise applications portfolio spanning Salesforce/Microsoft platforms, roadmap/backlog ownership, vendor/delivery partner governance, and shaping where AI/automation creates value) sit adjacent to the candidate's EA and delivery leadership background rather than matching a demonstrated Product/Applications Manager role family."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "core": 0.15,
+          "adjacent": 0.63,
+          "platform_gap": 0.01,
+          "outside": 0.21
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "fractional-cto": 0.01,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.39,
+          "delivery-manager": 0.07,
+          "applied-ai": 0.04,
+          "ai-developer": 0,
+          "none": 0.49
+        },
+        "profile_relevance": 30,
+        "decision_id": "c4ce1f99cd64a7f52a23c9f4"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-488c4362235d",
+      "title": "Transformation Lead, AI",
+      "company": "Fives.com Pty Ltd",
+      "location": "Melbourne VIC",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead AI transformation strategy and execution across operating companies, from discovery through production deployment.",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 100,
+        "reason": "Directly matches the candidate's core Director/Digital Transformation role family, reinforced by concrete AI delivery evidence: EY Director transformation leadership, NSW DoE enterprise GenAI adoption, and ongoing Nterprise Corp agentic systems delivery through to production."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0,
+          "adjacent": 0.61,
+          "outside": 0.2,
+          "core": 0.19
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "applied-ai": 0.3,
+          "delivery-manager": 0.27,
+          "microsoft-consultant": 0,
+          "none": 0.08,
+          "ai-developer": 0,
+          "fractional-cto": 0.01,
+          "solution-architect": 0.34
+        },
+        "profile_relevance": 30,
+        "decision_id": "2cbc5b6a309bd5873321c8bd"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-5176dc6141ce",
+      "title": "Senior Delivery Lead",
+      "company": "Teachers Health Fund",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] The Senior Delivery Lead is responsible for leading assigned functional streams and Feature Teams within the Civica Ensure platform transformation program. You'll be accountable for delivering agreed business outcomes within scope, quality and project timelines while providing leadership across business, technical and vendor stakeholders. Working closely with Product Owners, Business Analysts, SMEs and third-party partners, you'll drive Agile delivery practices, manage risks and dependencies, and ensure successful implementation and adoption of new platform capabilities. What we have to offer? We at Teachers Health have a lot to offer, Hybrid working model (f",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 100,
+        "reason": "Core duties are leading functional streams/Feature Teams, Agile ceremonies, risk/dependency management and stakeholder leadership across business, technical and vendor groups — this is generic technology delivery leadership, not a platform-specialist role (Civica Ensure experience is only 'highly regarded', not mandatory)."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "platform_gap",
+        "discipline_distribution": {
+          "outside": 0,
+          "adjacent": 0.01,
+          "core": 0.41,
+          "platform_gap": 0.58
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "none": 0.01,
+          "solution-architect": 0.02,
+          "ai-developer": 0,
+          "applied-ai": 0,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "delivery-manager": 0.97
+        },
+        "profile_relevance": 64,
+        "decision_id": "fb60b19ed60448d2def095e5"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-63b342cd21da",
+      "title": "Solution Architect",
+      "company": "TheDriveGroup",
+      "location": "Melbourne VIC (Remote)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Become a Key Player in a High Profile Commerce Transformation Are you ready to make a significant impact on a high traffic, commerce focused platform at a leading ASX 100 Australian company? They're looking for a high performing Solution Architect to join a major transformation program. This is an opportunity to get involved early, influence the architectural direction and help shape solutions that will support millions of customer interactions. Join Something Transformative This isn't just another enterprise project. You'll be working on a high volume, customer facing commerce environment where architecture, scalability and performance genuinely matter. You'",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Solution Architect discipline nominally fits, but the role demands hands-on .NET Core/software engineering depth, DDD, Kubernetes and Staff/Principal Engineer-level coding background that dominate the JD and are not evidenced in the candidate's enterprise/ServiceNow-oriented architecture corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "adjacent": 0.1,
+          "platform_gap": 0.21,
+          "core": 0.59,
+          "outside": 0.1
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "delivery-manager": 0.02,
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "applied-ai": 0,
+          "solution-architect": 0.87,
+          "ai-developer": 0,
+          "none": 0.11
+        },
+        "profile_relevance": 75,
+        "decision_id": "812b1d5a77bd926fa5c08a99"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-655f40c956e2",
+      "title": "Solution Architect - Integration",
+      "company": "Talent",
+      "location": "Parramatta, Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Solution Architect - Integration12-Month Contract | Sydney | ASAP StartAn exciting opportunity is available for an experienced Solution Architect - Integration to join a major enterprise technology transformation program.This role will take ownership of the integration architecture across complex, business-critical systems, designing secure, scalable and reliable solutions that connect modern cloud platforms, SaaS solutions and legacy applications.What you'll be doingDesign AS-IS and TO-BE integration architectures across major technology projects.Design integration solutions using APIs, messaging, event-driven architecture and system integration patterns.Dev",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Solution/integration architecture is a core discipline family for the candidate, but this role requires 5+ years MuleSoft (or equivalent iPaaS) plus Kafka/event-streaming and IBM MQ/Azure/AWS integration services delivery evidence that is absent from the candidate's demonstrated work; the JD is dominated by a named platform stack, not general EA."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "adjacent": 0.23,
+          "core": 0.43,
+          "outside": 0.05,
+          "platform_gap": 0.29
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "none": 0.04,
+          "solution-architect": 0.9,
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "ai-developer": 0,
+          "applied-ai": 0,
+          "delivery-manager": 0.06
+        },
+        "profile_relevance": 75,
+        "decision_id": "e1318b3d943a00b0e9501f8f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-67efbd6b9854",
+      "title": "Lead Technical Architect - Microservices & AI",
+      "company": "Mane Consulting",
+      "location": "Canberra ACT",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead business transformation by architecting microservices, event-driven platforms, and AI-enabled DevSecOps while uplifting team engineering.",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Title is Technical Architect, which sits under the candidate's top-priority Solutions/Enterprise Architect family, but the must-haves (microservices, event-driven platforms, AI-enabled DevSecOps, engineering uplift) are a specific cloud-native engineering stack the candidate's ServiceNow/EA/transformation evidence does not cover."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0.15,
+          "core": 0.45,
+          "platform_gap": 0.02,
+          "adjacent": 0.38
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "none": 0.02,
+          "applied-ai": 0.03,
+          "solution-architect": 0.9,
+          "delivery-manager": 0.05
+        },
+        "profile_relevance": 75,
+        "decision_id": "d793542eede8e71fc2c8664f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-68786692f2b0",
+      "title": "Senior Integration Architect",
+      "company": "Peoplebank Australia NSW",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Senior Integration Architect – Federal SectorInitial 12-month Contract (with extension)Competitive RateSydney based with hybrid work flexibility (3 days onsite and 2 days WFH)We’re seeking a skilled Senior Integration Architect to design, develop, and support scalable integration solutions using iPaaS, MuleSoft, and REST APIs, while collaborating with cross-functional teams to analyse requirements and deliver secure, efficient solutions. Key Responsibilities• Design, develop, and support integration solutions using iPaaS, MuleSoft, and REST APIs.• Collaborate with cross-functional teams to gather and analyse integration requirements.• Implement scalable, secu",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Integration architecture role family fits the candidate's solution-architect discipline, but the must-have is 5+ years hands-on MuleSoft/Anypoint plus Salesforce integration and Australian Citizenship (Federal Sector); no MuleSoft, iPaaS or Salesforce integration delivery appears in the candidate's evidence, so the named platform dominates without coverage."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.08,
+          "platform_gap": 0.32,
+          "adjacent": 0.39,
+          "core": 0.21
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "delivery-manager": 0.03,
+          "applied-ai": 0,
+          "fractional-cto": 0,
+          "none": 0.08,
+          "solution-architect": 0.89
+        },
+        "profile_relevance": 30,
+        "decision_id": "2cfffccb252a7b7c99aa9df3"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-68928e8906ff",
+      "title": "Senior AI Engineer",
+      "company": "Calleo",
+      "location": "Melbourne VIC (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] We are seeking an experienced Senior AI Engineer to join a high-profile Federal Government AI and digital transformation program. This is an exciting opportunity for a hands-on AI professional to design, build, and deploy enterprise-scale AI solutions that deliver real business value. Working at the forefront of generative AI, automation, and advanced analytics, you'll help establish secure, scalable, and responsible AI capabilities across a complex enterprise environment. About the Role As the Senior AI Engineer, you will lead the development and implementation of AI-powered solutions using Microsoft's modern AI ecosystem. You will work across the full AI so",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "Hands-on AI engineering delivery fits the candidate's applied-AI/agentic evidence (Claudia, MCP, RAG, agentic systems at Nterprise), but the JD is dominated by Azure AI Foundry/Azure OpenAI specifics where the candidate's taxonomy seniority is only 'familiar', plus an AGSVA clearance requirement with no evidence."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "outside",
+        "discipline_distribution": {
+          "platform_gap": 0.17,
+          "outside": 0.43,
+          "core": 0.03,
+          "adjacent": 0.37
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "delivery-manager": 0.04,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.32,
+          "ai-developer": 0.09,
+          "applied-ai": 0.29,
+          "none": 0.26
+        },
+        "profile_relevance": 5,
+        "decision_id": "a92a4bbe4b8c60aaa1c08a53"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-6d2632d3a215",
+      "title": "Principal Architect- Contractor",
+      "company": "Halcyon Knights Pty Ltd",
+      "location": "Melbourne VIC",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Principal Architect - AI Transformation role with a large financial services/wealth management organisation. It's a contract position, reporting to th",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 100,
+        "reason": "Enterprise/solution architecture combined with AI transformation is a demonstrated primary role family: EY Director-level transformation leadership, NSW DoE GenAI adoption, and current Nterprise Corp agentic delivery directly cover the architecture-plus-AI mandate, and financial services (CBA, QBE, Colonial First State) is a known industry vertical."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "platform_gap": 0.02,
+          "outside": 0.08,
+          "core": 0.63,
+          "adjacent": 0.27
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "solution-architect": 0.75,
+          "none": 0.02,
+          "ai-developer": 0,
+          "delivery-manager": 0.05,
+          "applied-ai": 0.18,
+          "fractional-cto": 0,
+          "microsoft-consultant": 0
+        },
+        "profile_relevance": 87,
+        "decision_id": "e818847be443547d997f3e75"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-6dbf43bc613e",
+      "title": "AI Engineering Consultant",
+      "company": "The 3Three Group Pty Ltd",
+      "location": "Brisbane QLD (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] AI Engineering ConsultantDay-Rate Contract | Brisbane One of Australia's most recognised names in travel is reimagining how project delivery gets done — not by refining the existing model, but by building a new one from the ground up using AI. This is a greenfield engagement within their Program Delivery division, and it represents a genuine opportunity to shape something meaningful. The mandate is to work directly alongside the BA function, understand their processes at a detailed level, and design and deliver the AI-powered toolsets that transform how that work operates. The Opportunity Sitting at the intersection of AI engineering and delivery transformati",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 100,
+        "reason": "AI Engineering Consultant blending business/BA translation, stakeholder influence, agentic tooling (Claude Code, Copilot, OpenAI Codex) and delivery-transformation leadership is a strong match to the candidate's consulting background plus current agentic delivery work at Nterprise (including Claude-based tooling and Claudia)."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0.13,
+          "outside": 0.14,
+          "core": 0.14,
+          "adjacent": 0.59
+        },
+        "matched_resume_id": "applied-ai",
+        "resume_distribution": {
+          "none": 0.02,
+          "solution-architect": 0.39,
+          "delivery-manager": 0.1,
+          "fractional-cto": 0.01,
+          "microsoft-consultant": 0,
+          "ai-developer": 0.02,
+          "applied-ai": 0.45999999999999996
+        },
+        "profile_relevance": 42,
+        "decision_id": "80eb8015fe7d6a899dd8993f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-734055fdc83d",
+      "title": "Technical Delivery Lead-Device Deployment",
+      "company": "AAR Consulting Group P/L",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Our client is a high-profile government organisation delivering a major technology and infrastructure program .Join a high-profile independent NSW statutory organisation at the centre of delivering one of the state’s most significant public events This is a newly created Technical Delivery Lead opportunity responsible for a key technology workstream supporting the deployment of almost 12,000 EUC device across close to 100 sites. Role Description: As the Technical Delivery Lead, you will lead the device deployment workstream, working closely with internal technical teams, suppliers and other technology workstreams to deliver a complex and highly time-critical ",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 30,
+        "reason": "This is explicitly framed as a hands-on technical delivery role for large-scale EUC/device/tablet deployment (12,000 devices, ~100 sites) requiring infrastructure and device technical depth, not enterprise architecture or M&A/separation delivery. The candidate's delivery-manager evidence (NSW DoE Services Gateway, EY Westpac Life M&A separation) is at enterprise/programme level, not device rollout logistics or EUC infrastructure."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0.15,
+          "platform_gap": 0.03,
+          "core": 0.43,
+          "adjacent": 0.39
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "applied-ai": 0,
+          "none": 0.1,
+          "solution-architect": 0.06,
+          "ai-developer": 0,
+          "delivery-manager": 0.84,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 75,
+        "decision_id": "c5ef2a99d49c78e58b58913f"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-73fd70f199ae",
+      "title": "AI Engineer",
+      "company": "Launch Recruitment Pty Ltd",
+      "location": "Melbourne VIC (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] We're partnering with a leading enterprise embarking on a significant AI transformation initiative. As part of a newly established operating model, we're seeking multiple AI Solutions Engineers to work directly with business units, identify high-value opportunities and deliver practical AI-enabled outcomes. This is not a traditional AI engineering role. You'll operate in a Forward Deployed Engineering style environment, combining stakeholder engagement, solution design and hands-on development to drive tangible business value. Working closely with business leaders, you'll help shape use cases, select the right technologies and build solutions ranging from low",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 100,
+        "reason": "Identical Forward Deployed Engineering-style AI Solutions Engineer brief (stakeholder-facing GenAI/agentic delivery on cloud platforms) that directly matches the candidate's current forward-deployed, business-facing agentic AI delivery role."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.59,
+          "core": 0.24,
+          "platform_gap": 0,
+          "outside": 0.17
+        },
+        "matched_resume_id": "applied-ai",
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "none": 0.05,
+          "delivery-manager": 0.06,
+          "fractional-cto": 0,
+          "solution-architect": 0.37,
+          "applied-ai": 0.43,
+          "ai-developer": 0.09
+        },
+        "profile_relevance": 42,
+        "decision_id": "2fcd04ab910db00d81b5ab03"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-786adedbd933",
+      "title": "Senior Project Manager – Data & Analytics Transformation",
+      "company": "Balance Recruitment",
+      "location": "Homebush, Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Our client, a much loved and highly regarded organisaion that spans New South Wales, is seeking a Senior Project Manager. Based in Sydney Olympic Park, this role requires an experienced professional to lead two pivotal data projects that shape the organisation's future operational capabilities. The successful candidate will spearhead the refinement and implementation of a Unified Data Management Framework, establishing governance structures and driving enterprise-wide adoption to enhance data maturity. They will then also look to leverage the new data frameworkto ensure aligning resource is well aligned risk & needs, through advanced analytics and AI-enabled ",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 87,
+        "reason": "Job is fundamentally program/delivery leadership (roadmaps, business cases, governance forums, stakeholder engagement, budget/risk reporting) which is a core resume family (Engineering Lead/Delivery Manager) with strong EY Westpac and NSW DoE precedent; however the specific domain focus (Unified Data Management Framework, data maturity, MDM-style governance) is not something the delivered evidence directly demonstrates, so it is mixed coverage."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "core": 0.44,
+          "adjacent": 0.44,
+          "outside": 0.12,
+          "platform_gap": 0
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "solution-architect": 0.17,
+          "microsoft-consultant": 0,
+          "delivery-manager": 0.71,
+          "none": 0.12,
+          "fractional-cto": 0,
+          "applied-ai": 0,
+          "ai-developer": 0
+        },
+        "profile_relevance": 42,
+        "decision_id": "0691f279c8d0e36958d37710"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-7f7fd958cd2c",
+      "title": "Data and AI Technical Architect",
+      "company": "EPL Consulting",
+      "location": "Canberra ACT (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Full time] Lead Microservices & AI Technical Architect – Federal Government12-month contract + 2 x 12-month extension options | Hybrid working | Canberra ACTAn opportunity is available for an experienced Lead Microservices & AI Technical Architect to join a major business application transformation program within a large Australian Government department.This is a senior technical leadership role operating at approximately EL2 / Lead Architect level, suited to someone with deep experience across cloud-native architecture, microservices, event-driven platforms, AI engineering and modern software delivery practices.You will help establish enterprise microservices and event-dri",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "reason": "Technical architecture leadership discipline fits candidate's enterprise architecture background, but the role is dominated by named cloud-native platforms (Kubernetes, OpenShift, AKS/EKS/GKE) and deep DevSecOps/CI/CD engineering depth not evidenced in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0.04,
+          "outside": 0.31,
+          "core": 0.25,
+          "adjacent": 0.4
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "solution-architect": 0.82,
+          "applied-ai": 0.04,
+          "none": 0.1,
+          "ai-developer": 0,
+          "fractional-cto": 0,
+          "delivery-manager": 0.04,
+          "microsoft-consultant": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "664156ed4af6b035bc441734"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-80d0a9b712cf",
+      "title": "Information Architect",
+      "company": "Calleo",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Experience in designing, implementing and governing enterprise information architectures in the Federal Government is essential.",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "reason": "Information Architecture (taxonomy, metadata, enterprise information governance) is a neighbouring discipline to the candidate's core Enterprise/Solution Architecture family but is not a demonstrated primary specialism in the corpus; per the data-role boundary guidance, generic information/data governance mentions do not make this a core EA fit, and it also falls under the Federal Government umbrella rather than the NSW state government evidence base."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0.09,
+          "adjacent": 0.25,
+          "platform_gap": 0,
+          "core": 0.66
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "none": 0.05,
+          "applied-ai": 0,
+          "delivery-manager": 0.02,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "ai-developer": 0,
+          "solution-architect": 0.93
+        },
+        "profile_relevance": 75,
+        "decision_id": "78e37c26c4a2099d83033190"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-92b0754521a2",
+      "title": "Engineering Manager - Daily Rate Upto $1350",
+      "company": "Preacta Recruitment",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "# Engineering Manager - Daily Rate Upto $1350 **Advertiser:** Preacta Recruitment (Luke) **End client:** one of Australia's largest technology-driven organisations, multi-billion dollar digital platform investment (unnamed) **Location:** Sydney NSW (Hybrid) **Rate:** Daily rate up to $1350 (perm equivalent quoted up to $280K base + bonus + super) **Type:** Contract/Temp **Listing:** https://www.seek.com.au/job/94225377 **Posted:** ~17 days before 2026-09-14 Most companies are buying AI. We are building it! Greenfield Engineering AI Senior Engineering Manager. - Architect from scratch using Google Gemini and Vertex AI platforms being built at enterprise scale - Own the roadmap, not someone el",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "Engineering Lead is a listed core role family and the candidate has genuine hands-on agentic AI delivery evidence (Claudia, Nterprise agentic pods, NSW DoE GenAI prototype), so the engineering-leadership-for-AI discipline fits. But the role is dominated by named platforms (Google Gemini, Vertex AI) and deep distributed-systems/microservices engineering at enterprise scale that are not evidenced anywhere in the corpus, which is a named-platform gap rather than a discipline mismatch."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "outside",
+        "discipline_distribution": {
+          "core": 0.03,
+          "platform_gap": 0.19,
+          "outside": 0.44,
+          "adjacent": 0.34
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "solution-architect": 0.58,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0.01,
+          "delivery-manager": 0.08,
+          "ai-developer": 0.01,
+          "none": 0.17,
+          "applied-ai": 0.15
+        },
+        "profile_relevance": 5,
+        "decision_id": "99e02a92896fa2348bbfc725"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-968ba70c105c",
+      "title": "Enterprise Architect (GRC)",
+      "company": "FinXL IT Professional Services",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Expertise in Risk, Compliance, and Governance domain architectures, GRC/IRM tech, background in banking/finance, Sydney CBD & WFH",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "reason": "Enterprise/solution architecture is a core demonstrated role family (NSW DoE, EY, CBA, QBE, Scentre), but this role's principal must-have is GRC/IRM domain architecture and specific risk-compliance tech tooling, which is not evidenced in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.23,
+          "platform_gap": 0.01,
+          "adjacent": 0.55,
+          "core": 0.2
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "delivery-manager": 0.05,
+          "ai-developer": 0,
+          "solution-architect": 0.7,
+          "none": 0.25,
+          "applied-ai": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "4144f4d41bb024bbbe08f8c2"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-9bdd9b7c88d1",
+      "title": "SharePoint / Records Management Consultant (M365)",
+      "company": "ETE Group",
+      "location": "Sydney NSW (Remote)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] SharePoint / Records Management Consultant (M365) CONTRACT | FULLY REMOTE | AUSTRALIAN CITIZENS ONLY We're looking for an experienced SharePoint / Records Management Consultant to join a highly regarded Microsoft consultancy with a strong pipeline of major projects. This is a long-term contract opportunity, working fully remotely as part of an experienced, friendly Microsoft team delivering interesting work across enterprise and government customers. We'd love to hear from people with experience across some combination of: SharePoint Online / Microsoft 365 Records Management / Information Management Information architecture, metadata, taxonomy and governance ",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "microsoft-consultant",
+        "profile_relevance": 87,
+        "reason": "SharePoint/M365 consulting is a demonstrated primary role family (3x SharePoint MVP, Goldman Sachs 35K-user platform, migrations). Records/Information Management and Microsoft Purview specifics are not directly evidenced in the corpus (flagged as prep-tier/familiarity only), so it is mixed coverage: strong on SharePoint/M365 but a material gap on the Records Management specialisation the JD leads with."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0.22,
+          "outside": 0.33,
+          "core": 0.06,
+          "adjacent": 0.39
+        },
+        "matched_resume_id": "microsoft-consultant",
+        "resume_distribution": {
+          "microsoft-consultant": 0.71,
+          "solution-architect": 0.09,
+          "none": 0.17,
+          "delivery-manager": 0.03,
+          "ai-developer": 0,
+          "fractional-cto": 0,
+          "applied-ai": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "35df707ae73bc47fead1df49"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-a3a710bd5624",
+      "title": "AI Engineer",
+      "company": "Professional Search Group",
+      "location": "Melbourne VIC (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] AI Engineer | 6-Month Contract | MelbourneLocation: Melbourne, VIC (Hybrid)Work Type: Contract / TempClassification: Information & Communication Technology > Developers / ProgrammersRate: $900 – $1,000 / dayAbout the RoleWe are seeking a skilled AI Engineer for a 6-month contract based in Melbourne. You will drive the development and deployment of production-grade AI agents and Generative AI solutions that tackle practical business challenges.In this hands-on contract role, you will bridge the gap between cutting-edge LLMs and robust enterprise architecture - building autonomous agents, orchestrating integrations, and establishing essential governance and mon",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 87,
+        "reason": "Core duty is building and deploying production AI agents/GenAI solutions with enterprise integration, evaluation loops and governance — this matches the candidate's demonstrated agentic-systems work at Nterprise Corp (Claudia framework, MCP, agentic AI, RAG-adjacent taxonomy entries). Gaps: the JD's specific stack (LangChain/LlamaIndex/AutoGen, advanced Python, vector DB fine-tuning) is not directly evidenced in the corpus, only agentic/AI-platform-engineering at a practitioner level."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0,
+          "adjacent": 0.65,
+          "outside": 0.23,
+          "core": 0.12
+        },
+        "matched_resume_id": "ai-developer",
+        "resume_distribution": {
+          "applied-ai": 0.28,
+          "microsoft-consultant": 0,
+          "delivery-manager": 0.03,
+          "none": 0.1,
+          "ai-developer": 0.36,
+          "fractional-cto": 0,
+          "solution-architect": 0.23
+        },
+        "profile_relevance": 30,
+        "decision_id": "66a69ccb02a817a9d1daa6cb"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-a84838bcd86a",
+      "title": "Mid-Level Project Manager | Digital Transformation | WFH",
+      "company": "Expertech",
+      "location": "Sydney NSW (Remote)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Full time] Expertech is partnering with a leading digital transformation agency to find a mid-level Project Manager to join their Support team. This is a great opportunity for an experienced agency PM who enjoys variety, thrives in a fast-paced environment and genuinely likes working with clients. You’ll be managing a mix of eCommerce and CMS projects, often juggling multiple priorities and switching between different types of work throughout the day. This role is ideal for someone who combines strong project delivery skills with a service-oriented mindset, excellent communication and the confidence to build trusted client relationships. You’ll have plenty of direct externa",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 64,
+        "reason": "Project/delivery management discipline fits candidate's delivery-manager evidence, but the role centres on named CMS/eCommerce platforms (Optimizely, Sitecore, Kentico, Contentful) and agency client-account management that are absent from the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "adjacent": 0.33,
+          "core": 0.47,
+          "outside": 0.12,
+          "platform_gap": 0.08
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "delivery-manager": 0.19,
+          "none": 0.8,
+          "ai-developer": 0,
+          "solution-architect": 0.01,
+          "applied-ai": 0,
+          "microsoft-consultant": 0
+        },
+        "profile_relevance": 75,
+        "decision_id": "a48ac7598a5cd9cb8e63e8de"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-abccef293cfd",
+      "title": "AI (Agentic) Engineer",
+      "company": "BLACKROC Contingent Pty Ltd",
+      "location": "Brisbane QLD (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] AI (Agentic) Engineer Duration: Initial 6-month contract with strong possibility of extension Location: Brisbane CBD Work Arrangements: Hybrid, 2 days working from home Company Overview BLACKROC is partnering with a large health and community services organisation to recruit an AI (Agentic) Engineer. Role Purpose This is a hands-on engineering role inside a cross-functional AI delivery squad, building practical AI solutions that make a genuine difference to frontline services. You'll take business problems from discovery through to production, designing and building AI agents, workflows and AI-enabled applications on Microsoft Foundry / Azure AI Foundry, grou",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "The role is a hands-on AI/agentic engineering discipline the candidate can credibly claim (agentic AI, LLM applications, TypeScript/Python-adjacent coding), but the must-haves are dominated by named platforms — Microsoft Foundry/Azure AI Foundry and Microsoft Fabric — where the corpus only shows 'familiar' Azure AI exposure and no Fabric evidence at all, so the platform-specific core is not demonstrated."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "core": 0.07,
+          "outside": 0.25,
+          "adjacent": 0.42,
+          "platform_gap": 0.26
+        },
+        "matched_resume_id": "ai-developer",
+        "resume_distribution": {
+          "ai-developer": 0.31,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.22,
+          "delivery-manager": 0.05,
+          "fractional-cto": 0,
+          "applied-ai": 0.24000000000000002,
+          "none": 0.18
+        },
+        "profile_relevance": 30,
+        "decision_id": "34f6420f67ae1f2c41a9f6d3"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-ad85c143c43e",
+      "title": "Lead AI & Microservices Architect",
+      "company": "Moraitis Consulting Pty Ltd",
+      "location": "Canberra ACT",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead enterprise AI, cloud-native and microservices architecture initiatives in a major Federal Government transformation program.",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "reason": "The 'enterprise AI' and 'major Federal Government transformation program' framing aligns with the candidate's EY/NSW DoE transformation and GenAI-adoption evidence, giving partial coverage, but cloud-native and microservices architecture specifically is not evidenced."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "adjacent": 0.35,
+          "platform_gap": 0.01,
+          "outside": 0.14,
+          "core": 0.5
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "delivery-manager": 0.03,
+          "fractional-cto": 0,
+          "solution-architect": 0.89,
+          "applied-ai": 0.06,
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "none": 0.02
+        },
+        "profile_relevance": 75,
+        "decision_id": "0647b056df20a7e6a52bb854"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-af549076fc61",
+      "title": "Release Train Engineer",
+      "company": "Peoplebank Australia NSW",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Our client is seeking an experienced Release Train Engineer (RTE) to join a high-profile government program delivering complex, cloud-based digital solutions. Skills & Experience Required 8–10 years' experience establishing and managing the delivery of technical ICT projects, including digital and cloud-based solutions.Strong experience working within Scaled Agile / SAFe environments.Strong knowledge of project management, governance frameworks, and delivery methodologies.Demonstrated experience delivering projects within Federal or State Government environments.Relevant tertiary qualifications and/or industry-recognised project management or Agile qualificat",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 1,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 42,
+        "reason": "Release Train Engineer is a specialist SAFe/Agile facilitation role neighbouring the candidate's delivery management discipline; the candidate has demonstrated large-scale program delivery and stakeholder/governance leadership (NSW DoE, EY Westpac) that can support an argument for RTE-adjacent capability, but no evidenced SAFe certification or explicit RTE/cross-squad ceremony facilitation experience is present."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "platform_gap": 0,
+          "outside": 0.04,
+          "core": 0.62,
+          "adjacent": 0.34
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "applied-ai": 0,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "solution-architect": 0.06,
+          "delivery-manager": 0.91,
+          "none": 0.03
+        },
+        "profile_relevance": 75,
+        "decision_id": "04d931fbd9cda160a3678046"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-b3132229bf11",
+      "title": "Senior Solution Architect",
+      "company": "Clicks IT Recruitment (ACT)",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Senior Solution Architect | Federal Government | 12-Month Contract | Hybrid | Lead enterprise architecture, SAS analytics & Salesforce solutions.",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 64,
+        "reason": "Senior Solution Architect / enterprise architecture is a core, demonstrated role family (NSW Gov, EY, CBA, QBE, Scentre), so the discipline itself fits strongly. However the JD's principal must-haves single out SAS analytics and Salesforce solution delivery in a Federal Government context; Salesforce appears only as a scoring-taxonomy platform entry with no narrative delivery evidence in the corpus, and SAS analytics is not evidenced at all, so a named-platform gap sits on top of an otherwise core discipline."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "platform_gap": 0.29,
+          "adjacent": 0.02,
+          "outside": 0.01,
+          "core": 0.6799999999999999
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "applied-ai": 0,
+          "delivery-manager": 0.02,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.98,
+          "ai-developer": 0,
+          "fractional-cto": 0,
+          "none": 0
+        },
+        "profile_relevance": 87,
+        "decision_id": "fbc44de2dd27354fd7669299"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-b71198421fff",
+      "title": "Lead Microservices and AI Technical Architect",
+      "company": "Bluefin Resources Pty Limited",
+      "location": "Canberra ACT",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead Microservices & AI Architect | $180–$210/hr | Canberra + remote nationwide | 12m+",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Only a bare title and rate/location are given for this Lead Microservices & AI Architect contract; the architect discipline fits the candidate's core family but nothing in the ad ties to demonstrated microservices or AI-engineering delivery, and the sparse description offers no offsetting signal."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.28,
+          "core": 0.21,
+          "platform_gap": 0.01,
+          "adjacent": 0.5
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "none": 0.05,
+          "microsoft-consultant": 0,
+          "ai-developer": 0,
+          "solution-architect": 0.84,
+          "delivery-manager": 0.06,
+          "fractional-cto": 0,
+          "applied-ai": 0.05
+        },
+        "profile_relevance": 30,
+        "decision_id": "0d2687665d4797291688e8cd"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-bed2ed9a02b9",
+      "title": "Lead Microservices and AI Technical Architect",
+      "company": "Public Sector People",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Public Sector People has partnered with a Canberra based government agency to recruit for a Lead Microservices and AI Technical Architect",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Same role family as the other Lead Microservices and AI Technical Architect postings for a Canberra government agency; the architect title fits the candidate's core discipline but the named technical stack (microservices, AI) is not demonstrated in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.18,
+          "core": 0.32,
+          "platform_gap": 0.01,
+          "adjacent": 0.49
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "none": 0.02,
+          "microsoft-consultant": 0,
+          "ai-developer": 0,
+          "solution-architect": 0.9,
+          "delivery-manager": 0.04,
+          "fractional-cto": 0,
+          "applied-ai": 0.04
+        },
+        "profile_relevance": 30,
+        "decision_id": "32fa02805767f6c2e538c44c"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-c3a08bb99404",
+      "title": "Lead Domain Architect (Data)",
+      "company": "Experis AU",
+      "location": "Canberra ACT",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead enterprise data strategy, shape future architecture, and influence major transformation programs. 12 month contract, hybrid work, EL2 equivalent",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 30,
+        "reason": "Per the data-role boundary, a Domain Architect (Data) title with data-strategy-specific must-haves is a neighbouring specialism to the candidate's generalist enterprise architecture background, not a demonstrated primary role family, and no data architecture/data strategy delivery evidence exists in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "adjacent": 0.37,
+          "platform_gap": 0,
+          "outside": 0.16,
+          "core": 0.47
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "applied-ai": 0,
+          "solution-architect": 0.8,
+          "delivery-manager": 0.11,
+          "ai-developer": 0,
+          "none": 0.09,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 87,
+        "decision_id": "6016e553fd43ff1acdc5dd16"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-cd4b41411184",
+      "title": "AI Engineer",
+      "company": "Launch Recruitment Pty Ltd",
+      "location": "Perth WA (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] We're partnering with a leading enterprise embarking on a significant AI transformation initiative.As part of a newly established operating model, we're seeking multiple AI Solutions Engineers to work directly with business units, identify high-value opportunities and deliver practical AI-enabled outcomes.This is not a traditional AI engineering role. You'll operate in a Forward Deployed Engineering style environment, combining stakeholder engagement, solution design and hands-on development to drive tangible business value.Working closely with business leaders, you'll help shape use cases, select the right technologies and build solutions ranging from low-co",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 2,
+        "matched_resume_id": "applied-ai",
+        "profile_relevance": 100,
+        "reason": "This is explicitly a Forward Deployed Engineering-style role blending stakeholder engagement, solution design and hands-on GenAI/agentic delivery on cloud platforms - directly mirroring the candidate's current Forward Deployed Engineer/Principal Consultant role at Nterprise Corp delivering agentic and GenAI solutions with business stakeholders."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.61,
+          "platform_gap": 0.01,
+          "core": 0.16,
+          "outside": 0.22
+        },
+        "matched_resume_id": "applied-ai",
+        "resume_distribution": {
+          "none": 0.06,
+          "microsoft-consultant": 0,
+          "ai-developer": 0.07,
+          "fractional-cto": 0,
+          "applied-ai": 0.43,
+          "delivery-manager": 0.06,
+          "solution-architect": 0.38
+        },
+        "profile_relevance": 42,
+        "decision_id": "c637e8ac1cfc44fd2813ab49"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-d48f3a86a6f4",
+      "title": "Data Delivery Manager",
+      "company": "Interface Agency",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] We’re partnering with a major Australian organisation that is significantly scaling its Data & Analytics capability and is looking for an experienced Data Delivery Manager to help bring structure, visibility and momentum to a growing portfolio of work. This is a great opportunity for someone who sits comfortably between technical delivery and Agile leadership. You’ll work across a sizeable data function of around 40 internal and external resources, helping coordinate multiple streams of work as the organisation ramps up delivery against an ambitious new data strategy. We’re looking for someone who can get into the detail, understand what’s happening across te",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 55,
+        "reason": "Title and core duties are Delivery Manager (coordinating workstreams, capacity/resource planning, agile ceremonies) which is a resume core family, but the must-have technical depth is hands-on Azure DevOps administration/reporting and Power BI, explicitly named platforms/tools with no evidence in the delivered corpus, and the role is scoped within the data-role boundary where generic delivery experience alone is insufficient."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "core": 0.47,
+          "outside": 0.02,
+          "platform_gap": 0.43,
+          "adjacent": 0.08
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "fractional-cto": 0,
+          "delivery-manager": 0.92,
+          "microsoft-consultant": 0,
+          "ai-developer": 0,
+          "solution-architect": 0.03,
+          "none": 0.05,
+          "applied-ai": 0
+        },
+        "profile_relevance": 75,
+        "decision_id": "36ab392cde366835bc748d73"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-d548c20a03b4",
+      "title": "Technical Business Analyst",
+      "company": "AAR Consulting Group P/L",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Our client is a high-profile NSW statutory organisation delivering one of the state's most significant and time-critical public events. As part of a major technology program, we are seeking an experienced Technical Business Analyst to support the planning, configuration, testing and deployment of approximately 12,000 end-user devices/tablets across close to 100 sites. You will work closely with the Technical Delivery Lead, internal technology teams, suppliers and project stakeholders to ensure technical requirements are clearly defined, documented, tested and delivered within a highly time-critical environment.Responsibilities Elicit, analyse and document tec",
+      "generic_agent": {
+        "discipline_fit": "outside",
+        "evidence_strength": 0,
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "reason": "This is a hands-on Technical Business Analyst role centred on device/tablet deployment requirements, configuration, provisioning and testing documentation — a distinct BA discipline that is not one of the candidate's demonstrated primary role families (Solutions/Enterprise Architect, Delivery Manager, Director Tech Consulting)."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.55,
+          "platform_gap": 0,
+          "outside": 0.43,
+          "core": 0.02
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "solution-architect": 0.08,
+          "fractional-cto": 0,
+          "microsoft-consultant": 0,
+          "applied-ai": 0,
+          "ai-developer": 0,
+          "delivery-manager": 0.2,
+          "none": 0.72
+        },
+        "profile_relevance": 30,
+        "decision_id": "ce403908a8e410f08481707b"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-db8689945928",
+      "title": "Technical Architect",
+      "company": "HCL Australia Services Pty Ltd",
+      "location": "North Sydney, Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Full time] Technical Architect“We are HCLTech, one of the fastest-growing large tech companies in the world and home to 219,000+ people across 54 countries, supercharging progress through industry-leading capabilities centered around Digital, Engineering and Cloud. The driving force behind that work, our people, are diverse, creative, and passionate, raising the bar for excellence on a regular basis. We, in turn, work hard to bring out the best in them as we strive to help them find their spark and become the best version of themselves that they can be.Are you ready to be an important part of this ever-transformational journey? At HCLTech Australia, we value the unique pers",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Title and duties fit solution/technical architecture (requirements translation, solution design, architecture standards), but the role is dominated by named ETL/data-warehousing platform requirements (Ab Initio GDE/Express-IT/MHub/EME, advanced SQL, Kafka) that fall squarely in the excluded pure-ETL/data-engineering boundary and are entirely unevidenced in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "platform_gap",
+        "discipline_distribution": {
+          "platform_gap": 0.84,
+          "adjacent": 0.03,
+          "outside": 0.07,
+          "core": 0.06
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "applied-ai": 0,
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "delivery-manager": 0.01,
+          "fractional-cto": 0,
+          "none": 0.67,
+          "solution-architect": 0.32
+        },
+        "profile_relevance": 55,
+        "decision_id": "b2c2650fd90cb5056dd77dd3"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-dee54a2c3927",
+      "title": "AI Software Engineer",
+      "company": "Opus Recruitment Solutions",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Full time] Join and help shape the future of Enterprise AI!We enable organizations to gain a competitive advantage through the power of Generative AI!We partner with large enterprise clients to develop impactful AI strategies, build production-ready AI solutions, and seamlessly integrate those solutions into their businesses.About the RoleWe're looking for an experienced AI Software Engineers who thrives on building scalable, production-grade AI applications and enjoys solving complex technical problems.You'll work closely with clients and cross-functional teams to design, develop, and deploy enterprise AI solutions that deliver measurable business value.What You'll BringWe",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 42,
+        "reason": "The role centres on LLM prompt engineering, fine-tuning, and Python/SQL data-driven application design for enterprise clients; candidate has LLM/GenAI production evidence via Nterprise/Claudia but no evidenced fine-tuning or SQL-heavy data-application delivery, making this a neighbouring rather than primary demonstrated discipline."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "adjacent": 0.52,
+          "platform_gap": 0,
+          "outside": 0.43,
+          "core": 0.05
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "none": 0.45999999999999996,
+          "microsoft-consultant": 0,
+          "ai-developer": 0.09,
+          "applied-ai": 0.22,
+          "solution-architect": 0.18,
+          "delivery-manager": 0.04,
+          "fractional-cto": 0.01
+        },
+        "profile_relevance": 30,
+        "decision_id": "9a18bea61e7c1d4303bfbf7a"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-e23afe132ab8",
+      "title": "Solution Architect",
+      "company": "TheDriveGroup",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Solution Architect to shape a high scale commerce platform using DDD, Domain Modelling, Microservices, Event Driven Architecture and Azure.",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 0,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 55,
+        "reason": "Same role as the Melbourne listing (Sydney location, higher geo priority): Solution Architect discipline is core, but the commerce-platform stack (DDD, Domain Modelling, Microservices, EDA, Azure) dominates and is not evidenced beyond familiar-tier Azure AI exposure."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "outside": 0.03,
+          "core": 0.52,
+          "adjacent": 0.04,
+          "platform_gap": 0.41
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "delivery-manager": 0.01,
+          "applied-ai": 0,
+          "fractional-cto": 0,
+          "none": 0.02,
+          "solution-architect": 0.97
+        },
+        "profile_relevance": 75,
+        "decision_id": "06dc3e93fa1b2993d194ad03"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-e9a79387a74a",
+      "title": "1x ICT Delivery Lead and 1x Technical Business Analyst - Urgent roles",
+      "company": "EXPONENTIAL RECRUITMENT",
+      "location": "Sydney NSW (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] Delivery Lead & Technical Business Analyst – NSW GovernmentOur NSW Government client is looking for experienced professionals with strong expertise in ICT Infrastructure & Operations, technical delivery, and stakeholder management.1 x Delivery Lead1 x Technical Business Analyst1 x Delivery LeadWe are looking for an experienced Delivery Lead with:Strong stakeholder management, negotiation and influencing skillsExperience managing multiple suppliers and building strong supplier relationshipsExperience coordinating multiple technical streams through to Go-LiveGood knowledge of ICT Infrastructure & Operations, including EUC, Networking and TabletsExperience with ",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "delivery-manager",
+        "profile_relevance": 30,
+        "reason": "The Delivery Lead half of this combined posting sits in the candidate's delivery-leadership discipline (stakeholder management, supplier management, multi-stream coordination to Go-Live), but the must-have domain knowledge is ICT Infrastructure & Operations, EUC, Networking and Tablets/device deployment, which is not evidenced; the Technical BA half is outside the candidate's role families entirely."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "core",
+        "discipline_distribution": {
+          "core": 0.43,
+          "platform_gap": 0.37,
+          "adjacent": 0.16,
+          "outside": 0.04
+        },
+        "matched_resume_id": "delivery-manager",
+        "resume_distribution": {
+          "applied-ai": 0,
+          "delivery-manager": 0.89,
+          "ai-developer": 0,
+          "microsoft-consultant": 0,
+          "solution-architect": 0.04,
+          "none": 0.07,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 75,
+        "decision_id": "0e32511b2eac0e6a7d21da7e"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-eb5b64043da2",
+      "title": "Principal Engineer - AI Automation, Continuous Delivery",
+      "company": "Software At Scale",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Principal Engineer for a high-impact transformation role, shifting quality toward an engineering-led approach.",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 30,
+        "reason": "Title noun is 'Principal Engineer' with an 'engineering-led' quality-transformation duty — this reads as a hands-on senior IC engineering role, not the architecture/delivery leadership family the candidate's resumes are built around. Description is too sparse (one sentence) to confirm any specific must-have stack, and no enterprise architecture, delivery management or M&A signal is present at all."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "outside",
+        "discipline_distribution": {
+          "adjacent": 0.45,
+          "core": 0.04,
+          "platform_gap": 0.01,
+          "outside": 0.5
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "ai-developer": 0.02,
+          "none": 0.19,
+          "delivery-manager": 0.17,
+          "fractional-cto": 0.01,
+          "solution-architect": 0.44,
+          "applied-ai": 0.17,
+          "microsoft-consultant": 0
+        },
+        "profile_relevance": 5,
+        "decision_id": "aa39925a2a6af9037109cfa5"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-f21f2738dcf2",
+      "title": "Lead AI Engineer",
+      "company": "Opus Recruitment Solutions",
+      "location": "Melbourne VIC (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Full time] About the roleThis is a highly autonomous role where you'll lead projects from problem definition through to production, partnering directly with customers and owning key architectural decisions. You'll stay hands-on while influencing technical direction across multiple engagements.Key responsibilitiesLead end-to-end GenAI and Agentic AI projectsDesign scalable architectures and make key technical decisionsBuild production-grade LLM and AI-powered applicationsDevelop agent workflows, tool integrations, and evaluation frameworksMentor engineers and drive engineering best practicesWork directly with enterprise stakeholdersSolve complex problems using Python and mod",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 87,
+        "reason": "Lead AI Engineer duties (end-to-end GenAI/Agentic AI project leadership, architecture decisions, production LLM apps, agent workflows/tool integrations, evaluation frameworks) map directly onto the candidate's Nterprise forward-deployed engineering work and Claudia agentic framework build, though deep Python software-engineering depth is not fully evidenced."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.32,
+          "core": 0.08,
+          "platform_gap": 0,
+          "adjacent": 0.6
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "none": 0.33,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0.01,
+          "ai-developer": 0.06,
+          "delivery-manager": 0.04,
+          "solution-architect": 0.28,
+          "applied-ai": 0.28
+        },
+        "profile_relevance": 30,
+        "decision_id": "69d0431e0de5456c6af82ced"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-f4df600037f2",
+      "title": "Applied AI Engineer - GenAI / Databricks",
+      "company": "Neura Vision Pty Ltd",
+      "location": "Melbourne VIC (Hybrid)",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract/Temp] About the roleWe are looking for a hands-on AI Engineer to help build and iterate a practical enterprise Generative AI solution for a leading Australian financial services organisation. Working within a small multidisciplinary team, you will take requirements through to a working, testable solution using Python, Databricks and AWS Bedrock. This role will suit an engineer who enjoys solving real business problems, working closely with stakeholders and building pragmatic solutions without unnecessary over-engineering. This is a contract role, initially 3-6 months, with potential for extension. Rate negotiable based on experience and capability.Key responsibilit",
+      "generic_agent": {
+        "discipline_fit": "platform_gap",
+        "evidence_strength": 1,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 64,
+        "reason": "Core duties (RAG, LLM tool/function calling, GenAI application build) match the candidate's practitioner-level agentic AI and LLM evidence, but the role is anchored on Databricks and AWS Bedrock as named platforms with no corresponding evidence in the corpus, and requires sustained hands-on Python engineering depth beyond what is demonstrated."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "outside",
+        "discipline_distribution": {
+          "outside": 0.43,
+          "adjacent": 0.28,
+          "core": 0.02,
+          "platform_gap": 0.27
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "none": 0.34,
+          "fractional-cto": 0,
+          "delivery-manager": 0.03,
+          "microsoft-consultant": 0,
+          "applied-ai": 0.39,
+          "ai-developer": 0.14,
+          "solution-architect": 0.1
+        },
+        "profile_relevance": 5,
+        "decision_id": "4bae44fd6b0380dcbd34b9fb"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 3,
+      "id": "seek-ffc370433cb2",
+      "title": "Lead Microservices and AI Technical Architect",
+      "company": "UpperGround by Hudson",
+      "location": "Sydney NSW",
+      "pipeline_status": "submitted",
+      "outcome_consequential": true,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Lead Microservices & AI transformation for a Fed Gov agency, shaping cloud-native architecture and AI-enabled engineering practices.",
+      "generic_agent": {
+        "discipline_fit": "core",
+        "evidence_strength": 1,
+        "matched_resume_id": "solution-architect",
+        "profile_relevance": 87,
+        "reason": "Same discipline as the other 'Lead Microservices and AI Technical Architect' postings: cloud-native architecture shaping plus AI-enabled engineering practice is a core Enterprise Architect duty for this candidate, backed by EA seniority and current agentic delivery, but cloud-native/microservices depth itself is not demonstrated."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "platform_gap": 0.01,
+          "outside": 0.12,
+          "core": 0.42,
+          "adjacent": 0.45
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "solution-architect": 0.92,
+          "none": 0.01,
+          "ai-developer": 0,
+          "applied-ai": 0.04,
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "delivery-manager": 0.03
+        },
+        "profile_relevance": 30,
+        "decision_id": "def320c07b20d7222d6ad2e6"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 4,
+      "id": "linkedin_jobs-3ef562107e4c",
+      "title": "Web Developer",
+      "company": "Talent",
+      "location": "Fyshwick, Australian Capital Territory, Australia",
+      "pipeline_status": "discovered",
+      "outcome_consequential": false,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": false,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: Contract; 65 applicants] Web Developer - React / TypeScript Location: Canberra, ACT - Hybrid working arrangements Contract: 12 months + 2 x 12-month extension options Security Clearance: Current NV1 required Level: APS6 equivalent Position Overview An opportunity is available for an experienced Web Developer to join an agile, multidisciplinary capability delivery team working on a significant public-facing web system. You will work alongside Business Analysts, Software Developers and Testers to design, build and enhance modern web components, APIs, data access and business logic. The role offers a strong mix of front-end development using React and TypeScript, API integrati",
+      "generic_agent": {
+        "discipline_fit": "adjacent",
+        "evidence_strength": 0,
+        "matched_resume_id": "ai-developer",
+        "profile_relevance": 30,
+        "reason": "This is a hands-on IC Web Developer role (React/TypeScript/Node.js coding, unit testing, APS6-equivalent build work) which is a neighbouring discipline to the candidate's architecture/delivery career rather than a demonstrated primary hands-on developer role family, and it also requires an active NV1 clearance not evidenced anywhere in the corpus."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "outside": 0.44,
+          "adjacent": 0.48,
+          "platform_gap": 0.01,
+          "core": 0.07
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "microsoft-consultant": 0,
+          "fractional-cto": 0,
+          "delivery-manager": 0.03,
+          "none": 0.78,
+          "solution-architect": 0.18,
+          "ai-developer": 0.01,
+          "applied-ai": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "0d58be805d51304b83a611a9"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 4,
+      "id": "linkedin_jobs-b62605135aeb",
+      "title": "IT Systems Engineer - PIMS Project",
+      "company": "Greencross Pet Wellness Company",
+      "location": "North Ryde, New South Wales, Australia",
+      "pipeline_status": "discovered",
+      "outcome_consequential": false,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "",
+      "generic_agent": {
+        "discipline_fit": "outside",
+        "evidence_strength": 0,
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "reason": "IT Systems Engineer on a named PIMS project is a hands-on technical systems-engineering role, a different discipline family from the candidate's demonstrated architecture, delivery-management and applied-AI leadership positioning, with no description confirming any architecture/delivery scope."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "adjacent",
+        "discipline_distribution": {
+          "core": 0.19,
+          "platform_gap": 0.15,
+          "adjacent": 0.46,
+          "outside": 0.2
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "applied-ai": 0,
+          "microsoft-consultant": 0,
+          "none": 0.34,
+          "solution-architect": 0.44,
+          "delivery-manager": 0.22,
+          "fractional-cto": 0
+        },
+        "profile_relevance": 30,
+        "decision_id": "9a167c7df5f5a2678e330fa5"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 4,
+      "id": "seek-1962cfef1bf0",
+      "title": "Senior Dynamics CRM Developer",
+      "company": "Compas Pty Ltd",
+      "location": "Canberra ACT",
+      "pipeline_status": "discovered",
+      "outcome_consequential": false,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": false
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Senior Dynamics 365 CRM Developer delivering Power Platform and Azure solutions in a hybrid role across QLD, ACT, VIC or NSW.",
+      "generic_agent": {
+        "discipline_fit": "outside",
+        "evidence_strength": 0,
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "reason": "This is a hands-on Senior Dynamics 365 CRM Developer role building Power Platform and Azure solutions -- a specialist CRM development discipline. The candidate has no Dynamics 365 CRM development experience in the corpus; Power Platform is only a prep-tier familiarity flag under the microsoft-consultant resume, explicitly guarded against being presented as delivery experience."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "platform_gap",
+        "discipline_distribution": {
+          "platform_gap": 0.57,
+          "outside": 0.32,
+          "adjacent": 0.09,
+          "core": 0.02
+        },
+        "matched_resume_id": null,
+        "resume_distribution": {
+          "solution-architect": 0.34,
+          "none": 0.48,
+          "microsoft-consultant": 0.1,
+          "applied-ai": 0,
+          "delivery-manager": 0.08,
+          "fractional-cto": 0,
+          "ai-developer": 0
+        },
+        "profile_relevance": 55,
+        "decision_id": "088e29c7cdc4df9e4583bba3"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    },
+    {
+      "priority": 4,
+      "id": "seek-7f08b8f79071",
+      "title": "Exchange Engineer",
+      "company": "Talent",
+      "location": "Canberra ACT",
+      "pipeline_status": "discovered",
+      "outcome_consequential": false,
+      "jev_automatic": false,
+      "differences": {
+        "discipline_fit": true,
+        "matched_resume_id": true
+      },
+      "description_excerpt": "[Employment type: This is a Contract/Temp job] Design, integrate and assure secure Exchange and infrastructure solutions, producing technical designs and supporting complex Defence systems.",
+      "generic_agent": {
+        "discipline_fit": "outside",
+        "evidence_strength": 0,
+        "matched_resume_id": null,
+        "profile_relevance": 5,
+        "reason": "Hands-on Exchange/infrastructure engineering role designing and assuring Defence messaging systems; candidate's demonstrated role families are Solution Architecture, Delivery Management and Director-level consulting, not specialist Exchange/infrastructure engineering. No corpus evidence of Exchange administration or infrastructure engineering delivery."
+      },
+      "jev": {
+        "status": "uncertain",
+        "discipline_fit": "platform_gap",
+        "discipline_distribution": {
+          "outside": 0.33,
+          "core": 0.02,
+          "adjacent": 0.21,
+          "platform_gap": 0.44
+        },
+        "matched_resume_id": "solution-architect",
+        "resume_distribution": {
+          "ai-developer": 0,
+          "microsoft-consultant": 0.1,
+          "solution-architect": 0.49,
+          "fractional-cto": 0,
+          "delivery-manager": 0.04,
+          "none": 0.37,
+          "applied-ai": 0
+        },
+        "profile_relevance": 55,
+        "decision_id": "097b232f712b27acb0c2297a"
+      },
+      "human_label": {
+        "discipline_fit": null,
+        "matched_resume_id": null,
+        "apply_worthy": null,
+        "notes": null
+      }
+    }
+  ]
+}

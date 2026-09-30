@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-22T09:02:21.822Z",
+  "windows": [
+    {
+      "days": 7,
+      "since": "2026-09-15T09:02:21.822Z",
+      "decisions": 6131,
+      "unique_roles": 2197,
+      "by_status": {
+        "automatic": 1828,
+        "uncertain": 4297,
+        "degraded": 6,
+        "insufficient_input": 0
+      },
+      "by_source": {
+        "jev": 4630,
+        "agent_fallback": 5,
+        "migrated_agent": 1490,
+        "deterministic_only": 6
+      },
+      "jev_input_tokens": 20720141,
+      "jev_output_tokens": 1559091,
+      "jev_cost_usd": 0.828806,
+      "attended_fallbacks": 5,
+      "attended_overrides": [
+        {
+          "role_id": "seek-fe61f420a3f7",
+          "decision_id": "b0d3857332db7cecffc36aed",
+          "supersedes_decision_id": "c11baa3a359de5b371e431b4"
+        }
+      ],
+      "outcomes": {
+        "responded": 1,
+        "interview": 0,
+        "offered": 0,
+        "won": 0
+      }
+    },
+    {
+      "days": 30,
+      "since": "2026-08-23T09:02:21.822Z",
+      "decisions": 6131,
+      "unique_roles": 2197,
+      "by_status": {
+        "automatic": 1828,
+        "uncertain": 4297,
+        "degraded": 6,
+        "insufficient_input": 0
+      },
+      "by_source": {
+        "jev": 4630,
+        "agent_fallback": 5,
+        "migrated_agent": 1490,
+        "deterministic_only": 6
+      },
+      "jev_input_tokens": 20720141,
+      "jev_output_tokens": 1559091,
+      "jev_cost_usd": 0.828806,
+      "attended_fallbacks": 5,
+      "attended_overrides": [
+        {
+          "role_id": "seek-fe61f420a3f7",
+          "decision_id": "b0d3857332db7cecffc36aed",
+          "supersedes_decision_id": "c11baa3a359de5b371e431b4"
+        }
+      ],
+      "outcomes": {
+        "responded": 1,
+        "interview": 0,
+        "offered": 0,
+        "won": 0
+      }
+    }
+  ],
+  "frozen_benchmark_stale": true,
+  "frozen_benchmark_freshness": {
+    "policy_hash_matches": false,
+    "profile_hash_matches": false,
+    "resume_set_hash_matches": true,
+    "question_schema_hash_matches": true,
+    "requested_model_matches": true,
+    "expected_gateway_route_fingerprint_present": true,
+    "resolved_model_version_observable": false
+  },
+  "human_adjudication": {
+    "items": 115,
+    "pending": 0,
+    "complete": 0,
+    "stale": 115,
+    "priority_1": 2,
+    "priority_1_pending": 0,
+    "delegated_decisions": 0,
+    "independent_human_complete": 0,
+    "frozen_primary_required": 115,
+    "frozen_primary_complete": 0,
+    "frozen_primary_human_complete": 0,
+    "shadow_review_required": 0,
+    "shadow_review_complete": 0,
+    "shadow_review_human_complete": 0
+  },
+  "note": "Outcomes are current pipeline states for roles with decisions in each window. Attended overrides are explicit agent_fallback decisions linked to the Jev decision they supersede. Human calibration labels are counted only while bound to the current content and Jev decision."
+}

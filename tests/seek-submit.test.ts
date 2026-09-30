@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   classifyApplyStep,
+  isSeekHumanVerification,
   coverLetterToPlainText,
   decideQuestion,
   loadScreeningAnswers,
@@ -23,6 +24,10 @@ const entries: ScreeningEntry[] = [
   { id: "years_sn", patterns: ["years.*servicenow"], answer: "3+ years", select: ["^3 years", "more than 5"] },
   { id: "why_us", patterns: ["why do you want"], answer: "Because." },
 ];
+assert.equal(isSeekHumanVerification("Help us keep SEEK secure, confirm you are human."), true);
+assert.equal(isSeekHumanVerification("Verify you are human"), true);
+assert.equal(isSeekHumanVerification("au.seek.com Performing security verification This website uses a security service to protect against malicious bots."), true);
+assert.equal(isSeekHumanVerification("Cyber security architect. Select a resume."), false);
 const opts = (...labels: string[]) => labels.map((label, i) => ({ label, id: `o${i}` }));
 const q = (kind: PageQuestion["kind"], label: string, options: PageQuestion["options"] = []): PageQuestion => ({ kind, label, id: "", name: "", options, required: true });
 

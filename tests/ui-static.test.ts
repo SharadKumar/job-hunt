@@ -550,8 +550,9 @@ test("Today switches one compact workspace between needs and sent activity", () 
     "selecting a sent row must keep its tab and selected item in the address");
   assert.match(todayWorkbench, /String\(row\.status\) === "submitted" \? "Submitted application"/,
     "a sent detail must identify itself as a submitted application");
-  assert.match(todayWorkbench, /String\(row\.status\) === "submitted" \? "Submission record" : "Why it stopped"/,
+  assert.match(todayWorkbench, /status === "submitted" \? "Submission record"/,
     "a sent confirmation must not be labelled as a reason the application stopped");
+  assert.match(todayWorkbench, /\? "Latest activity"/, "an active queue row labels its reason as activity, not failure");
   assert.ok(src["today-workbench.js"].includes("timeline(row, action)"),
     "the selected application must keep its six stage workflow visible");
   assert.ok(src["today-workbench.js"].includes("Saving an answer does not submit it."),
@@ -620,7 +621,7 @@ test("Needs you is grouped the way the server grouped it", () => {
   const table = /const GROUP_OF_KIND = \{([\s\S]*?)\};/.exec(lists);
   assert.ok(table, "today-lists.js must mirror needsYouGroup");
   for (const [kind, group] of [["answer", "answer_question"], ["decide", "decide"], ["gate_refused", "decide"],
-    ["portal", "open_portal"], ["mark_sent", "open_portal"], ["retry", "waiting_redraft"]]) {
+    ["portal", "open_portal"], ["mark_sent", "open_portal"], ["retry", "decide"]]) {
     assert.ok(table![1].includes(`${kind}: "${group}"`), `the mirror is missing ${kind} to ${group}`);
   }
   const server = read(path.join(ROOT, "tools/ui/rows-ext-api.ts"));
@@ -643,8 +644,8 @@ test("a Needs you row names its one action by what will happen", () => {
     "each kind of work must be named, in the words section 7 fixes");
   assert.ok(lists.includes('text: "Open portal",'), "a portal row opens the advert, which is the action itself");
   assert.ok(lists.includes('rel: "noreferrer noopener"'), "and it leaves no referrer behind it");
-  // The redraft group is the run's work, so it has no button at all: `retry`
-  // classifies into a group but never earns a label.
+  // Automatic redrafts are in-flight and do not reach this list. A remaining
+  // retry is a real manual decision, opened in the row detail.
   assert.ok(!/OPENS_ROW = \{[^}]*retry:/.test(lists), "a row waiting on a redraft must carry no button");
   assert.match(lists, /class: "list-row"/, "a row is the shared list row from app.css");
   assert.match(lists, /scoreCell\(row\.score\)/, "with the shared score cell");
@@ -658,8 +659,8 @@ test("Sent overnight is what went out since the last run started", () => {
     "which is the instant the last run's log opened");
   assert.match(lists, /export function sentSince\(rows, since\)/, "and filter the sent rows by it");
   assert.ok(lists.includes("const today = localDay();"), "with the person's own calendar day as the fallback");
-  assert.match(lists, /const sentAt = \(row\) => row\.submittedAt \|\| row\.submitted_at \|\| row\.updated_at;/,
-    "a row is sent when it was submitted, not when it was last touched");
+  assert.match(lists, /const sentAt = \(row\) => row\.submittedAt \|\| row\.submitted_at \|\| null;/,
+    "a row is sent only when it has a real submission time, never a migration touch");
   assert.ok(home.includes("sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))"),
     "the view must pass the run's start to the filter");
   assert.ok(home.includes("brief(summary, getPolicy(), healthValue, sentRows.length)"),
@@ -1032,6 +1033,15 @@ test("the pipeline keeps its whole state in the address", () => {
   assert.match(applications, /String\(which \|\| ""\)\.split\("#"\)/,
     "a segment may carry a group anchor, because Today links at #\\/pipeline\\/needs#open_portal");
   assert.ok(!/const appState = \{/.test(applications), "no module-level filter state may survive");
+});
+
+test("pipeline rows omit a missing semantic timestamp instead of rendering null", () => {
+  assert.match(applications, /state\.segment\.key === "closed" \? row\.status_at/,
+    "closed rows must use the closing transition time, not an unrelated update time");
+  assert.match(applications, /if \(occurredAt\) article\.append\(h\("span", \{ class: "pipeline-item-when"/,
+    "the optional timestamp must be appended only when it exists");
+  assert.doesNotMatch(applications, /article\.append\([\s\S]{0,900}occurredAt \? h\([\s\S]{0,200}: null/,
+    "native Element.append must never receive null because it renders the word null");
 });
 
 test("the segment strip and the list header carry the same count", () => {
@@ -1796,8 +1806,8 @@ test("the Guardrails screen promotes a theme, edits a rule and shows the pattern
   assert.match(rulesJs, /export function themeTitle\s*\(/, "a theme key must reach the page as words");
   assert.match(rulesJs, /`Standing rule \$\{numbered\[1\]\}`/, "standing-rule-4 must read as Standing rule 4");
   assert.match(rulesJs, /inflate: "inflation"/, "a verb class must read as its noun");
-  assert.match(rulesJs, /\(theme\.count \?\? 0\) >= 2 \? "Recurring" : "Single finding"/,
-    "the theme browser must distinguish recurring themes from single findings");
+  assert.match(rulesJs, /eyebrow: "Recurring"/,
+    "the theme browser contains recurring active findings, not single or historical findings");
   assert.match(rulesJs, /text: "Promote to standing rule"/, "a theme must offer promotion");
   assert.match(rulesJs, /guarded\(promote, "Promote"/, "promotion must arm before it writes");
   assert.match(rulesJs, /api\("rules\/standing", \{ method: "POST", body: \{ text, source_theme: theme\.key \} \}\)/,
@@ -1819,6 +1829,31 @@ test("the Guardrails screen promotes a theme, edits a rule and shows the pattern
     "a reference detail reads the machine condition before the correction");
   assert.match(sheet["guardrails.css"], /\.ref-fix \{[^}]*color: var\(--muted\)/, "the fix line is muted");
   assert.ok(!/api\("rules\/never-named/.test(rulesJs), "nothing may post a never-named pattern");
+  assert.match(rulesJs, /label: "Decision layer"/, "Guardrails must expose the Jev decision layer as a named tab");
+  assert.match(rulesJs, /quality\.calibration_ece/, "the decision view must show measured calibration");
+  assert.match(rulesJs, /runtime\.estimated_cost_usd/, "the decision view must show measured cost");
+  assert.match(rulesJs, /comparison\.forward_agent_comparator/, "the decision view must show the measured generic-agent baseline");
+  assert.match(rulesJs, /comparison\.jev_live_comparator/, "the decision view must show the like-for-like Jev runtime");
+  assert.match(rulesJs, /comparison\.classifier_comparison/, "the decision view must expose classification agreement and the human-label requirement");
+  assert.match(rulesJs, /benchmark\.delegated_quality/, "the decision view must keep delegated quality separate from operational proxies and independent human validation");
+  assert.match(rulesJs, /api\("jev\/adjudications"\)/, "the decision view must load the attended calibration queue");
+  assert.match(rulesJs, /api\("jev\/adjudications\/record"/, "a saved human label must use the audited adjudication API");
+  assert.match(rulesJs, /content_hash: item\.content_hash/, "a human label must bind to the exact role content");
+  assert.match(rulesJs, /jev_decision_id: item\.jev\?\.decision_id/, "a human label must bind to the exact Jev decision");
+  assert.match(rulesJs, /text: item\.complete \? "Update decision" : nextPending \? "Save and next" : "Save decision"/,
+    "a completed decision may be updated while a new decision advances through the queue");
+  assert.match(rulesJs, /It is final unless you want to change it, but it does not count as independent human validation/,
+    "delegated decisions must remain visibly distinct from independent human labels");
+  assert.match(rulesJs, /window\.location\.hash = selectionHref\("decision", nextPending\.id\)/,
+    "saving a new label must advance to the next pending review without auto-labelling it");
+  assert.match(rulesJs, /This records calibration evidence only\. It does not alter the role, score, pipeline status, application package or send authority\./,
+    "the attended review must state its authority boundary");
+  assert.match(sheet["guardrails.css"], /\.jev-label-grid \{[\s\S]*?grid-template-columns:/,
+    "the human label fields must have a deliberate review layout");
+  assert.match(rulesJs, /jev\.gateway_route_fingerprint/, "the decision view must expose the pinned Gateway route identity");
+  assert.match(rulesJs, /live bounded classification/, "the decision view must state the final production role");
+  assert.match(rulesJs, /jev\.classification_state_application_enabled/, "the decision view must show whether live state application is enabled");
+  assert.match(rulesJs, /guard-workbench guard-decision-workbench/, "the single decision panel must use the full workspace width");
 });
 
 test("the Schedules screen lists runs newest first, each one a link to its page", () => {
@@ -1826,7 +1861,7 @@ test("the Schedules screen lists runs newest first, each one a link to its page"
   assert.ok(runsJs.includes("runs?limit=30"), "the list must ask for the last thirty runs");
   assert.match(runsJs, /newest first/, "the count line must say the order");
   assert.ok(
-    runsJs.includes("No runs yet. Start one with npm run daily."),
+    runsJs.includes("No runs yet. The first scheduled run will appear here."),
     "the empty state must say what would put something here",
   );
   assert.match(runsJs, /href: `#\/schedules\/\$\{encodeURIComponent\(run\.date\)\}`/,
@@ -1836,19 +1871,27 @@ test("the Schedules screen lists runs newest first, each one a link to its page"
   assert.match(sheet["runs.css"], /\.run-row \{[^}]*color: inherit; text-decoration: none; \}/,
     "a row that is a link must not underline every line inside it");
   assert.ok(!runsJs.includes("aria-expanded"), "a run is a page now, not an accordion");
+  assert.match(runsJs, /sectionHead\("Decision layer"/, "a run must expose its front-half decision telemetry");
+  assert.match(runsJs, /result\.cache_hits/, "the run decision summary must show cache reuse");
+  assert.match(runsJs, /result\.estimated_cost_usd/, "the run decision summary must show Jev cost");
   assert.ok(runsJs.includes("duration("), "a run must say how long it took, from the one shared helper");
   assert.ok(!/function duration\s*\(/.test(runsJs), "and it must not carry a second copy of it");
   assert.ok(runsJs.includes('bits.push("no summary")'), "a run with no summary says so, quietly");
 });
 
 test("a run's exit is one verdict pill that carries the word as well as the colour", () => {
+  assert.ok(runsJs.includes('sectionHead("Pipeline now"'), "show live work separately from historical results");
+  assert.ok(runsJs.includes('api("summary").catch(() => null)'), "use canonical counts and retain unavailable state");
+  assert.ok(runsJs.includes("unconfirmed, not zero"), "missing summary cannot assert zero outcomes");
+  assert.ok(!runsJs.includes("Finished cleanly"), "wrapper success does not prove stage success");
+  assert.ok(!runsJs.includes("so it was stopped"), "silence cannot establish process termination");
   // Section 6: "exit 0" in green and "exit 1" in red as bare text are gone.
   assert.match(runsJs, /export function verdictPill\(run\)/, "runs.js must own the one pill");
   assert.ok(runsJs.includes('h("span", { class: "pill pill-you", text: "Running" })'),
     "a run still going is its own state, in the person's colour, not a failure in red");
   assert.ok(runsJs.includes('h("span", { class: "pill pill-pass", text: "Finished" })'), "a clean exit reads Finished");
   assert.ok(runsJs.includes("`Failed, exit ${run.exit_code}`"), "a nonzero exit reads Failed and says which");
-  assert.ok(runsJs.includes('run.has_log ? "No finish line" : "No log"'),
+  assert.ok(runsJs.includes('run.has_log ? "Progress unconfirmed" : "No log"'),
     "and a run with no exit code says which of the two reasons it has");
   assert.ok(!/run-exit/.test(runsJs) && !/run-exit/.test(sheet["runs.css"]),
     "the old bare exit text and its colours must be gone");
@@ -1878,7 +1921,7 @@ test("Schedules uses a selected-run workspace with tabbed evidence", () => {
   assert.match(runsJs, /class: "run-inspector-body"/, "the selected tab owns the evidence body");
   assert.match(runsJs, /lettersPanel\(data\.letters_sent \|\| \[\]\)/, "unattended letters keep their own tab");
   assert.ok(runsJs.includes("This run is still working"), "a run in progress says what it has written so far");
-  assert.ok(runsJs.includes("read from the audit log"), "and a day with no summary says where its rows came from");
+  assert.ok(runsJs.includes("Day-level audit events are not proof that this run caused them"), "missing summaries must not attribute all daily activity to the selected run");
   const runsCss = sheet["runs.css"];
   assert.match(runsCss, /\.run-log \{[\s\S]*?white-space: pre-wrap;/,
     "the raw log wraps: there is no inner scroll region in this UI");
