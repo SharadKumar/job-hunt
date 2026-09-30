@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import YAML from "yaml";
 
 const repoRoot = process.cwd();
 
@@ -26,6 +27,15 @@ for (const file of agentFiles) {
 }
 
 const projectConfig = fs.readFileSync(path.join(repoRoot, ".codex", "config.toml"), "utf8");
+const writer = fs.readFileSync(path.join(agentDir, "cover-letter-writer.toml"), "utf8");
+assert.match(writer, /^model = "gpt-6-luna"$/m);
+assert.match(writer, /^model_reasoning_effort = "medium"$/m);
+assert.match(fs.readFileSync(path.join(repoRoot, "agents/cover-letter-writer.md"), "utf8"), /^model: haiku$/m);
+for (const [file, expectedModel] of [["agents/cover-letter-writer.md", "haiku"], [".claude/skills/daily/SKILL.md", "sonnet"]]) {
+  const raw = fs.readFileSync(path.join(repoRoot, file), "utf8");
+  const frontmatter = YAML.parse(raw.match(/^---\n([\s\S]*?)\n---/)![1]);
+  assert.equal(frontmatter.model, expectedModel, `${file}: native model configuration must parse as YAML`);
+}
 assert.doesNotMatch(projectConfig, /^model = "gpt-5-codex"$/m, "deprecated Codex model configured");
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "job-hunt-daily-wrapper-"));

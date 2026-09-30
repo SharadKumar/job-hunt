@@ -16,7 +16,7 @@
 #
 # Env overrides: HARNESS_CLI, HARNESS_CLI_BIN (the binary/path to execute, for
 # tests), HARNESS_TIMEOUT_MIN, HARNESS_TIMEOUT_SEC (wins; tests use seconds),
-# HARNESS_LOG_RETENTION_DAYS, REPO_DIR.
+# HARNESS_LOG_RETENTION_DAYS, REPO_DIR, HARNESS_DAILY_MODEL (Claude; default sonnet).
 
 set -euo pipefail
 
@@ -77,7 +77,7 @@ run_cli() {
   if [ "$CLI" = "claude" ]; then
     # --output-format stream-json keeps logs parseable; --permission-mode auto +
     # the allowlist in .claude/settings.json keeps the headless run safe.
-    exec "$CLI_BIN" -p --verbose --output-format=stream-json --permission-mode=auto "$PROMPT"
+    exec "$CLI_BIN" -p --model "${HARNESS_DAILY_MODEL:-sonnet}" --verbose --output-format=stream-json --permission-mode=auto "$PROMPT"
   else
     exec "$CLI_BIN" exec "$PROMPT"
   fi
@@ -116,6 +116,9 @@ run_cli() {
 
   wait "$CLI_PID" || EXIT=$?
   if [ "$TIMED_OUT" -eq 1 ]; then EXIT=124; fi
+  # A successful back half cannot turn failed discovery/classification into a
+  # successful run. Still let it recover already-valid packages before exiting.
+  if [ "$EXIT" -eq 0 ] && [ "$FRONT_EXIT" -ne 0 ]; then EXIT="$FRONT_EXIT"; fi
 
   if [ "$EXIT" -ne 0 ]; then
     mkdir -p "$SUMMARY_DIR"
@@ -131,12 +134,14 @@ run_cli() {
         echo
         if [ "$TIMED_OUT" -eq 1 ]; then
           echo "Run failed (exit $EXIT): $CLI exceeded the ${TIMEOUT_SEC}s watchdog and was killed."
+        elif [ "$FRONT_EXIT" -ne 0 ]; then
+          echo "Run failed (exit $EXIT): deterministic front half exited $FRONT_EXIT; see the log for back-half recovery outcomes."
         else
           echo "Run failed (exit $EXIT): $CLI exited nonzero before the orchestrator finished."
         fi
         echo
         echo "- Log: $LOG_FILE"
-        echo "- Nothing was submitted by this run. Re-run \`bash scripts/daily.sh\` or work the pipeline by hand."
+        echo "- Submission totals are unverified. Check the pipeline and channel confirmations before retrying; never retry an uncertain send."
       } >"$SUMMARY_DIR/$DATE.md"
     fi
   fi

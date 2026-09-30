@@ -208,7 +208,7 @@ const MOVES = {
   discovered: "Found on the channel",
   shortlisted: "Into the queue",
   drafted: "Package drafted",
-  awaiting_approval: "Ready for a decision",
+  awaiting_approval: "Package prepared",
   approved: "Approved",
   submission_pending: "Being sent",
   submitted: "Sent",

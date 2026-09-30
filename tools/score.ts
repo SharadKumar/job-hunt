@@ -20,7 +20,7 @@
 import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
-import type { ClassificationV2 } from "./classification.ts";
+import { isExplicitFixedTermEmployment, type ClassificationV2 } from "./classification.ts";
 
 export type Role = {
   id: string;
@@ -397,7 +397,9 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   const noPositioning = !classification.matched_resume_id;
   if (noPositioning) reasons.push("blocker: no active resume positioning fits (matched_resume_id null)");
 
-  const red_flag_blocker =
+  // Recheck explicit current advert terms even when semantic fit is cached.
+  const fixedTermEmployee = isExplicitFixedTermEmployment(`${role.title}\n${role.description ?? ""}`);
+  const red_flag_blocker = fixedTermEmployee ||
     classification.red_flags.some((f) => f === "onsite_5_days" || f === "junior_or_mid_level" || f === "exclusive_engagement" || f === "inside_ir35_equivalent" || f === "permanent_or_full_time" || f === "clearance_required")
     || relevance < 25   // wholly-irrelevant roles are also blockers
     || noPositioning;
@@ -417,7 +419,10 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
   const locFlex = (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
   let ineligible_reason: string | undefined;
-  if (isInterstate && locFlex === "onsite") {
+  if (fixedTermEmployee) {
+    ineligible_reason = "fixed-term employee engagement, not independent contracting";
+    reasons.push(`ineligible: ${ineligible_reason}`);
+  } else if (isInterstate && locFlex === "onsite") {
     ineligible_reason = `routine interstate attendance (${role.location})`;
     reasons.push(`ineligible: ${ineligible_reason}`);
   } else if (isInterstate && (!locFlex || locFlex === "unknown")) {

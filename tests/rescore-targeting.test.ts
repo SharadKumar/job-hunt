@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type { Opportunity } from "../tools/pipeline.ts";
 import { classificationV2 } from "./fixtures/classification-v2.ts";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rescore-targeting-"));
@@ -21,7 +23,23 @@ process.env.AUDIT_DIR = path.join(tempRoot, "audit");
 
 // Every runtime import happens after those are set: a static import would
 // evaluate audit.ts first, which pins AUDIT_DIR at module load.
-const { selectOpportunitiesForRescore, applyRescore, rescoreStatusDecision } = await import("../tools/rescore-pipeline.ts");
+const { selectOpportunitiesForRescore, applyRescore, rescoreStatusDecision, validateRescoreArgs } = await import("../tools/rescore-pipeline.ts");
+validateRescoreArgs(["--help"]);
+validateRescoreArgs(["--ids-file", "ids.json", "--limit", "2", "--dry-run"]);
+for (const args of [["--ids"], ["--limit"], ["--ids-file"], ["--limit", "NaN"], ["--limit", "0"], ["--bogus"]]) {
+  assert.throws(() => validateRescoreArgs(args));
+}
+// The actual CLI must exit before opening or creating the pipeline store.
+for (const args of [["--help"], ["--bogus"], ["--ids-file"]]) {
+  const probeDb = path.join(tempRoot, `cli-${args[0].slice(2)}.db`);
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)),
+    fileURLToPath(new URL("../tools/rescore-pipeline.ts", import.meta.url)), ...args], {
+    env: { ...process.env, PIPELINE_DB: probeDb }, encoding: "utf8", timeout: 20_000,
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, args[0] === "--help" ? 0 : 1);
+  assert.equal(fs.existsSync(probeDb), false, "help and invalid arguments must not open the pipeline");
+}
 const { upsertMany, patch, setStatus, get } = await import("../tools/pipeline.ts");
 
 // --- selection --------------------------------------------------------------

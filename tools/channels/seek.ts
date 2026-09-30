@@ -156,21 +156,35 @@ export type SeekEnrichment = {
  * The pipeline is loaded and saved once. That keeps this pass linear instead
  * of repeatedly rewriting the entire state file for every advert.
  */
+export function isPendingSavedSeekRole(role: Opportunity): boolean {
+  return role.channel === "seek" && role.userSaved === true && !role.submittedAt
+    && !["submission_pending", "submitted", "responded", "interview", "offered", "won", "withdrawn"].includes(role.status);
+}
+
+/** Match the channel's closed-advert heading, never wording inside a job description. */
+export async function closeSeekAdvertFromHeadings(role: Opportunity, headings: string[]): Promise<boolean> {
+  if (role.submittedAt || role.status === "submission_pending") return false;
+  if (!headings.some(text => /^This job is no longer advertised[.!]?$/i.test(text.trim()))) return false;
+  return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
+}
+
 export async function enrichSeekRoles(options: {
   id?: string;
+  savedPending?: boolean;
   status?: string;
   minScore?: number;
   concurrency?: number;
   limit?: number;
   /** Only rows matched to this resume id (pipeline resumeId or classification matched_resume_id). */
   resume?: string;
-} = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number }> {
+} = {}): Promise<{ selected: number; enriched: number; unchanged: number; expired: number; failed: number }> {
   const roles = await loadPipeline();
-  const status = options.status ?? "shortlisted";
-  const minScore = options.minScore ?? 20;
+  const status = options.status ?? (options.savedPending ? "any" : "shortlisted");
+  const minScore = options.minScore ?? (options.savedPending ? 0 : 20);
   const concurrency = Math.max(1, Math.min(6, options.concurrency ?? 4));
   const candidates = roles
     .filter((role) => role.channel === "seek")
+    .filter((role) => !options.savedPending || isPendingSavedSeekRole(role))
     .filter((role) => !options.id || role.id === options.id)
     .filter((role) => !options.resume || role.resumeId === options.resume || role.classification?.matched_resume_id === options.resume)
     .filter((role) => status === "any" || role.status === status)
@@ -178,12 +192,13 @@ export async function enrichSeekRoles(options: {
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
 
-  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
+  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, expired: 0, failed: 0 };
 
   const ctx = await openChromeContext("seek-enrich", { headless: true });
   const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0;
   let unchanged = 0;
+  let expired = 0;
   let failed = 0;
   let cursor = 0;
   const startedAt = Date.now();
@@ -197,7 +212,13 @@ export async function enrichSeekRoles(options: {
         const page = await ctx.newPage();
         try {
           await page.goto(role.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-          await page.waitForSelector("[data-automation='jobAdDetails']", { timeout: 12_000 });
+          await page.locator("[data-automation='jobAdDetails']")
+            .or(page.getByRole("heading", { name: /^This job is no longer advertised[.!]?$/i }))
+            .first().waitFor({ state: "visible", timeout: 12_000 });
+          if (await closeSeekAdvertFromHeadings(role, await page.getByRole("heading").allTextContents())) {
+            expired++;
+            continue;
+          }
           // Pass a browser-native expression rather than a transpiled callback.
           // tsx/esbuild can otherwise inject its `__name` helper into nested
           // functions, which does not exist inside the page JavaScript realm.
@@ -242,13 +263,14 @@ export async function enrichSeekRoles(options: {
           } else unchanged++;
         } catch (error) {
           failed++;
-          console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}`);
+          const pageText = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+          console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}; page=${page.url()}; visible=${pageText.replace(/\s+/g, " ").slice(0, 500)}`);
         } finally {
           await page.close();
-          const complete = enriched + unchanged + failed;
+          const complete = enriched + unchanged + expired + failed;
           if (complete % 5 === 0 || complete === candidates.length) {
             const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-            console.error(`[seek:enrich] ${complete}/${candidates.length}: ${enriched} updated, ${unchanged} unchanged, ${failed} failed (${elapsed}s)`);
+            console.error(`[seek:enrich] ${complete}/${candidates.length}: ${enriched} updated, ${unchanged} unchanged, ${expired} expired, ${failed} failed (${elapsed}s)`);
           }
         }
       }
@@ -259,7 +281,7 @@ export async function enrichSeekRoles(options: {
   }
 
   if (patches.length) await patchMany(patches, "seek:enrich");
-  return { selected: candidates.length, enriched, unchanged, failed };
+  return { selected: candidates.length, enriched, unchanged, expired, failed };
 }
 
 export function applySeekEnrichment(role: Opportunity, enrichment: SeekEnrichment): boolean {
@@ -485,6 +507,7 @@ async function main() {
     }
     const result = await enrichSeekRoles({
       id: args.id,
+      savedPending: args["saved-pending"] === "true",
       status: args.status,
       minScore: args["min-score"] ? Number(args["min-score"]) : undefined,
       concurrency: args.concurrency ? Number(args.concurrency) : undefined,
@@ -492,6 +515,7 @@ async function main() {
       resume: args.resume,
     });
     console.log(JSON.stringify(result, null, 2));
+    if (result.failed) process.exitCode = 1;
     return;
   }
   if (cmd === "saved") {
@@ -558,7 +582,7 @@ async function main() {
     return;
   }
   if (cmd !== "search") {
-    console.error("Usage: tsx tools/channels/seek.ts (search [--upsert] | enrich [--status shortlisted|any] [--min-score 20] [--concurrency 4] [--limit N] [--resume <id>] | saved [--upsert] | unsave --job <jobId>)");
+    console.error("Usage: tsx tools/channels/seek.ts (search [--upsert] | enrich [--id <id>] [--saved-pending] [--status shortlisted|any] [--min-score 20] [--concurrency 4] [--limit N] [--resume <id>] | saved [--upsert] | unsave --job <jobId>)");
     process.exit(2);
   }
   const upsertFlag = argv.includes("--upsert");

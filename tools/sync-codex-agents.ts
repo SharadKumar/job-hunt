@@ -15,6 +15,8 @@ type Frontmatter = {
   name?: string;
   description?: string;
   model?: string;
+  codex_model?: string;
+  codex_reasoning_effort?: string;
   tools?: string;
 };
 
@@ -80,7 +82,8 @@ async function generateOne(sourcePath: string, outDir: string): Promise<string> 
     "# Do not edit by hand; edit the canonical Markdown agent instead.",
     `name = ${tomlString(name)}`,
     `description = ${tomlString(frontmatter.description)}`,
-    codexModelLine(frontmatter.model),
+    codexModelLine(frontmatter.codex_model ?? frontmatter.model),
+    frontmatter.codex_reasoning_effort ? `model_reasoning_effort = ${tomlString(frontmatter.codex_reasoning_effort)}` : "",
     codexToolsLine(frontmatter.tools),
     `developer_instructions = ${tomlString(body.trim() + "\n")}`,
     "",

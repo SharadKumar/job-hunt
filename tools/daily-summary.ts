@@ -40,6 +40,8 @@ import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { query as auditQuery, type AuditEvent } from "./audit.ts";
 import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilters, sheetEnabled } from "./sheets-sync.ts";
 import { loadLocale } from "./profile.ts";
+import { laneFor } from "./ui/rows-ext-api.ts";
+import { blockingDegradation, readDegradation } from "./jev/degradation.ts";
 
 // Resolved once at load: every date in the brief is a calendar day in this zone.
 const LOCALE = await loadLocale();
@@ -88,6 +90,9 @@ export type DailySummary = {
   responses: { id: string; title: string; company: string; status: string; at: string }[];
   /** State that could not be read (present but unparseable). Non-empty means exit 1. */
   errors: string[];
+  automation?: { prepared: number; awaitingScreening?: number; blocker: string | null };
+  operationalNotes?: string[];
+  observations?: string[];
   numbers: {
     sentToday: number;
     autopilotSends: number;
@@ -117,7 +122,7 @@ function localDate(iso: string | Date): string {
 }
 
 function localTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(LOCALE.language, { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(iso).toLocaleTimeString(LOCALE.language, { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true }).replace(/[\u00a0\u202f]/g, " ").toLowerCase();
 }
 
 /** UTC bounds of a local calendar day, used to filter ISO timestamps. */
@@ -219,8 +224,9 @@ async function gatherSent(rows: Opportunity[], date: string, submittedEvents: Au
 }
 
 function lastReason(r: Opportunity): string {
-  const h = r.history.at(-1);
-  return clean(r.notes) || clean(h?.reason) || "";
+  const h = [...r.history].reverse().find(entry => entry.reason && !/^field_update:/.test(entry.reason));
+  const latestNote = (r.notes ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean).at(-1);
+  return clean(latestNote) || clean(h?.reason) || "";
 }
 
 /**
@@ -294,7 +300,7 @@ type Read<T> = { value: T; status: "ok" | "missing" | "error"; error?: string };
  * Fail closed: a file that is present but unparseable is an error the summary
  * shows and exits 1 on, never a silent "nothing to answer".
  */
-async function unansweredQuestions(liveRowIds: Set<string>): Promise<Read<UnknownQuestion[]>> {
+async function unansweredQuestions(liveRowIds: Set<string>, rows: Opportunity[]): Promise<Read<UnknownQuestion[]>> {
   const txt = await readIfExists(SCREENING_PATH);
   if (txt == null) return { value: [], status: "missing" };
   let doc: { unknown_questions?: UnknownQuestion[] };
@@ -307,11 +313,18 @@ async function unansweredQuestions(liveRowIds: Set<string>): Promise<Read<Unknow
   // whose row is no longer live (submitted, rejected, withdrawn, parked).
   const answeredTexts = new Set(all.filter((q) => q.answer != null && String(q.answer).trim() !== "").map((q) => norm(q.question ?? "")));
   const seen = new Set<string>();
+  const currentQuestions = new Map(rows.filter(r => r.status === "manual_action_needed").map(r => [
+    r.id, lastReason(r).match(/unknown screening question:\s*"([^"]+)"/i)?.[1],
+  ]));
   const out: UnknownQuestion[] = [];
   for (const q of all) {
     if (q.answer != null) continue;
     if (answeredTexts.has(norm(q.question ?? ""))) continue;
     if (q.opportunity_id && !liveRowIds.has(q.opportunity_id)) continue;
+    // A later form attempt can pass an earlier question using a banked answer.
+    // Keep the ledger for audit, but surface only the current recorded blocker.
+    const current = q.opportunity_id ? currentQuestions.get(q.opportunity_id) : undefined;
+    if (current && norm(q.question ?? "") !== norm(current)) continue;
     const key = `${q.opportunity_id ?? ""}::${q.question ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -321,10 +334,10 @@ async function unansweredQuestions(liveRowIds: Set<string>): Promise<Read<Unknow
 }
 function norm(s: string): string { return s.replace(/\s+/g, " ").trim().toLowerCase(); }
 
-type Policy = { killSwitch: boolean; autopilotEnabled: boolean; maxPerDay: number | null };
+type Policy = { killSwitch: boolean; autopilotEnabled: boolean; maxPerDay: number | null; channels: string[] };
 
 async function policy(): Promise<Read<Policy>> {
-  const off: Policy = { killSwitch: false, autopilotEnabled: false, maxPerDay: null };
+  const off: Policy = { killSwitch: false, autopilotEnabled: false, maxPerDay: null, channels: [] };
   const txt = await readIfExists(POLICY_PATH);
   if (txt == null) return { value: off, status: "missing" };
   try {
@@ -334,6 +347,7 @@ async function policy(): Promise<Read<Policy>> {
         killSwitch: p.kill_switch === true,
         autopilotEnabled: p.autopilot?.enabled === true,
         maxPerDay: typeof p.autopilot?.max_per_day === "number" ? p.autopilot.max_per_day : null,
+        channels: Array.isArray(p.autopilot?.channels) ? p.autopilot.channels : [],
       },
       status: "ok",
     };
@@ -349,7 +363,7 @@ const FAILURE_VERB = /\b(failed|fails|failure|errors?|logged out|signed out|coul
 const EXPIRED = /\bexpired\b/i;
 const SESSION_WORD = /\b(session|login|log-in|sign-?in|signed|logged|cookie|token|auth)\b/i;
 /** The subject has to be a channel or a hunt step, otherwise it is not our problem. */
-const CHANNEL_WORD = /\b(seek|linkedin|channel|hunt|launchd|session|chrome|adapter)\b/i;
+const CHANNEL_WORD = /\b(seek(?!-)|linkedin(?!_)|channel|hunt|launchd|session|chrome|adapter)\b/i;
 /**
  * Negations and status-report lines. "seek: healthy, no login issues" and
  * "No login/DOM errors" are the daily health line, not an incident; a line
@@ -375,6 +389,17 @@ async function journalProblems(date: string): Promise<string[]> {
 
 // ---------- build ----------
 
+/** Only the journal's explicit review section, never inferred from old failures. */
+export function journalObservations(text: string): string[] {
+  let inSection = false;
+  const observations: string[] = [];
+  for (const line of text.split("\n")) {
+    if (/^##\s+/.test(line)) inSection = /^## Observations for the user\s*$/.test(line);
+    else if (inSection && /^-\s+/.test(line)) observations.push(line.replace(/^-\s+/, "").trim());
+  }
+  return [...new Set(observations)].slice(0, 10);
+}
+
 export async function buildSummary(date: string): Promise<Omit<DailySummary, "markdown" | "sheet">> {
   const rows = await loadPipeline();
   const { start, end } = dayBounds(date);
@@ -382,6 +407,10 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   const submittedEvents = dayEvents.filter((e) => e.event_type === "submitted");
   const policyRead = await policy();
   const pol = policyRead.value;
+  const lanePolicy = { channels: pol.channels, autopilot_enabled: pol.autopilotEnabled, kill_switch: pol.killSwitch };
+  const runOwned = (row: Opportunity) => laneFor(row, lanePolicy).lane === "autopilot";
+  const incident = blockingDegradation(await readDegradation());
+  const preparedRows = rows.filter(row => ["awaiting_approval", "approved"].includes(row.status) && runOwned(row));
 
   const sent = await gatherSent(rows, date, submittedEvents);
   const autopilotSends = submittedEvents.filter((e) => e.actor === "autopilot").length;
@@ -391,17 +420,22 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   for (const r of rows.filter((x) => x.status === "manual_action_needed")) esc.add(await manualEscalation(r));
 
   const liveRowIds = new Set(rows.filter((x) => ["manual_action_needed", "submission_pending", "approved", "awaiting_approval", "drafted", "shortlisted"].includes(x.status)).map((x) => x.id));
-  const screening = await unansweredQuestions(liveRowIds);
+  const screening = await unansweredQuestions(liveRowIds, rows);
   const questions = screening.value;
+  const screeningIds = new Set(questions.map(q => q.opportunity_id));
+  const awaitingScreening = preparedRows.filter(row => screeningIds.has(row.id)).length;
+  const automation = { prepared: preparedRows.length - awaitingScreening, awaitingScreening,
+    blocker: incident?.incident.reason ?? null };
   const errors = [policyRead.error, screening.error].filter((e): e is string => Boolean(e));
   for (const q of questions) {
     esc.add({
       kind: "screening", id: q.opportunity_id, title: q.title, company: q.company,
       reason: `Unanswered screening question: "${short(q.question ?? "", 120)}"`,
-      action: "Write the answer in screening-answers.yaml (unknown_questions), then rerun autopilot:submit if the row is still manual",
+      action: "Record the answer in screening-answers.yaml (unknown_questions), then retry through autopilot:submit with all gates rechecked",
     });
   }
   for (const r of rows.filter((x) => x.status === "awaiting_approval")) {
+    if (runOwned(r)) continue;
     esc.add({ kind: "awaiting_approval", id: r.id, title: r.title, company: r.company, reason: "Package waiting in the Tray", action: "Set Action to approve, hold or reject in the Sheet Tray, or review it with /review-drafts" });
   }
   for (const r of rows.filter((x) => x.status === "submission_pending")) {
@@ -419,9 +453,10 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   for (const e of dayEvents.filter((x) => x.event_type === "channel_login_expired" || x.event_type === "channel_search_failed")) {
     esc.add({ kind: "channel", reason: `${e.channel ?? "channel"}: ${e.event_type.replace(/_/g, " ")}${e.details?.error ? ` (${short(String(e.details.error), 80)})` : ""}`, action: `Sign in to ${e.channel ?? "the channel"} again on the harness Chrome profile and rerun the hunt` });
   }
-  for (const line of await journalProblems(date)) {
-    esc.add({ kind: "channel", reason: `Journal: ${line}`, action: "Check the line in the journal and fix the channel or rerun the step" });
-  }
+  // Free-text journal mentions are historical evidence, not proof that the
+  // person needs to act. Structured incidents above retain explicit actions.
+  const operationalNotes = await journalProblems(date);
+  const observations = journalObservations(await readIfExists(path.join(JOURNAL_DIR, `${date}.md`)) ?? "");
   if (pol.killSwitch) esc.add({ kind: "kill_switch", reason: "Kill switch is ON; no submissions, attended or autopilot", action: "Set kill_switch: false in state/profile/submission-policy.yaml to resume" });
   if (pol.maxPerDay != null && autopilotSends >= pol.maxPerDay) {
     esc.add({ kind: "cap", reason: `Autopilot cap used up (${autopilotSends} of ${pol.maxPerDay})`, action: "Raise autopilot.max_per_day or let the rest go tomorrow" });
@@ -465,7 +500,7 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   return {
     date, generatedAt: new Date().toISOString(), headline, sent, escalations,
     movement: { discovered: discoveredToday, queue, parked: { total: parkedRows.length, byReason }, exited },
-    responses, errors, numbers,
+    responses, errors, numbers, automation, operationalNotes, observations,
   };
 }
 
@@ -491,6 +526,15 @@ export function renderMarkdown(s: Omit<DailySummary, "markdown" | "sheet">): str
   }
   L.push("");
 
+  if (s.automation?.prepared || s.automation?.awaitingScreening || s.automation?.blocker) {
+    L.push("## Autopilot work (no individual approval needed)", "");
+    L.push(`${s.automation.prepared} prepared package${s.automation.prepared === 1 ? "" : "s"} awaiting run validation.`);
+    if (s.automation.awaitingScreening) L.push(`${s.automation.awaitingScreening} prepared package${s.automation.awaitingScreening === 1 ? " needs" : "s need"} screening answers before retry. See the specific questions below; this is not a package-approval request.`);
+    if (s.automation.blocker) L.push(`Submission paused: ${s.automation.blocker}. The next run must recheck provider health and all send gates.`);
+    else if (s.automation.prepared) L.push("The next run will validate and submit eligible packages through the one-click adapters.");
+    L.push("");
+  }
+
   L.push("## Escalations (your action)", "");
   if (!s.escalations.length) L.push("Nothing needs you.");
   for (const e of s.escalations) {
@@ -499,6 +543,16 @@ export function renderMarkdown(s: Omit<DailySummary, "markdown" | "sheet">): str
   }
   L.push("");
 
+  if (s.operationalNotes?.length) {
+    L.push("## Historical run observations", "", "These journal entries may describe recovered failures. They are not current blockers; current actions are listed above.", "");
+    for (const note of s.operationalNotes) L.push(`- Journal observation: ${note}`);
+    L.push("");
+  }
+  if (s.observations?.length) {
+    L.push("## Observations for the user", "");
+    for (const note of s.observations) L.push(`- ${note}`);
+    L.push("");
+  }
   L.push("## Queue and parked", "");
   L.push(`- Discovered today: ${s.movement.discovered}.`);
   if (!s.movement.queue.length) L.push("- Queue (shortlisted): empty.");

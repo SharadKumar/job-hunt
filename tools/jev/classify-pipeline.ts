@@ -47,9 +47,34 @@ export type ClassifyBatchSummary = {
   resume_set_hashes: string[];
   content_set_hash: string;
   gateway_daily_spend_cap_usd: number;
+  deferred: number;
+  circuit_open: boolean;
+  request_limit: number | null;
+  cache_miss_reasons: Record<string, number>;
 };
 
 type CacheIdentity = Awaited<ReturnType<typeof currentJevCacheIdentity>>;
+
+/** Daily work never spends inference on completed records or explicit holds. */
+export function classificationWorkset(rows: Opportunity[]): Opportunity[] {
+  const done = new Set(["submitted", "submission_pending", "responded", "interview", "offered", "won", "lost"]);
+  const active = new Set(["discovered", "shortlisted", "drafted", "awaiting_approval", "approved", "manual_action_needed"]);
+  return rows.filter(row => !done.has(row.status) && (row.userSaved === true || active.has(row.status)))
+    .sort((a, b) => Number(b.userSaved === true) - Number(a.userSaved === true)
+      || Number(b.status !== "discovered") - Number(a.status !== "discovered")
+      || String(b.history?.[0]?.at ?? "").localeCompare(String(a.history?.[0]?.at ?? ""))
+      || a.id.localeCompare(b.id));
+}
+
+export function cacheMissReason(c: Opportunity["classification"] | null, identity: CacheIdentity): string {
+  if (!c) return "new_or_changed_content";
+  if (c.status === "degraded") return "previous_service_failure";
+  if (c.provenance.policy_hash !== identity.policyHash) return "decision_policy_changed";
+  if (c.provenance.profile_hash !== identity.profileHash) return "profile_evidence_changed";
+  if (c.provenance.resume_set_hash !== identity.resumeHash) return "resume_choices_changed";
+  if (c.provenance.question_schema_hash !== identity.questionSchemaHash) return "question_contract_changed";
+  return "model_or_route_changed";
+}
 
 export function validCachedDecision(
   classification: Opportunity["classification"] | null,
@@ -78,6 +103,9 @@ export async function classifyPipeline(
     concurrency?: number;
     applyState?: boolean;
     classify?: typeof classifyWithJev;
+    maxRequests?: number;
+    failureLimit?: number;
+    onProgress?: (summary: ClassifyBatchSummary) => void | Promise<void>;
   } = {},
 ): Promise<ClassifyBatchSummary> {
   const started = Date.now();
@@ -90,6 +118,7 @@ export async function classifyPipeline(
     replay_misses: 0, latency_p50_ms: null, latency_p95_ms: null, total_ms: 0,
     requested_models: [], effective_models: [], gateway_route_fingerprints: [], policy_hashes: [], profile_hashes: [], resume_set_hashes: [],
     content_set_hash: sha256(""), gateway_daily_spend_cap_usd: 0,
+    deferred: 0, circuit_open: false, request_limit: opts.maxRequests ?? null, cache_miss_reasons: {},
   };
   const results: { before: Opportunity; result: Awaited<ReturnType<typeof scoreRole>> }[] = [];
   const audit: Parameters<typeof auditLogMany>[0] = [];
@@ -105,6 +134,10 @@ export async function classifyPipeline(
   };
   const contentHashes: string[] = [];
   let next = 0;
+  let failures = 0;
+  const failureLimit = opts.failureLimit ?? 3;
+  if (failureLimit < 1 || !Number.isFinite(failureLimit)) throw new Error("failureLimit must be positive");
+  if (opts.maxRequests != null && (!Number.isInteger(opts.maxRequests) || opts.maxRequests < 1)) throw new Error("maxRequests must be a positive integer");
   async function worker(): Promise<void> {
     while (true) {
       const index = next++;
@@ -132,7 +165,14 @@ export async function classifyPipeline(
         && opportunity.classification.provenance.content_hash === contentHash
         ? opportunity.classification
         : !opts.force ? store().getClassificationDecision(opportunity.id, contentHash) : null;
-      if (!validCachedDecision(classification, cacheIdentity)) classification = null;
+      // A newer incompatible decision must not hide a still-valid row decision.
+      if (!opts.force && !validCachedDecision(classification, cacheIdentity) && opportunity.classification?.provenance.content_hash === contentHash
+        && validCachedDecision(opportunity.classification, cacheIdentity)) classification = opportunity.classification;
+      if (!validCachedDecision(classification, cacheIdentity)) {
+        const reason = opts.force ? "forced_refresh" : cacheMissReason(classification, cacheIdentity);
+        summary.cache_miss_reasons[reason] = (summary.cache_miss_reasons[reason] ?? 0) + 1;
+        classification = null;
+      }
       if (classification) {
         summary.cache_hits++;
         summary.unchanged++;
@@ -143,6 +183,10 @@ export async function classifyPipeline(
           summary.replay_misses++;
           continue;
         }
+        if (summary.circuit_open || summary.requested >= (opts.maxRequests ?? Infinity)) {
+          summary.deferred++;
+          continue;
+        }
         summary.requested++;
         classification = await (opts.classify ?? classifyWithJev)({
           id: opportunity.id,
@@ -151,6 +195,9 @@ export async function classifyPipeline(
           location: opportunity.location,
         });
         if (classification.status !== "degraded") store().putClassificationDecision(opportunity.id, classification);
+        failures = classification.status === "degraded" ? failures + 1 : 0;
+        // Once tripped, an in-flight success must not reopen this batch.
+        if (failures >= failureLimit) summary.circuit_open = true;
       }
       summary[classification.status]++;
       if (!classification.provenance.cache_hit) {
@@ -206,11 +253,12 @@ export async function classifyPipeline(
         // A classification is still persisted in the decision table even when
         // profile scoring configuration is incomplete.
       }
+      await opts.onProgress?.({ ...summary });
     }
   }
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
   if (summary.degraded > 0) await recordDegradation("classification", `Jev batch had ${summary.degraded} degraded decision${summary.degraded === 1 ? "" : "s"}`);
-  else if (summary.requested > 0) await clearDegradation("classification");
+  else if (summary.requested > 0 && summary.deferred === 0 && summary.replay_misses === 0) await clearDegradation("classification");
   if (audit.length) await auditLogMany(audit);
   if (applyState && results.length && summary.degraded === 0) {
     const weights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
@@ -251,7 +299,8 @@ async function main(): Promise<void> {
   const idsAt = args.indexOf("--ids-file");
   const ids = idsAt >= 0 ? new Set<string>(JSON.parse(await fs.readFile(args[idsAt + 1], "utf8"))) : null;
   const cacheIdentity = await currentJevCacheIdentity();
-  const rows = (await load()).filter((row) => !ids || ids.has(row.id)).filter((row) => {
+  const loaded = await load();
+  const rows = (all || ids ? loaded : classificationWorkset(loaded)).filter((row) => !ids || ids.has(row.id)).filter((row) => {
     if (all) return true;
     const contentHash = classificationContentHash({ title: row.title, description: row.description ?? "", location: row.location });
     return !validCachedDecision(store().getClassificationDecision(row.id, contentHash), cacheIdentity);

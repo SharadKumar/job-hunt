@@ -93,6 +93,15 @@ export function classificationContentHash(input: { title: string; description: s
   return sha256(JSON.stringify({ title: input.title.trim(), description: input.description.trim(), location: input.location?.trim() ?? "" }));
 }
 
+/** A channel's Contract/Temp label does not establish independent contracting. */
+export function isExplicitFixedTermEmployment(text: string): boolean {
+  const normalised = text.toLowerCase().replace(/[\u2010-\u2015]/g, "-");
+  const fixedTerm = /\bfixed[- ]term\b/.test(normalised);
+  const employeeTerms = /\b(?:employee benefits|paid parental leave|leave loading|competitive salar(?:y|ies)|your development will be managed|conversion to a permanent role)\b/.test(normalised);
+  const contractorAlternative = /\b(?:abn|independent contractor|day[- ]rate|daily rate|freelance)\b/.test(normalised);
+  return fixedTerm && employeeTerms && !contractorAlternative;
+}
+
 /** Extract only facts that are explicit enough to be mechanically repeatable. */
 export function extractMechanicalClassification(
   title: string,
@@ -111,13 +120,15 @@ export function extractMechanicalClassification(
   if (/(?:must|required to) (?:currently |already )?(?:hold|have|possess) (?:an? )?(?:active |current |existing )?(?:baseline|nv1|nv2|pv|tspv)(?: security)? clearance|(?:active|current|existing) (?:baseline|nv1|nv2|pv|tspv)(?: security)? clearance (?:is )?required/.test(lc)) red_flags.push("clearance_required");
   const contractSignal = /\b(contract|contractor|contracting|freelance|fractional|interim|day rate)\b/.test(lc);
   const employeeSignal = /\b(permanent|fte|full[- ]time employee|permanent full[- ]time)\b/.test(lc);
-  if (employeeSignal && !contractSignal) red_flags.push("permanent_or_full_time");
+  const fixedTermEmployee = isExplicitFixedTermEmployment(text);
+  if (fixedTermEmployee || (employeeSignal && !contractSignal)) red_flags.push("permanent_or_full_time");
 
   let work_arrangement: WorkArrangement = "unknown";
   let location_flexibility: LocationFlexibility = "unknown";
   let location_flexibility_quote = "";
   const remote = text.match(/.{0,35}(fully remote|100% remote|work from anywhere|remote-first|based anywhere).{0,35}/i);
-  const flexible = text.match(/.{0,35}(all major cities|interstate candidates|any state|occasional travel|national programme).{0,35}/i);
+  const flexibleMatch = text.match(/.{0,35}(all major cities|interstate candidates|any state|occasional travel|national programme|open to (?:other|alternative) locations).{0,35}/i);
+  const flexible = flexibleMatch && !/\bnot(?:\s+\w+){0,2}\s+open to (?:other|alternative) locations/i.test(flexibleMatch[0]) ? flexibleMatch : null;
   const hybrid = text.match(/.{0,35}(hybrid|\d days? (?:per week|a week) (?:in|at) (?:the )?office).{0,35}/i);
   const onsite = text.match(/.{0,35}(onsite|on-site|office-based|in-office).{0,35}/i);
   if (remote) {
@@ -158,7 +169,7 @@ export function extractMechanicalClassification(
     },
     seniority,
     contract_length_months: length ? Number(length[1]) : null,
-    is_contract: contractSignal && !employeeSignal,
+    is_contract: contractSignal && !employeeSignal && !fixedTermEmployee,
     requires_exclusivity: red_flags.includes("exclusive_engagement"),
     requires_payg: red_flags.includes("inside_ir35_equivalent"),
     industry: /nsw government/.test(lc) ? "NSW government" : /\b(bank|insurance|fintech)\b/.test(lc) ? "financial services" : null,

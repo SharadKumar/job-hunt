@@ -265,6 +265,22 @@ const tests: [string, () => Promise<void>][] = [
     assert.match(d.reason, /Jev is degraded/);
   }],
 
+  ["autopilot: malformed health state blocks a valid package", async () => {
+    const before = process.env.JEV_DEGRADED_PATH;
+    const file = path.join(isolated, "invalid-health.json");
+    writeFileSync(file, "{truncated");
+    process.env.JEV_DEGRADED_PATH = file;
+    try {
+      const d = await evaluateSubmission(apOpts({ jevDegradation: undefined }));
+      assert.equal(d.action, "blocked");
+      assert.match(d.reason, /health state is invalid/);
+      assert.equal(d.checks.find(c => c.gate === "jev_health")?.ok, false);
+    } finally {
+      if (before === undefined) delete process.env.JEV_DEGRADED_PATH;
+      else process.env.JEV_DEGRADED_PATH = before;
+    }
+  }],
+
   ["autopilot: supported agent fallback retains the classification prerequisite", async () => {
     const row = coreRow({ classification: classificationV2({ source: "agent_fallback", status: "automatic", discipline_fit: "core" }) });
     const d = await evaluateSubmission(apOpts({ opportunities: [row] }));

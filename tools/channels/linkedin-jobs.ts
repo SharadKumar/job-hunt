@@ -38,6 +38,7 @@ import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { type Page } from "playwright";
 import { load as loadPipeline, list as listPipeline, patchMany, upsertMany, opportunityIdFor, type Opportunity } from "../pipeline.ts";
+import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
@@ -312,7 +313,22 @@ export function applyLinkedInEnrichment(role: Opportunity, data: ViewData): bool
   return changed;
 }
 
-export async function enrichLinkedInRoles(options: { id?: string; status?: string; limit?: number; force?: boolean } = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number }> {
+/** Persist verified channel evidence, including expiry even when a closed ad has no JD. */
+export async function persistLinkedInEnrichment(role: Opportunity, data: ViewData): Promise<{ changed: boolean; expired: boolean }> {
+  const hasDescription = !!data.description && data.description.length >= 80;
+  if (!hasDescription && !data.closed) throw new Error("job description empty or too short (DOM change?)");
+  const changed = hasDescription && applyLinkedInEnrichment(role, data);
+  if (changed) await patchMany([{ id: role.id, fields: {
+    description: role.description, postedAt: role.postedAt, applyMethod: role.applyMethod,
+    workArrangement: role.workArrangement, location: role.location, notes: role.notes,
+  } }], "linkedin:enrich");
+  const expired = data.closed
+    ? !!await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "LinkedIn" }, { apply: true })
+    : false;
+  return { changed, expired };
+}
+
+export async function enrichLinkedInRoles(options: { id?: string; status?: string; limit?: number; force?: boolean } = {}): Promise<{ selected: number; enriched: number; unchanged: number; failed: number; expired_closed: number }> {
   const roles = await loadPipeline();
   const status = options.status ?? "discovered";
   const candidates = roles
@@ -322,11 +338,10 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
     // Without --force only rows that still lack a real JD are visited.
     .filter((r) => options.force || !!options.id || (r.description ?? "").length < 200)
     .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
-  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0 };
+  if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, failed: 0, expired_closed: 0 };
 
   const ctx = await openChromeContext("linkedin", { headless: true });
-  const patches: { id: string; fields: Partial<Opportunity> }[] = [];
-  let enriched = 0, unchanged = 0, failed = 0;
+  let enriched = 0, unchanged = 0, failed = 0, expiredClosed = 0;
   const startedAt = Date.now();
   try {
     for (let i = 0; i < candidates.length; i++) {
@@ -334,22 +349,9 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
       const page = await ctx.newPage();
       try {
         const data = await fetchLinkedInJob(page, role.url);
-        if (!data.description || data.description.length < 80) throw new Error("job description empty or too short (DOM change?)");
-        if (applyLinkedInEnrichment(role, data)) {
-          enriched++;
-          // Queue the enriched fields; they are written back in one transaction.
-          patches.push({
-            id: role.id,
-            fields: {
-              description: role.description,
-              postedAt: role.postedAt,
-              applyMethod: role.applyMethod,
-              workArrangement: role.workArrangement,
-              location: role.location,
-              notes: role.notes,
-            },
-          });
-        } else unchanged++;
+        const result = await persistLinkedInEnrichment(role, data);
+        if (result.changed) enriched++; else unchanged++;
+        if (result.expired) expiredClosed++;
       } catch (error) {
         failed++;
         const msg = (error as Error).message;
@@ -368,8 +370,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
   } finally {
     await ctx.close();
   }
-  if (patches.length) await patchMany(patches, "linkedin:enrich");
-  return { selected: candidates.length, enriched, unchanged, failed };
+  return { selected: candidates.length, enriched, unchanged, failed, expired_closed: expiredClosed };
 }
 
 // ---------------------------------------------------------------------------

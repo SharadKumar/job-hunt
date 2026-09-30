@@ -64,6 +64,7 @@ import { getJob, listJobs, resolveAutopilotCommand, runningJobFor, startJob } fr
 import { getPolicy } from "./policy-api.ts";
 import { channelLabel } from "./labels.ts";
 import { getScreening, type ScreeningSnapshot } from "./health-api.ts";
+import { blockingDegradation, readDegradation } from "../jev/degradation.ts";
 
 /** Resolve only the exact current blocker, never an older answered question. */
 export function screeningResolved(id: string, reason: string | null, bank: ScreeningSnapshot): boolean {
@@ -76,6 +77,7 @@ export function screeningResolved(id: string, reason: string | null, bank: Scree
 
 export async function actionResolver(ctx: ApiContext = {}) {
   const bank = await getScreening({ profileId: ctx.profileId });
+  const blocked = blockingDegradation(await readDegradation());
   const preparation = new Map<string, RowAction>();
   for (const row of await listOpportunities()) {
     if (row.status !== "manual_action_needed") continue;
@@ -88,6 +90,10 @@ export async function actionResolver(ctx: ApiContext = {}) {
     }));
   }
   return (row: ActionRow, reason: string | null, lane: Lane) => {
+    if (blocked && lane === "autopilot" && AUTOPILOT_IN_FLIGHT.has(String(row.status))) return action({
+      kind: "in_flight", label: "Waiting for autopilot recovery", also: holdOrReject(),
+      note: `The run owns this application. Submission is paused: ${blocked.incident.reason}. No individual approval is needed; the next run must recheck every send gate.`,
+    });
     const derived = actionFor(row, reason, lane, screeningResolved(row.id, reason, bank));
     return derived.kind === "portal" ? preparation.get(row.id) ?? derived : derived;
   };

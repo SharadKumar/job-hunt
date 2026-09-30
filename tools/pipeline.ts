@@ -129,10 +129,10 @@ export type Opportunity = {
 const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   discovered: ["shortlisted", "parked", "awaiting_external", "rejected", "manual_action_needed"],
   awaiting_external: ["shortlisted", "rejected", "withdrawn"],
-  shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn"],
+  shortlisted: ["drafted", "parked", "discovered", "rejected", "withdrawn", "manual_action_needed"],
   // Explicit temporary holds, not location uncertainty or known ineligibility.
   parked: ["shortlisted", "discovered", "rejected", "withdrawn"],
-  drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn"],
+  drafted: ["awaiting_approval", "discovered", "rejected", "withdrawn", "manual_action_needed"],
   awaiting_approval: ["approved", "discovered", "rejected", "withdrawn", "manual_action_needed"],
   approved: ["submission_pending", "submitted", "discovered", "manual_action_needed", "withdrawn"],
   submission_pending: ["submitted", "manual_action_needed", "withdrawn"],

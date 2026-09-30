@@ -79,6 +79,16 @@ function runDaily(root: string, env: Record<string, string>): Run {
 
 console.log("daily.sh wrapper");
 
+test("Claude daily explicitly selects Sonnet instead of inheriting an expensive default", () => {
+  const root = makeFakeRepo();
+  try {
+    const bin = fakeCli(root, 'printf "%s\\n" "$@"');
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_DAILY_MODEL: "" });
+    assert.equal(run.status, 0);
+    assert.match(run.log, /--model\nsonnet\n/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("a wedged CLI is killed at the timeout and the run exits 124", () => {
   const root = makeFakeRepo();
   try {
@@ -92,6 +102,8 @@ test("a wedged CLI is killed at the timeout and the run exits 124", () => {
     assert.ok(run.summary, "a timed-out run must leave a failure summary");
     assert.match(run.summary!, /Run failed \(exit 124\)/);
     assert.match(run.summary!, /state\/journal\/launchd/);
+    assert.match(run.summary!, /Submission totals are unverified/);
+    assert.doesNotMatch(run.summary!, /Nothing was submitted/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -132,6 +144,24 @@ test("a clean run writes no failure summary", () => {
     assert.equal(run.status, 0);
     assert.match(run.log, /finished daily run \(exit 0\)/);
     assert.equal(run.summary, null, "a clean run must not write a failure summary");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("front-half failure survives successful back-half recovery", () => {
+  const root = makeFakeRepo();
+  try {
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({
+      name: "job-hunt-career-harness",
+      scripts: { "daily:front-half": "exit 2" },
+    }));
+    const bin = fakeCli(root, "echo recovered-valid-packages; exit 0");
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_TIMEOUT_SEC: "30" });
+    assert.equal(run.status, 2);
+    assert.match(run.log, /recovered-valid-packages/, "valid back-half work is still attempted");
+    assert.match(run.summary!, /deterministic front half exited 2/);
+    assert.match(run.summary!, /Submission totals are unverified/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

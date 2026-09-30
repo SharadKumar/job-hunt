@@ -29,6 +29,7 @@ function facts(row, data) {
 
 function stateNote(row, action) {
   const kind = String(action.kind || "none");
+  if (kind === "in_flight" && action.note) return action.note;
   if (kind === "answer") return "The application is prepared and waiting for an answer. Saving an answer does not submit it.";
   if (kind === "portal" || kind === "mark_sent") return "This application stays attended. The external portal is the next step.";
   if (kind === "retry") return "The package is prepared, but the letter is blocked and needs review.";

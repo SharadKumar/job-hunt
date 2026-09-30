@@ -32,7 +32,8 @@ process.env.PIPELINE_DB = path.join(root, "pipeline.db");
 process.env.AUDIT_DIR = path.join(root, "audit");
 
 const { upsert, setStatus, patch } = await import("../tools/pipeline.ts");
-const { buildSummary, renderMarkdown } = await import("../tools/daily-summary.ts");
+const { buildSummary, renderMarkdown, journalObservations } = await import("../tools/daily-summary.ts");
+assert.deepEqual(journalObservations("- unrelated\n## Observations for the user\n- Review repeated critic finding\n## Sent unattended\n- Not a review item"), ["Review repeated critic finding"]);
 
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
 const SCREENING = path.join(root, "state/profile/screening-answers.yaml");
@@ -96,6 +97,10 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
 
 {
   const s = await buildSummary(today);
+  assert.equal(s.automation?.prepared, 0, "an approved-lane package with a screening blocker is not awaiting validation");
+  assert.equal(s.automation?.awaitingScreening, 1, "count blocked packages once, independently of the number of questions");
+  assert.match(renderMarkdown(s), /1 prepared package needs screening answers before retry/);
+  assert.doesNotMatch(renderMarkdown(s), /The next run will validate and submit eligible packages/, "do not promise submission while every prepared package needs an answer");
   const keys = s.escalations.map((e) => `${e.id ?? e.reason}::${e.kind}`);
   assert.equal(new Set(keys).size, keys.length, `no duplicate (id, kind) escalations: ${keys.join(" | ")}`);
   assert.deepEqual(s.errors, [], "readable state produces no errors");
@@ -115,7 +120,7 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   // the same ask as answering a screening question.
   assert.deepEqual(
     s.escalations.filter((e) => e.id === approvalId).map((e) => e.kind).sort(),
-    ["awaiting_approval", "screening"],
+    ["screening"],
     "one entry per kind for the Tray row",
   );
   assert.equal(s.escalations.filter((e) => e.id === pendingId)[0].kind, "submission_pending");
@@ -123,7 +128,8 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   console.log("  ✓ escalations are keyed by (opportunity, kind) and merged");
 
   // ---------- journal problems ----------
-  const journalLines = s.escalations.filter((e) => e.reason.startsWith("Journal:")).map((e) => e.reason);
+  const journalLines = s.operationalNotes ?? [];
+  assert.ok(!s.escalations.some(e => e.reason.startsWith("Journal:")), "journal prose cannot invent a user approval request");
   assert.equal(journalLines.length, 1, `exactly one journal problem, got: ${journalLines.join(" | ")}`);
   assert.match(journalLines[0], /session expired mid-hunt/, "the real failure is reported");
   for (const healthy of ["healthy", "No login/DOM errors", "no login issues", "all succeeded", "saved list"]) {
@@ -139,6 +145,10 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   assert.ok(!md.includes("## State errors"), "no error section when state reads cleanly");
   assert.ok(!/[—–]/.test(md), "no em or en dashes");
   assert.equal(s.numbers.sentToday, 1);
+  assert.match(md, /- \d{1,2}:\d{2} [ap]m /, "send times use human-readable 12-hour format");
+  assert.ok(md.includes("## Historical run observations"));
+  assert.ok(md.includes("They are not current blockers"), "journal history is not presented as live health");
+  assert.ok(renderMarkdown({ ...s, observations: ["Review repeated critic finding"] }).includes("## Observations for the user\n\n- Review repeated critic finding"));
   assert.equal(s.numbers.manual, 2);
   assert.equal(s.numbers.queue, 1);
   assert.equal(s.numbers.parked, 1);
@@ -146,6 +156,20 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
 }
 
 // ---------- missing files are allowed ----------
+
+{
+  const original = fs.readFileSync(SCREENING, "utf8");
+  const nextQuestion = "Do you have a Scrum Master Certification?";
+  await patch(manualScreeningId, { notes: `unknown screening question: "Do you hold a current NV1 clearance?"\nunknown screening question: "${nextQuestion}"` }, "test");
+  fs.appendFileSync(SCREENING, `\n  - opportunity_id: ${manualScreeningId}\n    question: '${nextQuestion}'\n    answer: null\n`);
+  const s = await buildSummary(today);
+  const row = s.escalations.filter(e => e.id === manualScreeningId);
+  assert.equal(row.length, 1);
+  assert.ok(row[0].reason.includes(nextQuestion), "latest form blocker wins over historical ledger entries");
+  assert.equal(s.numbers.unansweredQuestions, 2, "superseded question is retained in the ledger but not counted as current");
+  fs.writeFileSync(SCREENING, original);
+  await patch(manualScreeningId, { notes: 'unknown screening question: "Do you hold a current NV1 clearance?"' }, "test");
+}
 
 {
   fs.renameSync(SCREENING, `${SCREENING}.away`);

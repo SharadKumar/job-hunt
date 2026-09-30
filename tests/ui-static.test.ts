@@ -1880,13 +1880,18 @@ test("the Schedules screen lists runs newest first, each one a link to its page"
 });
 
 test("a run's exit is one verdict pill that carries the word as well as the colour", () => {
+  assert.ok(runsJs.includes('sectionHead("Pipeline now"'), "show live work separately from historical results");
+  assert.ok(runsJs.includes('api("summary").catch(() => null)'), "use canonical counts and retain unavailable state");
+  assert.ok(runsJs.includes("unconfirmed, not zero"), "missing summary cannot assert zero outcomes");
+  assert.ok(!runsJs.includes("Finished cleanly"), "wrapper success does not prove stage success");
+  assert.ok(!runsJs.includes("so it was stopped"), "silence cannot establish process termination");
   // Section 6: "exit 0" in green and "exit 1" in red as bare text are gone.
   assert.match(runsJs, /export function verdictPill\(run\)/, "runs.js must own the one pill");
   assert.ok(runsJs.includes('h("span", { class: "pill pill-you", text: "Running" })'),
     "a run still going is its own state, in the person's colour, not a failure in red");
   assert.ok(runsJs.includes('h("span", { class: "pill pill-pass", text: "Finished" })'), "a clean exit reads Finished");
   assert.ok(runsJs.includes("`Failed, exit ${run.exit_code}`"), "a nonzero exit reads Failed and says which");
-  assert.ok(runsJs.includes('run.has_log ? "No finish line" : "No log"'),
+  assert.ok(runsJs.includes('run.has_log ? "Progress unconfirmed" : "No log"'),
     "and a run with no exit code says which of the two reasons it has");
   assert.ok(!/run-exit/.test(runsJs) && !/run-exit/.test(sheet["runs.css"]),
     "the old bare exit text and its colours must be gone");
@@ -1916,7 +1921,7 @@ test("Schedules uses a selected-run workspace with tabbed evidence", () => {
   assert.match(runsJs, /class: "run-inspector-body"/, "the selected tab owns the evidence body");
   assert.match(runsJs, /lettersPanel\(data\.letters_sent \|\| \[\]\)/, "unattended letters keep their own tab");
   assert.ok(runsJs.includes("This run is still working"), "a run in progress says what it has written so far");
-  assert.ok(runsJs.includes("read from the audit log"), "and a day with no summary says where its rows came from");
+  assert.ok(runsJs.includes("Day-level audit events are not proof that this run caused them"), "missing summaries must not attribute all daily activity to the selected run");
   const runsCss = sheet["runs.css"];
   assert.match(runsCss, /\.run-log \{[\s\S]*?white-space: pre-wrap;/,
     "the raw log wraps: there is no inner scroll region in this UI");

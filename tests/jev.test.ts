@@ -22,6 +22,29 @@ assert.equal(mechanical.work_arrangement, "remote");
 assert.equal(mechanical.day_rate.min, 1400);
 assert.equal(mechanical.day_rate.inc_super, true);
 assert.equal(mechanical.requires_payg, true);
+for (const text of [
+  "[Employment type: Contract/Temp] A 12-month fixed-term contract. Competitive salary + bonus program and employee benefits.",
+  "Six-month fixed-term contract with conversion to a permanent role. Paid parental leave.",
+  "12-month fixed–term contract. Your development will be managed and tailored to your role.",
+]) {
+  const result = extractMechanicalClassification("Solution Architect", text);
+  assert.ok(result.red_flags.includes("permanent_or_full_time"), "fixed-term employment must not hide behind Contract/Temp");
+  assert.equal(result.is_contract, false);
+}
+for (const text of [
+  "A 12-month contract delivering a payroll and employee benefits platform.",
+  "Fixed-term project with an independent contractor option. Paid parental leave for employees.",
+  "Six-month fixed-term contract, daily rate via ABN. Employee benefits are not offered.",
+  "A fixed-term contract. Engagement terms to be discussed.",
+]) {
+  assert.ok(!extractMechanicalClassification("Architect", text).red_flags.includes("permanent_or_full_time"), "do not infer employment from duration or customer systems");
+}
+const flexibleHybrid = extractMechanicalClassification("Cloud Architect", "Ideally Canberra based with hybrid work, but also open to other locations.");
+assert.equal(flexibleHybrid.work_arrangement, "hybrid");
+assert.equal(flexibleHybrid.location_flexibility, "flexible");
+assert.match(flexibleHybrid.location_flexibility_quote, /open to other locations/);
+assert.equal(extractMechanicalClassification("Architect", "Hybrid in Canberra. We are not open to other locations.").location_flexibility, "onsite");
+assert.equal(extractMechanicalClassification("Architect", "Hybrid Canberra, two days per week in the office.").location_flexibility, "onsite");
 const clearance = extractMechanicalClassification(
   "Enterprise Architect",
   "Applicants must currently hold an active NV1 security clearance.",
@@ -168,7 +191,7 @@ const callEvents = auditText.trim().split("\n").map((line) => JSON.parse(line)).
 assert.ok(callEvents.some((event) => event.details?.mode === "record" && event.details?.question_set && event.details?.answers), "the record call audit must retain the question set and full answers");
 assert.ok(callEvents.some((event) => event.details?.mode === "replay" && event.details?.question_set && event.details?.answers), "the replay call audit must retain the question set and full answers");
 
-const { classifyPipeline } = await import("../tools/jev/classify-pipeline.ts");
+const { classifyPipeline, classificationWorkset } = await import("../tools/jev/classify-pipeline.ts");
 const { store } = await import("../tools/pipeline-store.ts");
 const replayInput = {
   id: "replay-role", channel: "test", title: "Senior Solution Architect", company: "Test Company",
@@ -231,5 +254,25 @@ assert.equal(mixedBatch.degraded, 1);
 assert.equal(mixedBatch.state_applied, 0, "one degraded decision must fail the whole state-changing batch closed");
 assert.equal(degradationBlocksAutopilot(await readDegradation()), true);
 
+const validPipelineFallback = await classifyPipeline([{ ...replayInput, classification: verifiedDecision } as any], { replayOnly: true, shadow: true });
+assert.equal(validPipelineFallback.cache_hits, 1, "an incompatible later cache record cannot hide a current pipeline verification");
+const workRows = ["submitted", "rejected", "withdrawn", "parked", "discovered", "approved", "submission_pending"].map(status => ({ ...replayInput, id: status, status } as any));
+assert.deepEqual(classificationWorkset(workRows).map(r => r.id), ["approved", "discovered"]);
+assert.deepEqual(classificationWorkset(workRows.map(r => ({ ...r, userSaved: true }))).map(r => r.id).sort(), ["approved", "discovered", "parked", "rejected", "withdrawn"]);
+const boundedRows = Array.from({ length: 12 }, (_, i) => ({ ...replayInput, id: `bounded-${i}` } as any));
+const bounded = await classifyPipeline(boundedRows, { force: true, shadow: true, concurrency: 2, maxRequests: 3,
+  classify: input => classifyWithJev(input, { evaluate: evaluator(0.9), credential: null }),
+});
+assert.equal(bounded.requested, 3);
+assert.equal(bounded.deferred, 9);
+assert.equal(bounded.degraded, 0);
+assert.equal(degradationBlocksAutopilot(await readDegradation()), true, "a partial healthy batch cannot clear the outstanding incident");
+const outage = await classifyPipeline(boundedRows, { force: true, shadow: true, concurrency: 2, failureLimit: 3,
+  classify: input => classifyWithJev(input, { evaluate: async () => { throw new Error("provider capacity"); }, credential: null }),
+});
+assert.equal(outage.circuit_open, true);
+assert.ok(outage.requested >= 3 && outage.requested <= 4, "stop at threshold plus at most one in-flight request");
+assert.equal(outage.deferred, 12 - outage.requested);
+assert.equal(outage.state_applied, 0);
 fs.rmSync(temp, { recursive: true, force: true });
 console.log("Jev ClassificationV2, uncertainty and degradation tests passed");

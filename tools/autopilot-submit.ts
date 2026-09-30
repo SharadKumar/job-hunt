@@ -234,6 +234,11 @@ async function main() {
   const opportunity = all.find((r) => r.id === id);
   if (!opportunity) { summary.reason = `opportunity not found: ${id}`; finish(2); }
   summary.status = opportunity!.status;
+  if (opportunity!.status === "submission_pending") {
+    summary.outcome = "submission_unconfirmed";
+    summary.reason = "Previous submission is unresolved; reconcile its outcome before retrying";
+    finish(1);
+  }
 
   const archiveDir = repoPath(`state/pipeline/archive/${id}`);
   const letterPath = path.join(archiveDir, "cover-letter.md");
@@ -432,6 +437,14 @@ async function main() {
   }
 
   // Failure paths.
+  if (result.submissionUnconfirmed && !dryRun) {
+    summary.outcome = "submission_unconfirmed";
+    summary.reason = result.reason;
+    const current = (await loadPipeline()).find((r) => r.id === id)!;
+    await patchPipeline(id, { notes: [current.notes, `[autopilot ${runId}] ${result.reason}`].filter(Boolean).join("\n") }, "autopilot", "submission outcome requires reconciliation");
+    summary.status = current.status;
+    finish(1);
+  }
   if (result.newScreeningQuestion) {
     const appended = await appendUnknownQuestion(row!, result.newScreeningQuestion);
     await auditLog({
