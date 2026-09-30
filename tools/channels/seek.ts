@@ -157,7 +157,7 @@ export type SeekEnrichment = {
  * of repeatedly rewriting the entire state file for every advert.
  */
 export function isPendingSavedSeekRole(role: Opportunity): boolean {
-  return role.channel === "seek" && role.userSaved === true && !role.submittedAt
+  return role.channel === "seek" && role.userSaved === true && !role.submittedAt && !role.channelExpiredAt
     && !["submission_pending", "submitted", "responded", "interview", "offered", "won", "withdrawn"].includes(role.status);
 }
 
@@ -165,6 +165,14 @@ export function isPendingSavedSeekRole(role: Opportunity): boolean {
 export async function closeSeekAdvertFromHeadings(role: Opportunity, headings: string[]): Promise<boolean> {
   if (role.submittedAt || role.status === "submission_pending") return false;
   if (!headings.some(text => /^This job is no longer advertised[.!]?$/i.test(text.trim()))) return false;
+  return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
+}
+
+/** SEEK sometimes renders its closed-advert notice as ordinary page text. */
+export async function closeSeekAdvertFromPageText(role: Opportunity, bodyText: string): Promise<boolean> {
+  if (role.submittedAt || role.status === "submission_pending") return false;
+  const start = bodyText.slice(0, 1200).replace(/\s+/g, " ");
+  if (!/This job is no longer advertised[.!]?\s+Jobs remain on SEEK for 30 days, unless the advertiser removes them sooner\./i.test(start)) return false;
   return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
 }
 
@@ -219,6 +227,10 @@ export async function enrichSeekRoles(options: {
             expired++;
             continue;
           }
+          if (await closeSeekAdvertFromPageText(role, await page.locator("body").innerText({ timeout: 2000 }))) {
+            expired++;
+            continue;
+          }
           // Pass a browser-native expression rather than a transpiled callback.
           // tsx/esbuild can otherwise inject its `__name` helper into nested
           // functions, which does not exist inside the page JavaScript realm.
@@ -262,8 +274,14 @@ export async function enrichSeekRoles(options: {
             });
           } else unchanged++;
         } catch (error) {
-          failed++;
           const pageText = await page.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+          // The close notice can appear after the initial DOM load. Read the
+          // final visible page before treating an empty advert as a failure.
+          if (await closeSeekAdvertFromPageText(role, pageText)) {
+            expired++;
+            continue;
+          }
+          failed++;
           console.error(`[seek:enrich] ${role.id} failed: ${(error as Error).message.slice(0, 180)}; page=${page.url()}; visible=${pageText.replace(/\s+/g, " ").slice(0, 500)}`);
         } finally {
           await page.close();

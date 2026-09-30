@@ -84,6 +84,8 @@ export type Opportunity = {
   closingDate?: string;
   /** Where the closing day came from. Inferred age is never an expiry signal. */
   closingDateSource?: "description" | "channel";
+  /** Channel-confirmed expiry prevents a saved advert from being reopened on later imports. */
+  channelExpiredAt?: string;
   dayRate?: { min?: number; max?: number; currency?: string; inc_super?: boolean };
   workArrangement?: "remote" | "hybrid" | "onsite" | "unknown";
   /** How the channel expects the application to be lodged; drives the submit adapter choice and the autopilot gate. */
