@@ -294,7 +294,14 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
       return decide("needs_approval", false, "autopilot provenance supplied but autopilot.enabled is not true in submission-policy.yaml");
     }
     checks.push({ gate: "autopilot_enabled", ok: true, detail: `run ${prov.ref}` });
-    const degradation = opts.jevDegradation === undefined ? await readDegradation() : opts.jevDegradation;
+    let degradation: JevDegradation | null;
+    try {
+      degradation = opts.jevDegradation === undefined ? await readDegradation() : opts.jevDegradation;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Jev health state could not be verified";
+      checks.push({ gate: "jev_health", ok: false, detail: reason });
+      return decide("blocked", false, reason);
+    }
     if (degradationBlocksAutopilot(degradation)) {
       const blocking = blockingDegradation(degradation)!;
       checks.push({ gate: "jev_health", ok: false, detail: `${blocking.scope}: ${blocking.incident.reason}` });

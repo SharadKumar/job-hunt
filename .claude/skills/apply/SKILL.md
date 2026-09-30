@@ -146,7 +146,7 @@ The baseline path skips this: the baseline was already critiqued and approved by
 Create `state/pipeline/archive/<opportunity-id>/` and place:
 - Resume: copy baseline (glob `state/profile/resumes/<resume-id>/*.docx` / `*.pdf`, where filenames follow `{Profile-Name}_{Resume-Label}.ext`, e.g. `Jane-Citizen_Solution-Architect.pdf`; don't assume a literal name) OR tailored artefacts (from resume-writer's output).
 - Cover letter: from cover-letter-writer's output (`cover-letter.md`).
-- JD snapshot: write the JD text to `jd.md` (WebFetch the URL if the opportunity's `description` is truncated).
+- JD snapshot: write the JD text to `jd.md`, prefixed with the pipeline record's exact title, advertiser and source URL (WebFetch the URL if `description` is truncated). The critic must receive this provenance so a verified advertiser name is not mistaken for an invented claim. Label an advertiser as a recruiter only when evidence establishes that relationship.
 - `keyword-plan.json`: the final (post-patch, post-composition) keyword plan from step 2b.
 - `metadata.json`: bundle of resume reference + cover letter reference + classifier verdict + both quality reports + keyword coverage (`renderable_pct`, `surfaced_pct`) + the count of pending `kind: keyword` rows + timestamp.
 

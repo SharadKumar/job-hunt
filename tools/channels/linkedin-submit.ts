@@ -79,6 +79,20 @@ export type SubmitLinkedInOptions = {
 const DEFAULT_STEP_TIMEOUT = 20_000;
 const MAX_STEPS = 12;
 
+/** Observe only after Submit. Never repeat the irreversible action while waiting. */
+export async function waitForSubmissionConfirmation(
+  read: () => Promise<{ text: string; submitVisible: boolean }>,
+  pause: () => Promise<void>,
+  checks = 20,
+): Promise<boolean> {
+  for (let i = 0; i < checks; i++) {
+    const state = await read();
+    if (/application (was )?sent|your application was sent|applied successfully/i.test(state.text) && !state.submitVisible) return true;
+    if (i + 1 < checks) await pause();
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -132,7 +146,7 @@ const FIND_DIALOG_JS = `
     const nodes = root.querySelectorAll("*");
     for (let i = 0; i < nodes.length; i++) {
       const e = nodes[i];
-      if (e.getAttribute && e.getAttribute("role") === "dialog") { const r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return e; }
+      if (e.matches('dialog, [role="dialog"]')) { const r = e.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return e; }
       if (e.shadowRoot) { const hit = findDialog(e.shadowRoot); if (hit) return hit; }
     }
     return null;
@@ -228,11 +242,27 @@ const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
     return clean(out);
   };
   const labelFor = function (el) {
-    if (el.id) { const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) return clean(l.innerText); }
+    if (el.id) { const l = root.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l && clean(l.innerText)) return clean(l.innerText); }
     const lb = el.getAttribute("aria-labelledby"); if (lb) { const t = textOfIds(lb); if (t) return t; }
     const al = el.getAttribute("aria-label"); if (al) return clean(al);
     const wrap = el.closest("label"); if (wrap) return clean(wrap.innerText);
     return "";
+  };
+  // SDUI can put the question in aria-label, leave label[for] empty and
+  // render the option beside the input wrapper. Read only a single-control
+  // container, never the whole radio group or a neighbouring question.
+  const optionLabelFor = function (el) {
+    const labels = Array.from(el.labels || []);
+    for (const label of labels) { const t = clean(label.innerText); if (t) return t; }
+    const aria = clean(el.getAttribute("aria-label"));
+    let node = el.parentElement;
+    for (let hops = 0; node && node !== root && hops < 3; hops++, node = node.parentElement) {
+      if (node.matches('fieldset,[role="group"],[role="radiogroup"]')) break;
+      if (node.querySelectorAll("input,select,textarea").length !== 1) break;
+      const t = textExcluding(node, el);
+      if (t && t.length <= 150 && t !== aria) return t;
+    }
+    return labelFor(el);
   };
   const groupLabel = function (el) {
     const fs = el.closest("fieldset");
@@ -285,8 +315,8 @@ const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
     const key = i.type + ":" + (i.name || groupLabel(i) || i.id);
     if (!groups.has(key)) groups.set(key, { kind: i.type, label: "", labels: candidates(i), id: "", name: i.name || "", required: isRequired(i), numeric: false, value: "", options: [] });
     const g = groups.get(key);
-    g.options.push({ label: labelFor(i), id: i.id || "" });
-    if (i.checked) g.value = labelFor(i);
+    g.options.push({ label: optionLabelFor(i), id: i.id || "" });
+    if (i.checked) g.value = optionLabelFor(i);
   });
   groups.forEach(function (g) { out.push(g); });
   root.querySelectorAll('textarea,input[type="text"],input[type="number"],input[type="tel"],input[type="email"],input:not([type])').forEach(function (t) {
@@ -300,7 +330,7 @@ const DISCOVER_MODAL_QUESTIONS_JS = `(() => {
 
 type ModalQuestion = PageQuestion & { numeric: boolean; value: string; labels?: LabelCandidates };
 
-async function discoverModalQuestions(page: Page): Promise<ModalQuestion[]> {
+export async function discoverModalQuestions(page: Page): Promise<ModalQuestion[]> {
   const raw = (await page.evaluate(DISCOVER_MODAL_QUESTIONS_JS)) as ModalQuestion[];
   return raw
     // A control with neither a label candidate nor a real option is furniture
@@ -316,7 +346,7 @@ async function modalText(page: Page): Promise<string> {
 }
 
 async function modalHeading(page: Page): Promise<string> {
-  const dialog = page.locator('div[role="dialog"]').first();
+  const dialog = page.getByRole("dialog").first();
   for (const sel of ["h3", "h2", "h1"]) {
     const h = dialog.locator(sel).first();
     if ((await h.count()) && (await h.isVisible().catch(() => false))) {
@@ -328,7 +358,7 @@ async function modalHeading(page: Page): Promise<string> {
 }
 
 function dialog(page: Page): Locator {
-  return page.locator('div[role="dialog"]').first();
+  return page.getByRole("dialog").first();
 }
 
 /** Footer navigation. Order matters: Submit only when we mean it. */
@@ -428,6 +458,7 @@ async function answerStep(page: Page, answers: ScreeningAnswers, phone: string |
     }
     // Resume selection is handled by handleResumeStep, not as a question.
     if (/^select resume\b/i.test(label) || /^select resume\b/i.test(q.options[0]?.label ?? "")) continue;
+    if (q.kind === "radio" && q.options.length > 0 && q.options.every((o) => /\.(?:docx?|pdf)$/i.test(o.label.trim()))) continue;
     // Follow-company and marketing checkboxes are never ticked.
     if (q.kind === "checkbox" && /follow|newsletter|marketing|updates/i.test(`${label} ${q.options.map((o) => o.label).join(" ")}`)) continue;
     // Already answered (remembered from an earlier application): leave alone.
@@ -448,15 +479,16 @@ async function answerStep(page: Page, answers: ScreeningAnswers, phone: string |
 /**
  * Resume step. LinkedIn lists recent uploads as radios named "Select resume
  * <filename>" ("Deselect resume <filename>" once checked; older ones behind
- * "Show N more resumes"); a fresh upload is auto-selected. Discarding an
- * application also discards its upload, so a dry run leaves nothing behind. Select by exact filename when listed, else
+ * "Show N more resumes"); current controls use the filename alone. A fresh
+ * upload is auto-selected and may remain in LinkedIn's stored CV list even
+ * after a dry run discards the application. Select by exact filename when listed, else
  * upload the package docx.
  */
 async function handleResumeStep(page: Page, cvDocxPath: string, resumeFilename: string, timeout: number, log: (m: string) => void): Promise<string | undefined> {
   const d = dialog(page);
   // The checked entry is named "Deselect resume <file>", the others "Select resume <file>".
   const escaped = resumeFilename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const stored = () => d.getByRole("radio", { name: new RegExp(`^(Select|Deselect) resume ${escaped}$`) }).first();
+  const stored = () => d.getByRole("radio", { name: new RegExp(`^(?:(?:Select|Deselect) resume )?${escaped}$`) }).first();
   if (!(await stored().count())) {
     const more = d.getByRole("button", { name: /show \d+ more resumes?/i }).first();
     if ((await more.count()) && (await more.isVisible().catch(() => false))) {
@@ -474,8 +506,17 @@ async function handleResumeStep(page: Page, cvDocxPath: string, resumeFilename: 
     return undefined;
   }
   const fileInput = d.locator('input[type="file"]').first();
-  if (!(await fileInput.count())) return `resume step offers neither stored resumé "${resumeFilename}" nor an upload control`;
-  await fileInput.setInputFiles(cvDocxPath);
+  if (await fileInput.count()) {
+    await fileInput.setInputFiles(cvDocxPath);
+  } else {
+    const upload = d.getByRole("button", { name: /^upload resume/i }).first();
+    if (!(await upload.count())) return `resume step offers neither stored resumé "${resumeFilename}" nor an upload control`;
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout }),
+      upload.click({ timeout }),
+    ]);
+    await chooser.setFiles(cvDocxPath);
+  }
   await page.waitForTimeout(2500);
   const uploaded = stored();
   if (!(await uploaded.count())) return `uploaded "${resumeFilename}" but the modal does not list it`;
@@ -503,12 +544,13 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
   let ctx: BrowserContext | undefined;
   let page: Page | undefined;
   let opened = false;
+  let submissionAttempted = false;
   const fail = async (reason: string, extra: Partial<Extract<SubmitResult, { ok: false }>> = {}): Promise<SubmitResult> => {
     if (page?.isClosed()) log(`page closed before failure handling (url ${page.url()})`);
     const shot = page && !page.isClosed() ? await screenshot(page, shotDir, `${opportunity.id}-error.png`) : undefined;
     log(`${reason}${shot ? ` (screenshot ${shot})` : ""}`);
-    if (page && opened && !page.isClosed()) await discardApplication(page);
-    return { ok: false, reason, needsManual: true, ...extra };
+    if (page && opened && !submissionAttempted && !page.isClosed()) await discardApplication(page);
+    return { ok: false, reason, needsManual: true, ...extra, submissionUnconfirmed: submissionAttempted };
   };
 
   try {
@@ -519,17 +561,17 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
     await page.goto(`https://www.linkedin.com/jobs/view/${jobId}/`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForTimeout(3000);
 
-    if (/\/login|\/checkpoint|\/authwall/.test(page.url())) return fail("LinkedIn session is signed out; re-run npm run login:linkedin");
+    if (/\/login|\/checkpoint|\/authwall/.test(page.url())) return await fail("LinkedIn session is signed out; re-run npm run login:linkedin");
     const bodyText = async () => (await page!.locator("main").innerText().catch(() => "")).replace(/\s+/g, " ");
     const body = await bodyText();
-    if (/No longer accepting applications/i.test(body)) return fail("LinkedIn ad is no longer accepting applications");
-    if (/\bApplied\b.{0,40}\bago\b|Application submitted|See application/i.test(body.slice(0, 1500))) return fail("LinkedIn reports this application was already submitted");
+    if (/No longer accepting applications/i.test(body)) return await fail("LinkedIn ad is no longer accepting applications");
+    if (/\bApplied\b.{0,40}\bago\b|Application submitted|See application/i.test(body.slice(0, 1500))) return await fail("LinkedIn reports this application was already submitted");
 
     const easy = page.locator('a[aria-label^="Easy Apply"], button[aria-label^="Easy Apply"]').first();
     if (!(await easy.count())) {
       const external = page.locator('button[aria-label^="Apply on company website"], a[aria-label^="Apply on company website"]').first();
       if (await external.count()) return { ok: false, needsManual: true, reason: "external ATS: ad uses Apply on company website" };
-      return fail("no Easy Apply control found on the ad (DOM change?)");
+      return await fail("no Easy Apply control found on the ad (DOM change?)");
     }
     await easy.click({ timeout });
     await dialog(page).waitFor({ state: "visible", timeout });
@@ -537,7 +579,6 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
     opened = true;
 
     let coverLetterDelivered = false;
-    let lastHeading = "";
     const stem = opts.resumeFilename.replace(/\.(docx|pdf)$/i, "");
     for (let step = 0; step < MAX_STEPS; step++) {
       const heading = await modalHeading(page);
@@ -554,13 +595,15 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
         return { ok: true, confirmationRef: `${sent.trim()} (coverLetterDelivered: ${coverLetterDelivered})`, screenshotPath: shot };
       }
 
+      if (submissionAttempted) return await fail("Submission outcome unconfirmed after Submit; reconcile on LinkedIn before retrying");
+
       // Resume controls can sit on their own step or share the first step
       // (single-step modals put contact, resume, follow and Submit together).
       const hasResumeControls = (await dialog(page).getByRole("button", { name: /^upload resume/i }).count()) > 0
         || (await dialog(page).getByRole("radio", { name: /^(select|deselect) resume /i }).count()) > 0;
       if (hasResumeControls) {
         const err = await handleResumeStep(page, pkg.cvDocxPath, opts.resumeFilename, timeout, log);
-        if (err) return fail(err);
+        if (err) return await fail(err);
         text = await modalText(page);
       }
 
@@ -581,7 +624,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
       const submitBtn = await findButton(page, "submit");
       if (submitBtn) {
         text = await modalText(page);
-        if (!text.includes(stem)) return fail(`review step does not show resumé "${opts.resumeFilename}"`);
+        if (!text.includes(stem)) return await fail(`review step does not show resumé "${opts.resumeFilename}"`);
         const modal = dialog(page);
         const follow = modal.getByRole("checkbox", { name: /follow/i }).first();
         if ((await follow.count()) && (await follow.isChecked().catch(() => false))) {
@@ -595,13 +638,19 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
           return { ok: true, confirmationRef: `DRY RUN: review step verified (coverLetterDelivered: ${coverLetterDelivered})`, screenshotPath: shot };
         }
         await screenshot(page, shotDir, `${opportunity.id}-review.png`);
+        submissionAttempted = true;
         await submitBtn.click({ timeout });
-        await page.waitForTimeout(3000);
+        const confirmed = await waitForSubmissionConfirmation(
+          async () => ({ text: await modalText(page!), submitVisible: Boolean(await findButton(page!, "submit")) }),
+          () => page!.waitForTimeout(1000),
+        );
+        if (!confirmed) return await fail("Submission outcome unconfirmed after Submit; reconcile on LinkedIn before retrying");
         continue;
       }
 
       const nav = (await findButton(page, "next")) ?? (await findButton(page, "review"));
-      if (!nav) return fail(`no Next/Review/Submit control on step "${heading}"`);
+      if (!nav) return await fail(`no Next/Review/Submit control on step "${heading}"`);
+      const beforeNavigation = await modalText(page);
       await nav.click({ timeout });
       await page.waitForTimeout(1500);
 
@@ -617,12 +666,11 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
         opened = false;
         return { ok: false, needsManual: true, reason: `new screening question: ${label}`, newScreeningQuestion: { text: label, context: pending ? (pending.options.map((o) => o.label).join(" | ") || (pending.numeric ? "numeric" : pending.kind)) : errors.join(" / ") } };
       }
-      if (sameHeading && heading === lastHeading) return fail(`modal did not advance past "${heading}"`);
-      lastHeading = heading;
+      if ((await modalText(page)) === beforeNavigation) return await fail(`modal did not advance past "${heading || "current step"}"`);
     }
-    return fail(`Easy Apply did not reach the review step within ${MAX_STEPS} steps`);
+    return await fail(`Easy Apply did not reach the review step within ${MAX_STEPS} steps`);
   } catch (e) {
-    return fail(`${(e as Error).name}: ${(e as Error).message.split("\n")[0].slice(0, 200)}`);
+    return await fail(`${(e as Error).name}: ${(e as Error).message.split("\n")[0].slice(0, 200)}`);
   } finally {
     await ctx?.close().catch(() => {});
   }

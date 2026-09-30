@@ -43,6 +43,7 @@ import { getPolicy } from "./policy-api.ts";
 import { gatewayCredential } from "../jev/env.ts";
 import { activeDegradations, blockingDegradation, readDegradation } from "../jev/degradation.ts";
 import { loadJevPolicy } from "../jev/policy.ts";
+import { decideQuestion, loadScreeningAnswers } from "../channels/seek-submit.ts";
 
 /**
  * The person answering a screening question is a policy-shaped act: it changes
@@ -479,11 +480,16 @@ export async function getScreening(opts: { profileId?: string | null } = {}): Pr
   }
   const parsed = (YAML.parse(text) ?? {}) as any;
   const rows = Array.isArray(parsed?.unknown_questions) ? parsed.unknown_questions : [];
+  const bank = await loadScreeningAnswers(file);
   const unknown: UnknownQuestion[] = [];
   for (const row of rows) {
     if (!row || typeof row.question !== "string" || !row.question.trim()) continue;
     const question = row.question;
-    const answer = row.answer == null || String(row.answer).trim() === "" ? null : String(row.answer);
+    const savedAnswer = row.answer == null || String(row.answer).trim() === "" ? null : String(row.answer);
+    // The submitter also matches general bank entries and numeric skill years.
+    // Reflect that same known answer without rewriting the historical ledger.
+    const matched = savedAnswer === null ? decideQuestion({ label: question, kind: "text", options: [], id: "", name: "", required: true }, bank) : null;
+    const answer = savedAnswer ?? (matched?.kind === "text" ? matched.answer : null);
     unknown.push({
       question,
       normalised: await normalise(question),

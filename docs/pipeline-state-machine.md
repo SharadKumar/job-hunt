@@ -31,9 +31,9 @@ Anything not on that line is a hold (`parked`, `awaiting_external`, `manual_acti
 ```
 discovered          → shortlisted | parked | awaiting_external | rejected | manual_action_needed
 awaiting_external   → shortlisted | rejected | withdrawn
-shortlisted         → drafted | parked | discovered | rejected | withdrawn
+shortlisted         → drafted | parked | discovered | rejected | withdrawn | manual_action_needed
 parked              → shortlisted | discovered | rejected | withdrawn
-drafted             → awaiting_approval | rejected | withdrawn
+drafted             → awaiting_approval | discovered | rejected | withdrawn | manual_action_needed
 awaiting_approval   → approved | rejected | withdrawn | manual_action_needed
 approved            → submission_pending | submitted | manual_action_needed | withdrawn
 submission_pending  → submitted | manual_action_needed | withdrawn

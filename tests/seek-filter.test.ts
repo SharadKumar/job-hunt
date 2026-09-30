@@ -11,7 +11,7 @@ import YAML from "yaml";
 // keeps the person's own channel config out of the test.
 const { profileDir } = makeTempRoot("seek-filter-test-");
 
-const { applySeekEnrichment, buildSearchUrl, looksLikeContractWorkType, looksTechnicallyRelevant, mergeSearchKeywords, parseRelativePostedAt } =
+const { applySeekEnrichment, buildSearchUrl, isPendingSavedSeekRole, looksLikeContractWorkType, looksTechnicallyRelevant, mergeSearchKeywords, parseRelativePostedAt } =
   await import("../tools/channels/seek.ts");
 const { activeResumes } = await import("../tools/resumes.ts");
 
@@ -24,6 +24,15 @@ const cases: Array<[string, string, boolean]> = [
 ];
 
 let failed = 0;
+for (const status of ["discovered", "shortlisted", "approved", "manual_action_needed", "rejected", "parked"] as const) {
+  const row = { channel: "seek", status, userSaved: true } as Opportunity;
+  if (!isPendingSavedSeekRole(row)) throw new Error(`saved ${status} row must be eligible for advert enrichment`);
+  if (isPendingSavedSeekRole({ ...row, userSaved: false })) throw new Error("unsaved row entered saved enrichment");
+  if (isPendingSavedSeekRole({ ...row, submittedAt: "2026-09-01T00:00:00Z" })) throw new Error("previously submitted row entered saved enrichment");
+}
+for (const status of ["submission_pending", "submitted", "responded", "interview", "offered", "won", "withdrawn"] as const) {
+  if (isPendingSavedSeekRole({ channel: "seek", status, userSaved: true } as Opportunity)) throw new Error(`saved ${status} row must not be retried`);
+}
 for (const [title, description, expected] of cases) {
   const actual = looksTechnicallyRelevant(title, description);
   if (actual !== expected) {

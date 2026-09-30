@@ -32,13 +32,20 @@ const seed = (n: number, description: string) => ({
   status: "discovered" as const,
 });
 
-const [expired, open, submitted, approved, channelExpired] = await upsertMany([
+const [expired, open, submitted, approved, channelExpired, uncertain] = await upsertMany([
   seed(1, "Applications close Monday 21 September 2026."),
   seed(2, "Applications close Thursday 24 September 2026."),
   seed(3, "Applications close Friday 18 September 2026."),
   seed(4, "Closing date: Sunday 20 September 2026."),
   seed(5, "No stated closing date."),
+  seed(6, "Applications close Monday 21 September 2026."),
 ]);
+await setStatus(uncertain.id, "shortlisted", "fits");
+await setStatus(uncertain.id, "drafted", "ready");
+await setStatus(uncertain.id, "awaiting_approval", "ready");
+await setStatus(uncertain.id, "approved", "approved");
+await setStatus(uncertain.id, "submission_pending", "submission outcome needs reconciliation");
+const uncertainBefore = await get(uncertain.id);
 await setStatus(submitted.id, "shortlisted", "fits");
 await setStatus(submitted.id, "drafted", "ready");
 await setStatus(submitted.id, "awaiting_approval", "ready");
@@ -60,6 +67,9 @@ assert.equal((await get(approved.id))?.status, "withdrawn", "approved work close
 assert.equal((await get(open.id))?.status, "discovered", "today and future deadlines remain active");
 assert.equal((await get(open.id))?.closingDate, "2026-09-24", "future explicit deadlines are retained");
 assert.equal((await get(submitted.id))?.status, "submitted", "submitted work is never expired by the pipeline cleanup");
+assert.deepEqual(await get(uncertain.id), uncertainBefore, "deadline expiry cannot erase an uncertain send outcome");
+assert.equal(await closeOpportunityAsExpired(uncertain.id, { source: "channel", channelName: "SEEK" }, { apply: true }), null);
+assert.deepEqual(await get(uncertain.id), uncertainBefore, "channel expiry also preserves the reconciliation hold and audit history");
 assert.match((await get(expired.id))?.history.at(-1)?.reason ?? "", /stated closing date 2026-09-21/);
 
 await patch(open.id, { description: "Deadline extended. Applications close 30 September 2026." }, "test", "advert updated");

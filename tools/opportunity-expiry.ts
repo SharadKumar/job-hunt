@@ -105,11 +105,11 @@ export function extractClosingDate(
 
 export const EXPIRABLE_STATUSES = new Set<PipelineStatus>([
   "discovered", "awaiting_external", "shortlisted", "parked", "drafted",
-  "awaiting_approval", "approved", "submission_pending", "manual_action_needed",
+  "awaiting_approval", "approved", "manual_action_needed",
 ]);
 
 function closedStatus(from: PipelineStatus): PipelineStatus {
-  return from === "approved" || from === "submission_pending" ? "withdrawn" : "rejected";
+  return from === "approved" ? "withdrawn" : "rejected";
 }
 
 export async function closeOpportunityAsExpired(

@@ -5,6 +5,7 @@
 A job the person saved on the channel (SEEK `userSaved: true`) is an order to apply regardless of score, discipline band, location, employment type, clearance wording or duplicate status. Nothing parks a saved row on those grounds.
 
 - Classify it like any other row through Jev, using the full JD via `npm run seek:enrich` when the card is a blurb. An uncertain decision stays visible for review; do not invent a positioning.
+- The daily front half runs `seek:enrich -- --saved-pending --concurrency 1` after saved-job import, before classification. This includes unscored discovered rows and saved holds, but excludes prior submissions, uncertain send outcomes and later-stage rows. Fetch failures report a non-zero exit; they are not successful enrichment.
 - The letter names any gap honestly. The letter-critic still applies; the submission gate bypasses `red_flag_blocker` for saved rows.
 - The retry set on every run is every saved row still on the live saved list that is not `submitted`, whatever its status. A saved row parked by an earlier critic block is re-drafted; a saved row `rejected` as a duplicate is reopened (`set-status discovered`, reason "user saved after rejection") and drafted.
 - A letter-critic block on a saved row goes back to `cover-letter-writer` with the findings, up to two regenerations per row per run, before parking with the final findings in `notes`. The writer fixes the named sentences against the corpus; it never softens a disclosed gap. This is the one case where a letter is rewritten to satisfy the critic unattended.

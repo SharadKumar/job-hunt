@@ -192,6 +192,18 @@ await test("a question the worker parked is offered with its shape", async () =>
   assert.match(snapshot.path, /screening-answers\.yaml$/);
 });
 
+await test("a general bank entry resolves an old unknown without rewriting it", async () => {
+  const before = fs.readFileSync(screeningFile, "utf8");
+  try {
+    fs.writeFileSync(screeningFile, `answers:\n  - id: delivery\n    patterns: ['^do you have project delivery experience']\n    answer: 'Yes.'\nunknown_questions:\n  - opportunity_id: seek-known\n    question: 'Do you have Project Delivery experience?'\n    answer: null\n  - opportunity_id: seek-unknown\n    question: 'Do you hold a specialist certification?'\n    answer: null\n`);
+    const input = fs.readFileSync(screeningFile, "utf8");
+    const snapshot = await screening.getScreening();
+    assert.equal(snapshot.unknown[0].answer, "Yes.");
+    assert.equal(snapshot.unknown[1].answer, null);
+    assert.equal(fs.readFileSync(screeningFile, "utf8"), input, "resolution is read-only");
+  } finally { fs.writeFileSync(screeningFile, before); }
+});
+
 await test("banking an answer writes it into the parked row and keeps the comments", async () => {
   const before = auditLines().length;
   const result = await screening.postScreeningAnswer({

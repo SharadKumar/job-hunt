@@ -210,8 +210,27 @@ export function selectOpportunitiesForRescore(
     .slice(0, limit);
 }
 
+export function validateRescoreArgs(argv: string[]): void {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (["--help", "-h", "--all", "--dry-run"].includes(arg)) continue;
+    if (arg === "--ids-file" || arg === "--limit") {
+      const value = argv[++i];
+      if (!value || value.startsWith("-")) throw new Error(`${arg} requires a value`);
+      if (arg === "--limit" && (!Number.isSafeInteger(Number(value)) || Number(value) < 1)) throw new Error("--limit must be a positive integer");
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
+  validateRescoreArgs(argv);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(JSON.stringify({ usage: "pipeline:rescore [--ids-file path] [--all] [--limit N] [--dry-run]", mutates: false }));
+    return;
+  }
   const all = argv.includes("--all");
   const dryRun = argv.includes("--dry-run");
   const limitIdx = argv.indexOf("--limit");

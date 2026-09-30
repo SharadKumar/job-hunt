@@ -258,7 +258,7 @@ await test("a log still being written to is a run in progress, with the time so 
   fs.rmSync(file);
 });
 
-await test("a log nobody has written to for hours is a run that was killed", async () => {
+await test("an old log without completion leaves progress unconfirmed", async () => {
   const file = placeRunningLog("2026-09-18", 260, 240);
   const res = await call("GET", "/api/runs");
   const dead = (res.body as any).runs.find((r: any) => r.date === "2026-09-18");
@@ -267,6 +267,7 @@ await test("a log nobody has written to for hours is a run that was killed", asy
   assert.equal(dead.note, "no finish line", "the reason there is no exit code is said out loud");
   assert.equal(dead.duration_s, null, "a killed run has no wall time to claim");
   assert.equal(dead.has_log, true);
+  assert.ok(dead.last_activity_at, "expose the last observed update without inventing a finish");
   fs.rmSync(file);
 });
 
@@ -486,6 +487,31 @@ await test("a resume id that is a path or a flag never reaches the tool", async 
 });
 
 // ---------- cleanup ----------
+
+await test("a fresh matching worker heartbeat rescues a quiet log, but stale checkpoints do not", async () => {
+  const dir = path.join(root, "state/journal/front-half");
+  fs.mkdirSync(dir, { recursive: true });
+  const logFile = path.join(root, "state/journal/launchd/2026-09-15.log");
+  const started = new Date(Date.now() - 4 * 3600_000).toISOString();
+  fs.writeFileSync(logFile, `=== ${started} starting daily run ===\n`);
+  fs.utimesSync(logFile, new Date(started), new Date(started));
+  const checkpoint = { started_at: started, running: true, pid: process.pid, updated_at: new Date().toISOString() };
+  const file = path.join(dir, "2026-09-15.json");
+  fs.writeFileSync(file, JSON.stringify(checkpoint));
+  assert.equal((await workspace.getRun("2026-09-15", ctx)).run.running, true);
+  fs.writeFileSync(file, JSON.stringify({ ...checkpoint, updated_at: started }));
+  assert.equal((await workspace.getRun("2026-09-15", ctx)).run.running, false);
+});
+
+await test("front-half failures override wrapper success, and corrupt telemetry is safe", async () => {
+  const dir = path.join(root, "state/journal/front-half");
+  fs.mkdirSync(dir, { recursive: true });
+  const before = await workspace.getRun("2026-09-17", ctx);
+  fs.writeFileSync(path.join(dir, "2026-09-17.json"), JSON.stringify({ started_at: before.run.started_at, ok: false, running: false, steps: [] }));
+  assert.equal((await workspace.getRun("2026-09-17", ctx)).run.preparation_issues, true);
+  fs.writeFileSync(path.join(dir, "2026-09-17.json"), "{broken");
+  assert.equal((await workspace.getRun("2026-09-17", ctx)).front_half, null);
+});
 
 fs.rmSync(root, { recursive: true, force: true });
 

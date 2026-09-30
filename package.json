@@ -83,6 +83,7 @@
     "onboarding:context": "tsx tools/onboarding.ts context",
     "onboarding:write-resume": "tsx tools/onboarding.ts write-resume",
     "daily": "bash scripts/daily.sh",
+    "agent:context": "tsx tools/agent-context.ts",
     "daily:front-half": "tsx tools/daily-front-half.ts",
     "screening:retry-queue": "tsx tools/screening-retry-queue.ts",
     "pipeline:expire": "tsx tools/expire-opportunities.ts",

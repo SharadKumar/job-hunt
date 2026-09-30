@@ -65,6 +65,10 @@ import { repoPath } from "../repo-root.ts";
 import { openChromeContext } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
 
+export function isSeekHumanVerification(text: string): boolean {
+  return /confirm you are human|verify you are human|help us keep SEEK secure/i.test(text);
+}
+
 export type SubmitSeekOptions = {
   dryRun?: boolean;
   /** Exact stored-resumé filename as SEEK lists it (e.g. Jane-Citizen_Delivery-Manager.docx). */
@@ -318,6 +322,15 @@ export function decideQuestion(
     return { kind: "unmatched" };
   }
 
+  // An explicit banked binary answer is authoritative. Do not ask a model
+  // to rematch it or let generic question heuristics contradict it. Longer
+  // qualified answers need explicit select patterns, not inferred consent.
+  const binary = entry?.answer?.trim().match(/^(yes|no)[.!]?$/i)?.[1];
+  if (binary && options.some((o) => /^yes$/i.test(o.label.trim())) && options.some((o) => /^no$/i.test(o.label.trim()))) {
+    const hit = options.find((o) => o.label.trim().toLowerCase() === binary.toLowerCase());
+    return hit ? { kind: "option", option: hit } : { kind: "unmatched" };
+  }
+
   // A known skill's years pick the band that covers them, ahead of the generic
   // "more than 5 years" default below.
   if (skillYears !== undefined) {
@@ -552,10 +565,11 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
 
   let ctx: BrowserContext | undefined;
   let page: Page | undefined;
+  let submissionAttempted = false;
   const fail = async (reason: string, extra: Partial<Extract<SubmitResult, { ok: false }>> = {}): Promise<SubmitResult> => {
     const shot = page ? await screenshot(page, shotDir, `${opportunity.id}-error.png`) : undefined;
     console.error(`[seek-submit] ${opportunity.id}: ${reason}${shot ? ` (screenshot ${shot})` : ""}`);
-    return { ok: false, reason, needsManual: true, ...extra };
+    return { ok: false, reason, needsManual: true, ...extra, submissionUnconfirmed: submissionAttempted };
   };
 
   try {
@@ -574,22 +588,26 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
     } catch {
       host = null;
     }
-    if (host === null) return fail("could not read page url after apply");
+    if (host === null) return await fail("could not read page url after apply");
     if (!SEEK_HOST.test(host)) {
       console.error(`[seek-submit] ${opportunity.id}: apply link left SEEK → ${host}`);
       return { ok: false, needsManual: true, reason: `external ATS: ${host}` };
     }
     if (/sign in|log in/i.test(await page.title()) || /\/oauth|\/login/i.test(page.url())) {
-      return fail("SEEK session is signed out; re-run npm run login:seek");
+      return await fail("SEEK session is signed out; re-run npm run login:seek");
     }
 
     const bodyText = async () => (await page!.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
     if (/already applied|you(?:'|’)ve applied|application (?:was )?already/i.test(await bodyText()) && classifyApplyStep(page.url()) !== "documents") {
-      return fail("SEEK reports this application was already submitted");
+      return await fail("SEEK reports this application was already submitted");
     }
 
     for (let hop = 0; hop < 8; hop++) {
+      if (isSeekHumanVerification(await bodyText())) {
+        return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying");
+      }
       const step = classifyApplyStep(page.url());
+      if (submissionAttempted && step !== "success") return await fail("Submission outcome unconfirmed after Submit; reconcile on SEEK before retrying");
       console.error(`[seek-submit] ${opportunity.id}: step=${step} url=${page.url()}`);
       switch (step) {
         case "external":
@@ -601,9 +619,12 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           if ((await resumeRadio.count()) === 0) {
             await page.getByRole("radio").first().waitFor({ state: "attached", timeout }).catch(() => {});
             if ((await resumeRadio.count()) === 0) {
+              if (isSeekHumanVerification(await bodyText())) {
+                return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying");
+              }
               const listed = await page.getByRole("radio").evaluateAll((els: any[]) =>
                 els.map((e) => e.getAttribute("aria-label") || (e.labels && e.labels[0] ? e.labels[0].innerText : "") || e.value).filter(Boolean));
-              return fail(`stored resumé "${opts.resumeFilename}" not offered on SEEK (listed: ${listed.join(" | ") || "none"})`);
+              return await fail(`stored resumé "${opts.resumeFilename}" not offered on SEEK (listed: ${listed.join(" | ") || "none"})`);
             }
           }
           await selectRadioByLabel(page, opts.resumeFilename, timeout);
@@ -614,7 +635,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           // fill() replaces the remembered previous letter wholesale.
           await textarea.fill(coverLetter);
           const typed = (await textarea.inputValue()).trim();
-          if (typed.slice(0, 40) !== coverLetter.slice(0, 40)) return fail("cover letter textarea did not accept the letter");
+          if (typed.slice(0, 40) !== coverLetter.slice(0, 40)) return await fail("cover letter textarea did not accept the letter");
           await clickContinue(page, timeout);
           break;
         }
@@ -649,7 +670,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
         case "review": {
           const text = await bodyText();
           if (!text.includes(opts.resumeFilename)) {
-            return fail(`review page does not list resumé "${opts.resumeFilename}" under Documents included`);
+            return await fail(`review page does not list resumé "${opts.resumeFilename}" under Documents included`);
           }
           // Employer privacy consent, when present, is required before Submit.
           const consent = page.getByRole("checkbox", { name: /privacy/i });
@@ -667,6 +688,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           }
           const submit = page.getByRole("button", { name: /^submit application$/i }).first();
           await submit.waitFor({ state: "visible", timeout });
+          submissionAttempted = true;
           await submit.click();
           await page.waitForURL(/\/apply\/success/, { timeout: 45_000 });
           await page.waitForLoadState("domcontentloaded");
@@ -686,14 +708,14 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
 
         default: {
           const text = await bodyText();
-          if (/already applied|you(?:'|’)ve applied/i.test(text)) return fail("SEEK reports this application was already submitted");
-          return fail(`unexpected page at ${page.url()}: ${text.slice(0, 160)}`);
+          if (/already applied|you(?:'|’)ve applied/i.test(text)) return await fail("SEEK reports this application was already submitted");
+          return await fail(`unexpected page at ${page.url()}: ${text.slice(0, 160)}`);
         }
       }
     }
-    return fail(`wizard did not reach review/success within 8 steps (last url ${page.url()})`);
+    return await fail(`wizard did not reach review/success within 8 steps (last url ${page.url()})`);
   } catch (e) {
-    return fail(`${(e as Error).name}: ${(e as Error).message.split("\n")[0].slice(0, 200)}`);
+    return await fail(`${(e as Error).name}: ${(e as Error).message.split("\n")[0].slice(0, 200)}`);
   } finally {
     await ctx?.close().catch(() => {});
   }
