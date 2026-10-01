@@ -214,14 +214,14 @@ export function sentSince(rows, since) {
 }
 
 export function sentQueue(rows, selectedId, query) {
-  const box = h("section", { class: "today-queue", "aria-label": "Sent overnight" });
+  const box = h("section", { class: "today-queue", "aria-label": "Sent today" });
   const head = h("div", { class: "queue-head" });
   head.append(h("div", {}, h("p", { class: "eyebrow", text: "Activity" }),
-    h("h2", { text: "Sent overnight" })),
+    h("h2", { text: "Sent today" })),
   h("span", { class: "queue-count", text: String(rows.length) }));
   box.append(head);
   if (!rows.length) {
-    box.append(h("p", { class: "empty", text: "Nothing went out overnight. The run sends on the autopilot lane only." }));
+    box.append(h("p", { class: "empty", text: "No confirmed applications sent today. Queued applications remain available for the next run." }));
     return box;
   }
   const list = h("div", { class: "queue-list" });

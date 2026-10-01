@@ -536,15 +536,15 @@ test("Today switches one compact workspace between needs and sent activity", () 
     assert.ok(!home.includes(`${removed}(`) && !home.includes(`class: "${removed}"`), `Today still draws ${removed}`);
   }
   assert.ok(home.includes("todayWorkDetail("), "Today must keep the selected application beside its queue");
-  assert.match(home, /\{ key: "needs", label: "Needs you" \}, \{ key: "sent", label: "Sent overnight" \}/,
-    "Needs you and Sent overnight must be peer tabs in the title row");
+  assert.match(home, /\{ key: "needs", label: "Needs you" \}, \{ key: "sent", label: "Sent today" \}/,
+    "Needs you and Sent today must be peer tabs in the title row");
   assert.match(home, /query\.get\("panel"\) === "sent" \? "sent" : "needs"/,
     "the active Today panel must live in the address");
   assert.match(home, /active === "needs" && needs\.status === "fulfilled"/,
     "the needs workspace must only be drawn on its tab");
   assert.match(home, /active === "sent" && sent\.status === "fulfilled"/,
     "sent activity must only be drawn on its tab");
-  assert.match(home, /workbench\.append\(sentQueue\(sentRows, selected && selected\.id, query\), await todayWorkDetail\(selected\)\)/,
+  assert.match(home, /workbench\.append\(sentQueue\(sentRows, selected && selected\.id, query\), await todayWorkDetail\(selected, undefined, \{ sentView: true \}\)\)/,
     "Sent overnight must use the same left-list and selected-detail workspace");
   assert.match(lists, /q\.set\("panel", "sent"\);[\s\S]*?q\.set\("sent", row\.id\);/,
     "selecting a sent row must keep its tab and selected item in the address");
@@ -593,8 +593,8 @@ test("every number in the brief links to the list it counts", () => {
   assert.match(home, /if \(!n\) continue;/, "a zero clause is left out of the sentence");
   assert.ok(home.includes('num(n, `#/pipeline/needs#${clause.key}`)'),
     "each group number must link to its own group");
-  assert.ok(home.includes('num(sentCount, "#/pipeline/sent")'), "what went out must link to the sent segment");
-  assert.ok(home.includes('num(stopped, "#/pipeline/needs")'), "and what stopped must link to the needs segment");
+  assert.ok(home.includes('num(sentCount, "#/today?panel=sent")'), "today's count opens today's confirmed sends");
+  assert.ok(home.includes('num(queued, "#/pipeline/queue")'), "queued work opens the complete Queue segment");
   for (const [one, many] of [["needs an answer", "need an answer"], ["is a portal you open", "are portals you open"],
     ["letter waits on a redraft", "letters wait on a redraft"], ["needs a decision", "need a decision"]]) {
     assert.ok(home.includes(one) && home.includes(many), `the brief has no singular and plural for: ${many}`);
@@ -653,7 +653,7 @@ test("a Needs you row names its one action by what will happen", () => {
   assert.ok(!lists.includes("slice(0, 5)"), "nothing on Today truncates a list to five with no way to the rest");
 });
 
-test("Sent overnight is what went out since the last run started", () => {
+test("Sent today keeps earlier sends visible after a same-day rerun", () => {
   assert.match(lists, /export function overnightFrom\(health, runs\)/, "Today must know when overnight began");
   assert.ok(lists.includes("health.last_run ? health.last_run.started_at : null"),
     "which is the instant the last run's log opened");
@@ -661,8 +661,8 @@ test("Sent overnight is what went out since the last run started", () => {
   assert.ok(lists.includes("const today = localDay();"), "with the person's own calendar day as the fallback");
   assert.match(lists, /const sentAt = \(row\) => row\.submittedAt \|\| row\.submitted_at \|\| null;/,
     "a row is sent only when it has a real submission time, never a migration touch");
-  assert.ok(home.includes("sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))"),
-    "the view must pass the run's start to the filter");
+  assert.ok(home.includes("sentSince(sent.value.rows || [], null)"),
+    "the view uses the calendar day rather than the latest run's start");
   assert.ok(home.includes("brief(summary, getPolicy(), healthValue, sentRows.length)"),
     "and the brief must count the same list the section lists, so the two cannot disagree");
   assert.match(labelsJs, /new Intl\.DateTimeFormat\("en-CA"\)\.format\(d\)/,
@@ -1088,11 +1088,11 @@ test("the gates strip quotes every verdict, and a gate that never ran says so", 
   // and "not run" where there is no record. AGENTS.md section 8: a missing
   // verdict is never read as a pass.
   const letter = src["row-letter.js"];
-  assert.match(letter, /export function gatesStrip\(pkg, files\)/, "the gates strip is built in one place");
+  assert.match(letter, /export function gatesStrip\(pkg, files, \{ onFindings = scrollToFindings \} = \{\}\)/, "the shared gates strip accepts a findings destination for the selected workbench");
   assert.match(letter, /`\$\{name\} not run`/, "a gate with no record on file must say not run");
   assert.match(letter, /verdict \? TONES\[verdict\] \|\| "pill-warn" : "pill-none"/,
     "and it must wear the muted pill, never a pass");
-  for (const gate of ["Critic", "Letter critic", "Slop", "Voice", "Term grounding"]) {
+  for (const gate of ["CV critic", "Letter critic", "Slop", "Voice", "Term grounding"]) {
     assert.ok(letter.includes(`gateChip("${gate}"`), `the gates strip is missing the chip: ${gate}`);
   }
   // The old card invented a verdict from the row's status. A row reads
@@ -1381,8 +1381,8 @@ test("the lane and the machine's own status stay in the selected application con
   // The compact browser is for scanning titles and reasons. Lane and status
   // stay with the selected application's workflow, where they explain what
   // can happen next without crowding every list row.
-  assert.match(todayWorkbench, /laneLabel\(data\.lane\)/,
-    "the selected application names the lane from the detail API");
+  assert.match(todayWorkbench, /laneLabel\(\["portal", "mark_sent"\]\.includes\(\(data\.action \|\| \{\}\)\.kind\) \? "attended" : data\.lane\)/,
+    "external portal actions are attended even when the channel's default lane is autopilot");
   assert.match(todayWorkbench, /statusLabel\(row\.status\)/,
     "and names the machine status beside it");
   assert.match(pipelineRows, /class: row\.lane === "autopilot" \? "pill pill-autopilot" : "pill pill-you"/,
@@ -1421,10 +1421,10 @@ test("Today asks the server once for each thing it shows", () => {
   assert.ok(home.includes('const WORKED = "manual_action_needed,shortlisted,drafted,awaiting_approval,approved,submission_pending"'),
     "the Needs you lists must be the statuses the summary counts its groups over");
   for (const call of ['api("health")', "api(`rows?status=${WORKED}`)", "api(`rows?status=submitted&limit=${SENT_LOOKBACK}`)",
-    'api("resumes")', 'api("runs?limit=1")']) {
+    'api("resumes")']) {
     assert.ok(home.includes(call), `Today never calls ${call}`);
   }
-  assert.match(home, /const \[health, needs, sent, resumes, runs\] = results;/,
+  assert.match(home, /const \[health, needs, sent, resumes\] = results;/,
     "the results must be unpacked in the order they were asked for");
   for (const removed of ['api("keywords/pending?limit=1")', 'api("critic/digest?since=14d")', 'api("journal/today")']) {
     assert.ok(!home.includes(removed), `Today still fetches removed card data through ${removed}`);

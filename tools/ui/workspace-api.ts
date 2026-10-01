@@ -36,6 +36,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, promises as fsp } from "node:fs";
 import path from "node:path";
+import { readRunLogEdges } from "./run-log.ts";
 import { fileURLToPath } from "node:url";
 
 import YAML, { isScalar, isSeq } from "yaml";
@@ -253,26 +254,13 @@ export function runTally(markdown: string): { sent: number | null; blocked: numb
   return headline ? { sent: Number(headline[1]), blocked: Number(headline[2]) } : { sent: null, blocked: null };
 }
 
-/** The first and last `LOG_EDGE_BYTES` of a file, without reading the middle. */
+/** The latest start marker and log tail, without loading the transcript. */
 async function readEnds(file: string): Promise<{ head: string; tail: string; mtime_ms: number } | null> {
-  let handle;
   try {
-    handle = await fsp.open(file, "r");
+    return await readRunLogEdges(file, LOG_EDGE_BYTES);
   } catch (error: any) {
     if (error?.code === "ENOENT") return null;
     throw error;
-  }
-  try {
-    const { size, mtimeMs } = await handle.stat();
-    const headLength = Math.min(size, LOG_EDGE_BYTES);
-    const headBuffer = Buffer.alloc(headLength);
-    await handle.read(headBuffer, 0, headLength, 0);
-    const tailLength = Math.min(size, LOG_EDGE_BYTES);
-    const tailBuffer = Buffer.alloc(tailLength);
-    await handle.read(tailBuffer, 0, tailLength, Math.max(0, size - tailLength));
-    return { head: headBuffer.toString("utf8"), tail: tailBuffer.toString("utf8"), mtime_ms: mtimeMs };
-  } finally {
-    await handle.close();
   }
 }
 
@@ -295,8 +283,10 @@ export function parseRunLog(
   tail: string,
   opts: { mtime_ms?: number; now?: number } = {},
 ): { exit_code: number | null; duration_s: number | null; running: boolean; note: string | null; started_at: string | null } {
-  const started = /===\s*(\S+)\s+starting daily run/.exec(head);
-  const finishes = [...tail.matchAll(/===\s*(\S+)\s+finished daily run \(exit (-?\d+)\)/g)];
+  const starts = [...head.matchAll(/===\s*(\S+)\s+starting daily run/g)];
+  const started = starts[starts.length - 1];
+  const finishes = [...tail.matchAll(/===\s*(\S+)\s+finished daily run \(exit (-?\d+)\)/g)]
+    .filter(match => !started || Date.parse(match[1]) >= Date.parse(started[1]));
   const last = finishes.length ? finishes[finishes.length - 1] : null;
   const from = started ? new Date(started[1]).getTime() : Number.NaN;
   // The stamp as an instant, so every screen can put it through one date
