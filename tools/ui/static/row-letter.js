@@ -303,10 +303,10 @@ function resumeOf(metadata) {
  * status: a row reads "submitted" because it was sent, which says nothing at
  * all about what the gate found on the way (AGENTS.md section 8).
  */
-export function gatesStrip(pkg, files) {
+export function gatesStrip(pkg, files, { onFindings = scrollToFindings } = {}) {
   const strip = h("div", { class: "gates-strip", "aria-label": "Gates" });
   const quality = qualityOf(pkg.metadata);
-  strip.append(gateChip("Critic", quality.critic, ""));
+  strip.append(gateChip("CV critic", quality.critic, ""));
 
   const critic = pkg.letter_critic;
   if (!critic) strip.append(gateChip("Letter critic", null, ""));
@@ -317,7 +317,7 @@ export function gatesStrip(pkg, files) {
     const detail = verdict === "pass"
       ? `${findings.length - fails} warn`
       : `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
-    strip.append(gateChip("Letter critic", verdict, detail, findings.length ? scrollToFindings : null));
+    strip.append(gateChip("Letter critic", verdict, detail, findings.length ? onFindings : null));
   }
   strip.append(gateChip("Slop", quality.slop, ""));
   strip.append(gateChip("Voice", quality.voice, ""));

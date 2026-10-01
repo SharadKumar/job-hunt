@@ -30,6 +30,7 @@
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readRunLogEdges } from "./run-log.ts";
 
 import YAML, { isMap, isPair, isScalar, isSeq, type Document, type Node } from "yaml";
 
@@ -151,26 +152,12 @@ function relativeToRepo(file: string): string {
 }
 
 /**
- * The first and last few KB of a file.
- *
- * A launchd log is 5 to 6 MB of stream-json, and the only two lines that
- * matter are the first and the last. Reading the whole thing to find them
- * would make opening Home cost more than the run it reports on.
+ * The latest start marker and last few KB of a file. Appended daily logs
+ * contain several runs, so the first marker is not the current run.
+ * Scan backwards in bounded chunks without loading the transcript.
  */
 async function headAndTail(file: string, bytes = 8192): Promise<{ head: string; tail: string } | null> {
-  const handle = await fsp.open(file, "r").catch(() => null);
-  if (!handle) return null;
-  try {
-    const { size } = await handle.stat();
-    const headBuf = Buffer.alloc(Math.min(bytes, size));
-    if (headBuf.length) await handle.read(headBuf, 0, headBuf.length, 0);
-    const tailLen = Math.min(bytes, size);
-    const tailBuf = Buffer.alloc(tailLen);
-    if (tailLen) await handle.read(tailBuf, 0, tailLen, size - tailLen);
-    return { head: headBuf.toString("utf8"), tail: tailBuf.toString("utf8") };
-  } finally {
-    await handle.close();
-  }
+  return readRunLogEdges(file, bytes).catch(() => null);
 }
 
 const isoOrNull = (value: string | undefined): string | null => {
@@ -198,8 +185,10 @@ export async function readLastRun(logDir: string, now: Date = new Date()): Promi
   const head = text?.head ?? "";
   const tail = text?.tail ?? "";
 
-  const started = /^=== (\S+) starting daily run/m.exec(head);
-  const finishes = [...tail.matchAll(/=== (\S+) finished daily run \(exit (\d+)\)/g)];
+  const starts = [...head.matchAll(/^=== (\S+) starting daily run/gm)];
+  const started = starts[starts.length - 1];
+  const finishes = [...tail.matchAll(/=== (\S+) finished daily run \(exit (\d+)\)/g)]
+    .filter(match => !started || Date.parse(match[1]) >= Date.parse(started[1]));
   const finished = finishes[finishes.length - 1];
 
   // The wrapper writes both stamps itself, so they are the truth. File times
