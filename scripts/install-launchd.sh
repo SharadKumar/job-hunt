@@ -24,9 +24,25 @@ if [ ! -x "$INSTALL_CLI_BIN" ]; then
   exit 2
 fi
 
-# Read the hour:minute from profile.md if present, otherwise default to 07:00
-HOUR=7
+# Weekday working hours. Every trigger runs the full workflow to retry queued
+# packages and continue preparation of unfinished applications.
+START_HOUR="${HARNESS_START_HOUR:-7}"
+END_HOUR="${HARNESS_END_HOUR:-17}"
+INTERVAL_HOURS="${HARNESS_INTERVAL_HOURS:-2}"
 MINUTE=0
+if ! [[ "$START_HOUR" =~ ^[0-9]+$ && "$END_HOUR" =~ ^[0-9]+$ ]] \
+  || [ "$START_HOUR" -gt 23 ] || [ "$END_HOUR" -gt 23 ] \
+  || [ "$START_HOUR" -gt "$END_HOUR" ] \
+  || ! [[ "$INTERVAL_HOURS" =~ ^(2|4)$ ]]; then
+  echo "Schedule requires hours 0 to 23, start <= end, and interval 2 or 4" >&2
+  exit 2
+fi
+CALENDAR_ENTRIES=""
+for WEEKDAY in 1 2 3 4 5; do
+  for ((HOUR=START_HOUR; HOUR<=END_HOUR; HOUR+=INTERVAL_HOURS)); do
+    CALENDAR_ENTRIES+="    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>$WEEKDAY</integer></dict>"$'\n'
+  done
+done
 
 mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -55,11 +71,7 @@ cat > "$PLIST_PATH" <<EOF
   </dict>
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>1</integer></dict>
-    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>2</integer></dict>
-    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>3</integer></dict>
-    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>4</integer></dict>
-    <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer><key>Weekday</key><integer>5</integer></dict>
+$CALENDAR_ENTRIES
   </array>
   <key>RunAtLoad</key>
   <false/>
@@ -76,6 +88,7 @@ launchctl bootout "gui/$UID/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$UID" "$PLIST_PATH"
 
 echo "Installed: $PLIST_PATH"
+echo "Schedule: weekdays, every $INTERVAL_HOURS hours from $START_HOUR:00 through $END_HOUR:00 local time"
 echo "Verify: launchctl print gui/$UID/$LABEL"
 echo "Test now: launchctl kickstart -k gui/$UID/$LABEL"
 echo "Logs: $REPO_DIR/state/journal/launchd/"

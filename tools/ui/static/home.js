@@ -24,7 +24,7 @@ import {
   pageHeader, parseHash, placeholderRows, render,
 } from "./app.js";
 import {
-  needsYouGroup, needsYouQueue, overnightFrom, sentQueue, sentSince,
+  needsYouGroup, needsYouQueue, sentQueue, sentSince,
 } from "./today-lists.js";
 import { todayWorkDetail } from "./today-workbench.js";
 
@@ -226,17 +226,13 @@ const CLAUSES = [
   { key: "decide", one: "needs a decision", many: "need a decision" },
 ];
 
-/** What the run did while nobody was watching. */
-function overnightLine(sentCount, stopped) {
-  if (!sentCount && !stopped) return ["The run sent nothing overnight and stopped on nothing."];
-  const bits = ["Overnight the run "];
-  if (sentCount) {
-    bits.push("sent ", num(sentCount, "#/pipeline/sent"), ` ${plural(sentCount, "application")}`);
-    if (stopped) bits.push(" and ");
-  }
-  if (stopped) bits.push("stopped on ", num(stopped, "#/pipeline/needs"));
-  bits.push(".");
-  return bits;
+/** Current run evidence, rather than attributing the whole backlog to it. */
+export function runStatusWords(last) {
+  if (!last) return "No run recorded";
+  if (last.running) return `Run in progress${soFar(last.duration_seconds) ? `, ${soFar(last.duration_seconds)}` : ""}`;
+  if (last.exit_code === 0) return "Latest run completed";
+  if (last.exit_code === null || last.exit_code === undefined) return "Latest run has no confirmed finish";
+  return "Latest run needs attention";
 }
 
 /** The four groups as one sentence, with every zero clause left out. */
@@ -274,10 +270,19 @@ function laneLine(summary, policy, health) {
 function brief(summary, policy, health, sentCount) {
   const box = h("div", { class: "brief" });
   const groups = (summary && summary.needs_you_groups) || {};
-  const stopped = summary ? summary.needs_you ?? 0 : 0;
-  box.append(h("p", {}, overnightLine(sentCount, stopped)));
+  const last = health && health.last_run;
+  const runLink = h("a", { class: "today-run-link", href: last && last.date ? `#/schedules/${last.date}` : "#/schedules",
+    text: runStatusWords(last) });
+  const queued = summary ? (summary.segments || {}).queue ?? 0 : null;
+  box.append(h("p", { class: "today-run-status" }, runLink));
+  box.append(h("p", {}, queued === null ? "Queue count unavailable" : num(queued, "#/pipeline/queue"), queued === null ? "" : " in Queue",
+    " / ", num(sentCount, "#/today?panel=sent"), " confirmed sent today."));
   box.append(h("p", {}, needsLine(groups)));
-  box.append(h("p", {}, laneLine(summary, policy, health)));
+  // The persistent shell already shows the normal policy and next run.
+  if (!isPolicyAvailable() || !policy || policy.kill_switch || !policy.autopilot_enabled) {
+    box.append(h("p", {}, laneLine(summary, policy, health)));
+  }
+  box.append(h("button", { type: "button", class: "btn today-refresh", text: "Refresh status", onClick: () => render() }));
   return box;
 }
 
@@ -286,7 +291,7 @@ function brief(summary, policy, health, sentCount) {
 function todayTabs(active, query) {
   const nav = h("nav", { class: "tabs", "aria-label": "Today" });
   const links = {};
-  for (const tab of [{ key: "needs", label: "Needs you" }, { key: "sent", label: "Sent overnight" }]) {
+  for (const tab of [{ key: "needs", label: "Needs you" }, { key: "sent", label: "Sent today" }]) {
     const q = new URLSearchParams(query);
     if (tab.key === "sent") q.set("panel", "sent");
     else q.delete("panel");
@@ -336,16 +341,14 @@ export async function viewHome(view) {
     api(`rows?status=${WORKED}`),
     api(`rows?status=submitted&limit=${SENT_LOOKBACK}`),
     api("resumes"),
-    api("runs?limit=1"),
   ]);
-  const [health, needs, sent, resumes, runs] = results;
+  const [health, needs, sent, resumes] = results;
   const name = firstName(resumes);
   if (name) say(greetingFor(now, name));
 
   while (body.firstChild) body.firstChild.remove();
   const baseSummary = getSummary();
   const healthValue = health.status === "fulfilled" ? health.value : null;
-  const runRows = runs.status === "fulfilled" ? runs.value.runs || [] : [];
   const workRows = needs.status === "fulfilled" ? (needs.value.rows || []).filter((row) => row.needs_you === true) : [];
   const grouped = { answer_question: 0, decide: 0, open_portal: 0, waiting_redraft: 0 };
   for (const row of workRows) {
@@ -357,10 +360,10 @@ export async function viewHome(view) {
     ? { ...baseSummary, needs_you: groupedTotal, needs_you_groups: grouped }
     : baseSummary;
   const sentRows = sent.status === "fulfilled"
-    ? sentSince(sent.value.rows || [], overnightFrom(healthValue, runRows))
+    ? sentSince(sent.value.rows || [], null)
     : [];
   tabs.links.needs.textContent = `Needs you ${summary ? summary.needs_you ?? groupedTotal : groupedTotal}`;
-  tabs.links.sent.textContent = `Sent overnight ${sentRows.length}`;
+  tabs.links.sent.textContent = `Sent today ${sentRows.length}`;
   body.append(brief(summary, getPolicy(), healthValue, sentRows.length));
   // The queue and the selected application stay in view together. Selecting a
   // row changes URL state only; the detail keeps save, review and send as
@@ -379,7 +382,7 @@ export async function viewHome(view) {
     const asked = query.get("sent");
     const selected = sentRows.find((row) => row.id === asked) || sentRows[0] || null;
     const workbench = h("div", { class: "today-workbench" });
-    workbench.append(sentQueue(sentRows, selected && selected.id, query), await todayWorkDetail(selected));
+    workbench.append(sentQueue(sentRows, selected && selected.id, query), await todayWorkDetail(selected, undefined, { sentView: true }));
     body.append(workbench);
   } else if (active === "sent") {
     body.append(h("section", { class: "today-section" }, loadError("what was sent", sent.reason, () => render())));

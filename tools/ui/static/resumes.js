@@ -121,6 +121,33 @@ function fileLink(label, url, note) {
   }, label), url, note);
 }
 
+/** The app browser does not render PDFs. Hand the real file to desktop Chrome. */
+function chromePdfLink(item) {
+  const url = (item.files || {}).pdf;
+  if (!url) return h("span", { class: "resume-file-link disabled", text: "PDF in Chrome", "aria-disabled": "true" });
+  const name = decodeURIComponent(url.split("/").pop() || "");
+  const button = h("button", {
+    type: "button",
+    class: "resume-file-link resume-chrome-link",
+    text: "PDF in Chrome",
+    title: "Open the rendered PDF in Google Chrome",
+  });
+  button.addEventListener("click", async () => {
+    if (button.getAttribute("aria-busy") === "true") return;
+    button.setAttribute("aria-busy", "true");
+    try {
+      await api(`resumes/${encodeURIComponent(item.id)}/open-pdf`, { method: "POST", body: { name } });
+      toast("Opened PDF in Google Chrome.", "good");
+    } catch (error) {
+      if (isUnauthorised(error)) askForToken();
+      else toast(error.message, "bad");
+    } finally {
+      button.removeAttribute("aria-busy");
+    }
+  });
+  return button;
+}
+
 // --- Page fill -----------------------------------------------------------
 
 /**
@@ -389,32 +416,8 @@ function resumeQuality(item) {
   return panel;
 }
 
-async function resumePreview(item) {
-  const panel = h("section", { class: "resume-preview", "aria-label": "Resume preview" });
-  const files = item.files || {};
-  if (!files.pdf) {
-    panel.append(h("p", { class: "empty", text: "No rendered PDF is available for this baseline." }));
-    return panel;
-  }
-  const note = h("p", { class: "file-note", text: "Loading rendered PDF." });
-  const frame = h("iframe", { class: "resume-pdf", title: `${item.label || item.id} resume PDF` });
-  try {
-    // Let Chromium's native PDF viewer own the ordinary local path. When the
-    // UI token is set, fetch first with the bearer header and give the viewer
-    // the protected bytes as an object URL instead.
-    const pdfUrl = readToken() ? await artefactUrl(files.pdf) : files.pdf;
-    frame.src = `${pdfUrl}#view=FitH&toolbar=1&navpanes=0`;
-    note.textContent = "";
-  } catch (error) {
-    if (isUnauthorised(error)) askForToken();
-    note.textContent = error.message;
-  }
-  panel.append(h("div", { class: "resume-pdf-shell" }, frame), note);
-  return panel;
-}
-
 async function resumeSelected(item, query) {
-  const active = ["pdf", "quality"].includes(query.get("panel")) ? query.get("panel") : "overview";
+  const active = query.get("panel") === "quality" ? "quality" : "overview";
   const panel = h("section", { class: "resume-selected", "aria-label": "Selected resume" });
   const label = item.label || item.id;
   const actions = h("div", { class: "resume-head-actions" }, stampFor(item));
@@ -426,13 +429,11 @@ async function resumeSelected(item, query) {
   const tabs = h("nav", { class: "tabs resume-selected-tabs", "aria-label": "Selected resume tabs" });
   const overview = h("a", { href: inspectorHref(query, item.id, "overview"), text: "Overview" });
   if (active === "overview") overview.setAttribute("aria-current", "page");
-  const pdf = h("a", { href: inspectorHref(query, item.id, "pdf"), text: "PDF" });
-  if (active === "pdf") pdf.setAttribute("aria-current", "page");
   const files = item.files || {};
   const quality = h("a", { href: inspectorHref(query, item.id, "quality"), text: "Quality" });
   if (active === "quality") quality.setAttribute("aria-current", "page");
-  tabs.append(overview, pdf, fileLink("DOCX", files.docx), fileLink("Markdown", files.md), quality);
-  const content = active === "quality" ? resumeQuality(item) : active === "pdf" ? await resumePreview(item) : resumeOverview(item);
+  tabs.append(overview, chromePdfLink(item), fileLink("DOCX", files.docx), fileLink("Markdown", files.md), quality);
+  const content = active === "quality" ? resumeQuality(item) : resumeOverview(item);
   panel.append(head, tabs, content);
   return panel;
 }

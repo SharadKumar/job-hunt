@@ -10,7 +10,6 @@
 
    Local additions (nothing here belongs in app.css):
      .fills / .fill      the row of page-fill bars, this screen only
-     .resume-pdf         the authenticated PDF in the third panel
      .cover              a coverage bar with its label and fraction on one line
      .verdict-line       a gate, critic or cloud reading, 15 px ink
      .answers           the four fixed keyword answers under a list row */
@@ -110,15 +109,6 @@
 .resume-quality-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--rule); }
 .resume-quality-section > .eyebrow { margin-bottom: 8px; }
 
-.resume-preview { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
-.resume-pdf-shell {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--paper);
-}
-.resume-pdf { display: block; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--paper); }
-
 .cloud-list { list-style: none; margin: 12px 0 0; padding: 0; }
 .cloud-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); font-size: 13px; }
 .cloud-age { flex: 0 0 auto; color: var(--muted); }
@@ -215,6 +205,17 @@
 
 .resume-file-link { font-size: 13px; }
 .resume-file-link.disabled { color: var(--muted); text-decoration: none; }
+.resume-chrome-link {
+  height: auto;
+  padding: 0 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 400;
+}
+.resume-chrome-link:hover { border-bottom-color: var(--rule); background: transparent; color: var(--ink); }
 
 /* A file that would not open says so under the buttons, in the server's words. */
 .file-note { margin: 0; padding: 0 24px 12px; font-size: 13px; color: var(--fail); max-width: var(--measure); }
@@ -271,7 +272,6 @@
   .resume-selected-tabs { padding-right: 16px; padding-left: 16px; overflow-x: auto; }
   .resume-overview { overflow: visible; padding-right: 16px; padding-left: 16px; }
   .resume-quality { overflow: visible; padding-right: 16px; padding-left: 16px; }
-  .resume-pdf { height: 640px; }
   .resume-browser { grid-row: 2; overflow: visible; border-right: 0; border-top: 1px solid var(--rule); }
   .resume-head-actions { justify-content: flex-start; }
 }

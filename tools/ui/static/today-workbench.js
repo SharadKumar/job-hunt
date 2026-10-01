@@ -7,6 +7,7 @@ import { gatesStrip } from "./row-letter.js";
 import { timeline } from "./row.js";
 import { screeningCard } from "./screening.js";
 import { alsoControls, contextualControl, reopenControl, routeButton } from "./pipeline-rows.js";
+import { plainReason } from "./home.js";
 
 const ACTION_LABELS = {
   answer: "Answer a screening question",
@@ -22,7 +23,7 @@ function facts(row, data) {
     row.company,
     row.location,
     channelLabel(row.channel),
-    laneLabel(data.lane),
+    laneLabel(["portal", "mark_sent"].includes((data.action || {}).kind) ? "attended" : data.lane),
     statusLabel(row.status),
   ].filter(Boolean).join("  /  ");
 }
@@ -46,8 +47,11 @@ function actionLinks(row, action, changed, summary) {
   // carry it on the row itself. The shared controls read row.action, so join
   // the two shapes here before rendering the selected application's actions.
   const actionable = { ...row, action };
-  const primary = contextualControl(actionable, changed, { small: false });
-  if (primary) links.append(primary);
+  const primary = action.kind === "answer" ? null : contextualControl(actionable, changed, { small: false });
+  if (primary) {
+    primary.classList.add("btn-primary");
+    links.append(primary);
+  }
   const more = alsoControls(actionable, changed, { small: false });
   for (const button of more.buttons) links.append(button);
   if (action.kind === "reopen") {
@@ -70,13 +74,13 @@ function actionLinks(row, action, changed, summary) {
   return links;
 }
 
-export async function todayWorkDetail(summary, changed = () => render()) {
+export async function todayWorkDetail(summary, changed = () => render(), { sentView = false } = {}) {
   const shell = h("section", { class: "today-detail", "aria-label": "Selected application" });
   if (!summary) {
     shell.append(h("div", { class: "workbench-empty" },
-      h("p", { class: "eyebrow", text: "Application workflow" }),
-      h("h2", { text: "Nothing is waiting on you" }),
-      h("p", { text: "The next unattended run will add work here when it needs a decision." })));
+      h("p", { class: "eyebrow", text: sentView ? "Confirmed submissions" : "Application workflow" }),
+      h("h2", { text: sentView ? "Nothing sent today yet" : "Nothing is waiting on you" }),
+      h("p", { text: sentView ? "Confirmed submissions will appear here. Needs you is a separate queue." : "The next unattended run will add work here when it needs a decision." })));
     return shell;
   }
 
@@ -98,7 +102,8 @@ export async function todayWorkDetail(summary, changed = () => render()) {
     typeof row.score === "number" ? h("div", { class: "workbench-fit" },
       h("strong", { text: String(Math.round(row.score)) }), h("span", { text: "fit score" })) : null,
   );
-  shell.append(top, h("div", { class: "workbench-timeline" }, timeline(row, action)));
+  shell.append(top);
+  if (action.kind !== "answer") shell.append(actionLinks(row, action, changed, summary));
   shell.append(h("div", { class: "workbench-state" },
     h("span", { class: "state-dot", "aria-hidden": "true" }),
     h("p", { text: stateNote(row, action) })));
@@ -113,7 +118,7 @@ export async function todayWorkDetail(summary, changed = () => render()) {
       : ["rejected", "withdrawn"].includes(status) ? "Why it closed"
       : ["shortlisted", "drafted", "awaiting_approval", "approved", "submission_pending", "parked"].includes(status) ? "Latest activity"
       : "Why it stopped";
-    const content = h("p", { text: data.reason });
+    const content = h("p", { text: plainReason(data.reason) });
     if (String(data.reason).length > 280) {
       shell.append(h("section", { class: "workbench-reason" },
         h("details", {}, h("summary", { text: heading }), content)));
@@ -123,12 +128,14 @@ export async function todayWorkDetail(summary, changed = () => render()) {
     }
   }
 
+  shell.append(h("div", { class: "workbench-timeline" }, timeline(row, action)));
+
   const pkg = data.package || {};
   shell.append(h("section", { class: "workbench-package" },
     h("div", { class: "workbench-section-head" },
       h("div", {}, h("p", { class: "eyebrow", text: "Application package" }), h("h3", { text: "Recorded checks and files" })),
       h("a", { href: `#/row/${encodeURIComponent(row.id)}`, text: "See full package" })),
-    gatesStrip(pkg, data.package_files)));
-  shell.append(actionLinks(row, action, changed, summary));
+    gatesStrip(pkg, data.package_files, { onFindings: () => { window.location.hash = `#/row/${encodeURIComponent(row.id)}`; } })));
+  if (action.kind === "answer") shell.append(actionLinks(row, action, changed, summary));
   return shell;
 }
