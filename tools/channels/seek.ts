@@ -52,12 +52,17 @@ export const seek: HuntChannel = {
     const ctx = await openSeekContext();
     try {
       const all: DiscoveredOpportunity[] = [];
+      let challenged = false;
+      let pagesRequested = 0;
       for (const [keywordIndex, kw] of keywords.entries()) {
+        if (challenged) break;
         const keywordStartedAt = Date.now();
         const beforeKeyword = all.length;
         let pagesRead = 0;
         for (let pageNumber = 1; pageNumber <= maxPagesPerKeyword; pageNumber++) {
           const url = buildSearchUrl(kw, location, workType, postedWithinDays, pageNumber);
+          // Results pages at a person's pace, not a burst of 130+ requests.
+          if (pagesRequested++ > 0) await new Promise((resolve) => setTimeout(resolve, 2_000 + Math.round(Math.random() * 2_000)));
           const page = await ctx.newPage();
           try {
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -109,6 +114,17 @@ export const seek: HuntChannel = {
             // A short page is the final page. SEEK currently emits up to 32
             // job cards per result page.
             if (items.length < 32) break;
+          } catch (error) {
+            // One slow or failed page must not discard every card already
+            // found. A check stops the search; anything else skips the keyword.
+            const text = await page.locator("body").innerText({ timeout: 2_000 }).catch(() => "");
+            if (isSeekHumanVerification(text)) {
+              challenged = true;
+              console.error(`[seek] SEEK human verification required at "${kw}" page ${pageNumber}; stopping search with ${all.length} cards kept`);
+            } else {
+              console.error(`[seek] "${kw}" page ${pageNumber} skipped: ${(error as Error).message.split("\n")[0].slice(0, 160)}`);
+            }
+            break;
           } finally {
             await page.close();
           }
@@ -116,6 +132,7 @@ export const seek: HuntChannel = {
         const elapsedSeconds = ((Date.now() - keywordStartedAt) / 1000).toFixed(1);
         console.error(`[seek] ${keywordIndex + 1}/${keywords.length} "${kw}": ${pagesRead} page(s), +${all.length - beforeKeyword} technical contract cards, ${elapsedSeconds}s`);
       }
+      if (challenged && !all.length) throw new Error("SEEK human verification required before any search results were read");
       // Dedup by url
       const byUrl = new Map<string, DiscoveredOpportunity>();
       for (const r of all) if (!byUrl.has(r.url)) byUrl.set(r.url, r);
