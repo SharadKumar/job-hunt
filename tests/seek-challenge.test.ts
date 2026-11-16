@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
+import { profileInUse, seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
 import { waitForSeekChallengeToClear } from "../tools/channels/seek-submit.ts";
 import { SEEK_CHECK_ACTION, seekCheckReason } from "../tools/daily-summary.ts";
 import { SEEK_SHORTLIST_ENRICH_LIMIT } from "../tools/daily-front-half.ts";
@@ -9,6 +9,12 @@ assert.equal(seekBrowserMode({}, "darwin"), "background");
 assert.equal(seekBrowserMode({}, "linux"), "headless");
 assert.equal(seekBrowserMode({ HARNESS_SEEK_HEADLESS: "1" }, "darwin"), "headless");
 assert.equal(seekBrowserMode({ HARNESS_SEEK_HEADED: "1" }, "darwin"), "headed");
+
+// A profile counts as busy only while a Chrome runs on that exact directory.
+const psOut = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/x/chrome-profile/seek --remote-debugging-port=1\n/usr/bin/node tools/channels/seek.ts";
+assert.equal(profileInUse("/x/chrome-profile/seek", () => psOut), true);
+assert.equal(profileInUse("/x/chrome-profile/linkedin", () => psOut), false);
+assert.equal(profileInUse("/x/chrome-profile/seek", () => "/usr/bin/node tools/channels/seek.ts --user-data-dir=/x/chrome-profile/seek-old"), false);
 
 // Advert reads are spaced 4 to 9 seconds apart; tests can pin the gap.
 assert.equal(seekPaceMs({}, () => 0), 4_000);
