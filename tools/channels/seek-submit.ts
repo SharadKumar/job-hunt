@@ -62,7 +62,7 @@ import type { BrowserContext, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
 import { repoPath } from "../repo-root.ts";
-import { openChromeContext, seekHeadless } from "./_browser.ts";
+import { openSeekContext } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
 
 export function isSeekHumanVerification(text: string): boolean {
@@ -588,7 +588,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
   };
 
   try {
-    ctx = await openChromeContext("seek", { headless: seekHeadless() });
+    ctx = await openSeekContext();
     page = await ctx.newPage();
     await page.goto(`https://www.seek.com.au/job/${jobId}/apply`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForLoadState("networkidle", { timeout: 15_000 })

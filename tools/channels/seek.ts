@@ -2,8 +2,8 @@
 /**
  * seek.ts — Seek.com.au search channel.
  *
- * Uses Playwright headless on the signed-in SEEK profile (HARNESS_SEEK_HEADED=1
- * shows the window). Seek serves SSR HTML for /jobs/ pages and we
+ * Uses the signed-in SEEK profile in a visible Chrome kept behind the person's
+ * apps (see openSeekContext). Seek serves SSR HTML for /jobs/ pages and we
  * extract via DOM selectors. Submit is in seek-submit.ts (separate module
  * so it can be denied at the permission layer for safety).
  *
@@ -27,7 +27,7 @@ import { load as loadPipeline, list as listPipeline, patchMany, setStatus, upser
 import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
-import { openChromeContext, seekHeadless, seekPaceMs } from "./_browser.ts";
+import { openSeekContext, seekPaceMs } from "./_browser.ts";
 import { isSeekHumanVerification, waitForSeekChallengeToClear } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
@@ -49,7 +49,7 @@ export const seek: HuntChannel = {
     const workType = (config.work_type as string[] | undefined) ?? ["contract"];
     const postedWithinDays = (config.posted_within_days as number | undefined) ?? 7;
     const maxPagesPerKeyword = Math.max(1, Math.min(5, Number(config.max_pages_per_keyword ?? 2)));
-    const ctx = await openChromeContext("seek", { headless: seekHeadless() });
+    const ctx = await openSeekContext();
     try {
       const all: DiscoveredOpportunity[] = [];
       for (const [keywordIndex, kw] of keywords.entries()) {
@@ -208,7 +208,7 @@ export async function enrichSeekRoles(options: {
 
   // The signed-in SEEK profile carries the session and any cleared check;
   // a separate empty profile looked like a new visitor on every run.
-  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
+  const ctx = await openSeekContext();
   const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0;
   let unchanged = 0;
@@ -475,7 +475,7 @@ const EXTRACT_SAVED_CARDS_JS = `(() => {
  * surfaced them.
  */
 export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
-  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
+  const ctx = await openSeekContext();
   const byId = new Map<string, SeekSavedJob>();
   try {
     const page = await ctx.newPage();
@@ -537,7 +537,7 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
  * as saved. Returns whether a click happened.
  */
 export async function unsaveSeekJob(jobId: string): Promise<{ jobId: string; unsaved: boolean; state: string }> {
-  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
+  const ctx = await openSeekContext();
   try {
     const page = await ctx.newPage();
     await page.goto(`https://www.seek.com.au/job/${jobId}`, { waitUntil: "domcontentloaded", timeout: 45_000 });

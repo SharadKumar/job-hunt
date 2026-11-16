@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { seekHeadless, seekPaceMs } from "../tools/channels/_browser.ts";
+import { seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
 import { waitForSeekChallengeToClear } from "../tools/channels/seek-submit.ts";
 import { SEEK_CHECK_ACTION, seekCheckReason } from "../tools/daily-summary.ts";
 import { SEEK_SHORTLIST_ENRICH_LIMIT } from "../tools/daily-front-half.ts";
 
-// Scheduled SEEK work stays hidden so it never takes focus; headed is opt-in.
-assert.equal(seekHeadless({}), true);
-assert.equal(seekHeadless({ HARNESS_SEEK_HEADED: "0" }), true);
-assert.equal(seekHeadless({ HARNESS_SEEK_HEADED: "1" }), false);
+// macOS keeps SEEK visible but behind the person's apps; other modes are opt-in.
+assert.equal(seekBrowserMode({}, "darwin"), "background");
+assert.equal(seekBrowserMode({}, "linux"), "headless");
+assert.equal(seekBrowserMode({ HARNESS_SEEK_HEADLESS: "1" }, "darwin"), "headless");
+assert.equal(seekBrowserMode({ HARNESS_SEEK_HEADED: "1" }, "darwin"), "headed");
 
 // Advert reads are spaced 4 to 9 seconds apart; tests can pin the gap.
 assert.equal(seekPaceMs({}, () => 0), 4_000);
