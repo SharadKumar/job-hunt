@@ -24,7 +24,9 @@
  *   await ctx.close();
  */
 
+import { execFileSync, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { chromium, type BrowserContext } from "playwright";
 
@@ -56,11 +58,106 @@ export async function launchWithChromeFallback<T>(
   }
 }
 
-/** Scheduled SEEK work runs hidden: a visible window takes focus from the
- * person on every new page. HARNESS_SEEK_HEADED=1 shows it for debugging.
- * The person clears a check in a visible window with npm run seek:clear. */
-export function seekHeadless(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.HARNESS_SEEK_HEADED !== "1";
+export type SeekBrowserMode = "background" | "headless" | "headed";
+
+/** How scheduled SEEK work opens Chrome. SEEK's check challenges headless
+ * Chrome, and a foreground window takes focus from the person on every new
+ * page, so macOS defaults to a visible window kept behind the person's apps.
+ * HARNESS_SEEK_HEADLESS=1 or HARNESS_SEEK_HEADED=1 forces the other modes. */
+export function seekBrowserMode(env: NodeJS.ProcessEnv = process.env, platform: string = process.platform): SeekBrowserMode {
+  if (env.HARNESS_SEEK_HEADLESS === "1") return "headless";
+  if (env.HARNESS_SEEK_HEADED === "1") return "headed";
+  return platform === "darwin" ? "background" : "headless";
+}
+
+/** Open the signed-in SEEK profile in the configured mode. */
+export async function openSeekContext(env: NodeJS.ProcessEnv = process.env): Promise<BrowserContext> {
+  const mode = seekBrowserMode(env);
+  if (mode === "background") return openBackgroundChromeContext("seek");
+  return openChromeContext("seek", { headless: mode === "headless" });
+}
+
+const MAC_CHROME_APP = "Google Chrome";
+
+/** Process id of the frontmost app. A process id, not a bundle id: the
+ * person's own Chrome and the harness Chrome share a bundle id. */
+function frontmostPid(): number | null {
+  try {
+    const pid = Number(execFileSync("osascript", ["-e", 'tell application "System Events" to get unix id of first application process whose frontmost is true'],
+      { timeout: 5_000 }).toString().trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch { return null; }
+}
+
+function activatePid(pid: number): void {
+  try { execFileSync("osascript", ["-e", `tell application "System Events" to set frontmost of (first application process whose unix id is ${pid}) to true`], { timeout: 5_000 }); }
+  catch { /* the person's app may have quit; nothing to give focus back to */ }
+}
+
+function isChromeOnProfile(pid: number, dir: string): boolean {
+  try { return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { timeout: 5_000 }).toString().includes(`--user-data-dir=${dir}`); }
+  catch { return false; }
+}
+
+async function freePort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * A real, visible Chrome on the channel's persistent profile that never takes
+ * focus. macOS starts it without activation (`open -g -n`); Chrome still
+ * raises its first window, so focus is handed straight back to the app the
+ * person was using. Every later page is a background target, and navigating
+ * or closing pages does not activate Chrome. Closing the context quits this
+ * Chrome instance.
+ */
+export async function openBackgroundChromeContext(channel: ChannelKey): Promise<BrowserContext> {
+  const dir = await profileDirFor(channel);
+  const port = await freePort();
+  const prior = frontmostPid();
+  const launcher = spawn("open", ["-g", "-n", "-a", MAC_CHROME_APP, "--args",
+    `--user-data-dir=${dir}`, `--remote-debugging-port=${port}`, "--remote-debugging-address=127.0.0.1",
+    "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain",
+    "--hide-crash-restore-bubble", "--lang=en-AU", "about:blank"], { stdio: "ignore" });
+  launcher.unref();
+
+  const endpoint = `http://127.0.0.1:${port}`;
+  let ready = false;
+  for (let i = 0; i < 100 && !ready; i++) {
+    try { ready = (await fetch(`${endpoint}/json/version`)).ok; }
+    catch { await new Promise((resolve) => setTimeout(resolve, 200)); }
+  }
+  if (!ready) throw new Error(`background Chrome did not open its debugging port for profile ${channel}; is the profile already in use?`);
+  // Chrome raises its first window shortly after the port opens; give focus
+  // back each time it does during the first few seconds.
+  if (prior) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const front = frontmostPid();
+      if (front !== null && front !== prior && isChromeOnProfile(front, dir)) activatePid(prior);
+    }
+  }
+
+  const browser = await chromium.connectOverCDP(endpoint);
+  const context = browser.contexts()[0];
+  const browserSession = await browser.newBrowserCDPSession();
+  context.newPage = async () => {
+    const opened = context.waitForEvent("page", { timeout: 15_000 });
+    await browserSession.send("Target.createTarget", { url: "about:blank", background: true });
+    return await opened;
+  };
+  context.close = async () => {
+    await browserSession.send("Browser.close").catch(() => {});
+    await browser.close().catch(() => {});
+  };
+  return context;
 }
 
 /** Gap between SEEK advert reads: a random 4 to 9 seconds, so reads arrive at
