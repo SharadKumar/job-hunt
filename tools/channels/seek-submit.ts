@@ -62,11 +62,27 @@ import type { BrowserContext, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
 import { repoPath } from "../repo-root.ts";
-import { openChromeContext } from "./_browser.ts";
+import { openChromeContext, seekHeadless } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
 
 export function isSeekHumanVerification(text: string): boolean {
-  return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots/i.test(text);
+  return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots|sorry, you have been blocked|attention required! \| cloudflare/i.test(text);
+}
+
+/** A managed check in a real, visible Chrome often passes by itself within
+ * seconds. Poll the visible text, never interact with the check, and report
+ * whether SEEK let the page through. */
+export async function waitForSeekChallengeToClear(
+  page: Pick<Page, "locator" | "waitForTimeout">,
+  { timeoutMs = Number(process.env.HARNESS_SEEK_CHALLENGE_WAIT_MS ?? 30_000), pollMs = 2_000 } = {},
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(pollMs);
+    const text = await page.locator("body").innerText({ timeout: 2_000 }).catch(() => "");
+    if (text.trim() && !isSeekHumanVerification(text)) return true;
+  }
+  return false;
 }
 
 export type SubmitSeekOptions = {
@@ -573,7 +589,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
   };
 
   try {
-    ctx = await openChromeContext("seek", { headless: true });
+    ctx = await openChromeContext("seek", { headless: seekHeadless() });
     page = await ctx.newPage();
     await page.goto(`https://www.seek.com.au/job/${jobId}/apply`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForLoadState("networkidle", { timeout: 15_000 })
@@ -603,7 +619,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
     }
 
     for (let hop = 0; hop < 8; hop++) {
-      if (isSeekHumanVerification(await bodyText())) {
+      if (isSeekHumanVerification(await bodyText()) && !(await waitForSeekChallengeToClear(page))) {
         return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying", { channelVerificationRequired: true });
       }
       const step = classifyApplyStep(page.url());
@@ -619,7 +635,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           if ((await resumeRadio.count()) === 0) {
             await page.getByRole("radio").first().waitFor({ state: "attached", timeout }).catch(() => {});
             if ((await resumeRadio.count()) === 0) {
-              if (isSeekHumanVerification(await bodyText())) {
+              if (isSeekHumanVerification(await bodyText()) && !(await waitForSeekChallengeToClear(page))) {
                 return await fail("SEEK human verification required; open npm run login:seek and complete verification before retrying", { channelVerificationRequired: true });
               }
               const listed = await page.getByRole("radio").evaluateAll((els: any[]) =>

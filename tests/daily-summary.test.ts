@@ -46,8 +46,9 @@ const seekChallenge = await manualEscalation({
   history: [],
 } as any);
 assert.equal(seekChallenge?.kind, "channel");
-assert.match(seekChallenge?.reason ?? "", /before the application form opened/);
-assert.match(seekChallenge?.action ?? "", /retry this package through autopilot:submit/);
+assert.match(seekChallenge?.reason ?? "", /blocked channel access this run/);
+assert.match(seekChallenge?.action ?? "", /later channel-safe autopilot run recheck the advert and every gate/);
+assert.doesNotMatch(seekChallenge?.action ?? "", /screenshot/);
 assert.doesNotMatch(seekChallenge?.action ?? "", /submit yourself|rejected\/withdrawn/);
 
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
@@ -177,7 +178,7 @@ write(`state/journal/${today}.md`, fixture("journal.md"));
   }));
   const s = await buildSummary(today);
   assert.match(s.automation?.blocker ?? "", /SEEK challenged the harness browser/);
-  assert.ok(s.escalations.some(e => e.kind === "channel" && /advert enrichment/.test(e.reason)),
+  assert.ok(s.escalations.some(e => e.kind === "channel" && /verify you are human/.test(e.reason) && /npm run seek:clear/.test(e.action)),
     "a front-half challenge is visible even without a manual submission row");
   fs.rmSync(report);
   console.log("  ✓ front-half SEEK challenge reaches the daily summary");

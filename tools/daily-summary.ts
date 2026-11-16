@@ -262,6 +262,14 @@ class Escalations {
 }
 
 /** Turn a manual_action_needed row into a reason plus the exact next step. */
+export const SEEK_CHECK_ACTION = "Run npm run seek:clear and tick SEEK's check in the window it opens. The window closes by itself and the next scheduled run carries on";
+
+/** The one daily SEEK line: what is waiting on the check. */
+export function seekCheckReason(queued: number, prepared: number): string {
+  const waiting = [prepared ? `${prepared} prepared ${prepared === 1 ? "package" : "packages"}` : "", queued ? `${queued} queued SEEK ${queued === 1 ? "role" : "roles"}` : ""].filter(Boolean);
+  return `SEEK showed its "verify you are human" check, so the harness stopped reading SEEK for this run${waiting.length ? `. Waiting: ${waiting.join(" and ")}` : ""}`;
+}
+
 export async function manualEscalation(r: Opportunity, answeredTexts: Set<string> = new Set()): Promise<Escalation | null> {
   const dir = path.join(ARCHIVE_DIR, r.id);
   const reason = lastReason(r);
@@ -273,7 +281,7 @@ export async function manualEscalation(r: Opportunity, answeredTexts: Set<string
     return { ...base, reason: `External ATS redirect to ${ats[1]}`, action: `Open ${r.url} and apply on ${ats[1]} yourself; package is in ${path.relative(repoPath(), dir)}` };
   }
   if (r.channel === "seek" && /SEEK human verification required/i.test(reason)) {
-    return { ...base, kind: "channel", reason: "SEEK blocked the harness browser before the application form opened; no send was confirmed", action: `Restore access to the harness SEEK profile, then retry this package through autopilot:submit. The challenge screenshot is in ${path.relative(repoPath(), dir)}. Do not discard the package` };
+    return { ...base, kind: "channel", reason: "SEEK human verification blocked channel access this run; no send was confirmed for this row", action: "Restore access to the harness SEEK profile, then let a later channel-safe autopilot run recheck the advert and every gate. Do not discard the package" };
   }
   if (/external application portal/i.test(reason) && /package is not prepared yet/i.test(reason)) {
     return { ...base, reason: "LinkedIn advert uses an external portal; package not prepared", action: "Prepare the package with /manual-applications, then complete the portal together in an attended session" };
@@ -460,8 +468,9 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   const errors = [policyRead.error, screening.error].filter((e): e is string => Boolean(e));
   if (seekChallengeReported && !rows.some(row => row.channel === "seek" && row.status === "manual_action_needed"
     && /SEEK human verification required/i.test(lastReason(row)))) {
-    esc.add({ kind: "channel", reason: "SEEK human verification stopped advert enrichment before the full job descriptions could be read",
-      action: "Restore access to the harness SEEK profile; the deferred adverts remain queued for a later channel-safe run" });
+    esc.add({ kind: "channel", reason: seekCheckReason(rows.filter(row => row.channel === "seek" && row.status === "shortlisted").length,
+      preparedRows.filter(row => row.channel === "seek").length),
+      action: SEEK_CHECK_ACTION });
   }
   for (const q of questions) {
     esc.add({

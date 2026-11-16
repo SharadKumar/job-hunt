@@ -57,6 +57,7 @@
     "seek:enrich": "tsx tools/channels/seek.ts enrich",
     "seek:saved": "tsx tools/channels/seek.ts saved",
     "seek:unsave": "tsx tools/channels/seek.ts unsave",
+    "seek:clear": "tsx scripts/clear-seek-check.ts",
     "submit:seek": "tsx tools/channels/seek-submit.ts",
     "submit:linkedin": "tsx tools/channels/linkedin-submit.ts",
     "hunt:linkedin-jobs": "tsx tools/channels/linkedin-jobs.ts search",
