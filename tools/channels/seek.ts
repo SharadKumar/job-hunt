@@ -2,7 +2,8 @@
 /**
  * seek.ts — Seek.com.au search channel.
  *
- * Uses Playwright headless. Seek serves SSR HTML for /jobs/ pages and we
+ * Uses Playwright in a visible Chrome window (HARNESS_SEEK_HEADLESS=1 hides
+ * it). Seek serves SSR HTML for /jobs/ pages and we
  * extract via DOM selectors. Submit is in seek-submit.ts (separate module
  * so it can be denied at the permission layer for safety).
  *
@@ -26,8 +27,8 @@ import { load as loadPipeline, list as listPipeline, patchMany, setStatus, upser
 import { closeOpportunityAsExpired } from "../opportunity-expiry.ts";
 import { keywordsForChannel } from "../resumes.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
-import { openChromeContext } from "./_browser.ts";
-import { isSeekHumanVerification } from "./seek-submit.ts";
+import { openChromeContext, seekHeadless, seekPaceMs } from "./_browser.ts";
+import { isSeekHumanVerification, waitForSeekChallengeToClear } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
 export const seek: HuntChannel = {
@@ -48,7 +49,7 @@ export const seek: HuntChannel = {
     const workType = (config.work_type as string[] | undefined) ?? ["contract"];
     const postedWithinDays = (config.posted_within_days as number | undefined) ?? 7;
     const maxPagesPerKeyword = Math.max(1, Math.min(5, Number(config.max_pages_per_keyword ?? 2)));
-    const ctx = await openChromeContext("seek", { headless: true });
+    const ctx = await openChromeContext("seek", { headless: seekHeadless() });
     try {
       const all: DiscoveredOpportunity[] = [];
       for (const [keywordIndex, kw] of keywords.entries()) {
@@ -190,7 +191,9 @@ export async function enrichSeekRoles(options: {
   const roles = await loadPipeline();
   const status = options.status ?? (options.savedPending ? "any" : "shortlisted");
   const minScore = options.minScore ?? (options.savedPending ? 0 : 20);
-  const concurrency = Math.max(1, Math.min(6, options.concurrency ?? 4));
+  // One advert at a time: parallel reads were the burst SEEK's check flagged.
+  if ((options.concurrency ?? 1) > 1) console.error(`[seek:enrich] concurrency ${options.concurrency} ignored; SEEK adverts are read one at a time`);
+  const concurrency = 1;
   const candidates = roles
     .filter((role) => role.channel === "seek")
     .filter((role) => !options.savedPending || isPendingSavedSeekRole(role))
@@ -203,7 +206,9 @@ export async function enrichSeekRoles(options: {
 
   if (!candidates.length) return { selected: 0, enriched: 0, unchanged: 0, expired: 0, failed: 0, challenge: false, deferred: 0 };
 
-  const ctx = await openChromeContext("seek-enrich", { headless: true });
+  // The signed-in SEEK profile carries the session and any cleared check;
+  // a separate empty profile looked like a new visitor on every run.
+  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
   const patches: { id: string; fields: Partial<Opportunity> }[] = [];
   let enriched = 0;
   let unchanged = 0;
@@ -211,6 +216,7 @@ export async function enrichSeekRoles(options: {
   let failed = 0;
   let challenge = false;
   let cursor = 0;
+  const retried = new Set<string>();
   const startedAt = Date.now();
 
   try {
@@ -220,6 +226,7 @@ export async function enrichSeekRoles(options: {
         const index = cursor++;
         if (index >= candidates.length) return;
         const role = candidates[index];
+        if (index > 0) await new Promise((resolve) => setTimeout(resolve, seekPaceMs()));
         const page = await ctx.newPage();
         try {
           await page.goto(role.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -285,6 +292,12 @@ export async function enrichSeekRoles(options: {
             continue;
           }
           if (isSeekHumanVerification(pageText)) {
+            if (!retried.has(role.id) && await waitForSeekChallengeToClear(page)) {
+              retried.add(role.id);
+              cursor = index;
+              console.error(`[seek:enrich] SEEK check cleared by itself at ${role.id}; reading the advert again`);
+              continue;
+            }
             challenge = true;
             console.error(`[seek:enrich] SEEK human verification required at ${role.id}; stopping this channel batch before more adverts are requested`);
             return;
@@ -462,7 +475,7 @@ const EXTRACT_SAVED_CARDS_JS = `(() => {
  * surfaced them.
  */
 export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
-  const ctx = await openChromeContext("seek", { headless: true });
+  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
   const byId = new Map<string, SeekSavedJob>();
   try {
     const page = await ctx.newPage();
@@ -524,7 +537,7 @@ export async function fetchSeekSavedJobs(): Promise<SeekSavedJob[]> {
  * as saved. Returns whether a click happened.
  */
 export async function unsaveSeekJob(jobId: string): Promise<{ jobId: string; unsaved: boolean; state: string }> {
-  const ctx = await openChromeContext("seek", { headless: true });
+  const ctx = await openChromeContext("seek", { headless: seekHeadless() });
   try {
     const page = await ctx.newPage();
     await page.goto(`https://www.seek.com.au/job/${jobId}`, { waitUntil: "domcontentloaded", timeout: 45_000 });

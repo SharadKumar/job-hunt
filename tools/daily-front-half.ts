@@ -20,6 +20,10 @@ export function seekVerificationRequired(step: Pick<Step, "result" | "error"> | 
   return /confirm you are human|verify you are human|human verification required|help us keep SEEK secure|performing security verification/i.test(step.error ?? "");
 }
 
+/** Highest-scoring queued SEEK adverts re-read per run. Saved jobs are read
+ * in full regardless; the cap keeps routine reads to a person's pace. */
+export const SEEK_SHORTLIST_ENRICH_LIMIT = process.env.HARNESS_SEEK_ENRICH_LIMIT ?? "12";
+
 /** Daily enrichment is a separate, scored and bounded pass. Do not let the
  * LinkedIn search adapter also open up to 60 new advert pages first. */
 export function huntArgsFor(channelId: string): string[] {
@@ -114,7 +118,7 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
     steps.push({ name: "seek_shortlist_enrichment", ok: true, partial: true, exit_code: 0, duration_ms: 0,
       result: { skipped: "seek_human_verification_required" } });
   } else {
-    await runStep("seek_shortlist_enrichment", "seek:enrich", ["--status", "shortlisted", "--concurrency", "1"]);
+    await runStep("seek_shortlist_enrichment", "seek:enrich", ["--status", "shortlisted", "--concurrency", "1", "--limit", SEEK_SHORTLIST_ENRICH_LIMIT]);
     seekChallenge ||= seekVerificationRequired(steps.at(-1));
   }
   // LinkedIn search cards do not contain the full JD or a reliable button

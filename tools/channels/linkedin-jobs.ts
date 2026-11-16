@@ -162,6 +162,21 @@ export function assertLinkedInSearchHealth(state: {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const jitter = (base: number, spread: number) => base + Math.floor(Math.random() * spread);
 
+/** LinkedIn occasionally paints the search chrome before its SDUI job list.
+ * One bounded reload prevents that transient empty shell from failing an
+ * otherwise healthy daily run. A persistent zero still fails closed below. */
+async function extractCardsWithRetry(page: Page): Promise<Card[]> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.waitForTimeout(attempt === 0 ? jitter(2500, 1500) : jitter(5000, 2000));
+    await page.evaluate(HYDRATE_LIST_SCRIPT);
+    const cards = (await page.evaluate(EXTRACT_CARDS_SCRIPT)) as Card[];
+    if (cards.length > 0 || attempt === 1) return cards;
+    console.error(`[linkedin-jobs] empty result shell; reloading once before declaring channel unhealthy`);
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
+  }
+  return [];
+}
+
 export const linkedinJobs: HuntChannel = {
   id: CHANNEL_ID,
   async search(config: LinkedInSearchConfig): Promise<DiscoveredOpportunity[]> {
@@ -176,7 +191,9 @@ export const linkedinJobs: HuntChannel = {
     const postedWithinDays = config.posted_within_days ?? 7;
     const maxPages = Math.max(1, config.max_pages ?? 2);
 
-    assertLinkedInSearchHealth({ profileAvailable: await profileExists(), loginWall: false, keywordCount: keywords.length, observedCards: 0 });
+    // Preflight checks only that a persistent profile exists. Card-count health
+    // is meaningful only after the search loop has actually observed pages.
+    assertLinkedInSearchHealth({ profileAvailable: await profileExists(), loginWall: false, keywordCount: 0, observedCards: 0 });
 
     const ctx = await openChromeContext("linkedin", { headless: true });
     const byUrl = new Map<string, DiscoveredOpportunity>();
@@ -190,12 +207,10 @@ export const linkedinJobs: HuntChannel = {
           const page = await ctx.newPage();
           try {
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-            await page.waitForTimeout(jitter(2500, 1500));
             if (await loginWallDetected(page)) {
               assertLinkedInSearchHealth({ profileAvailable: true, loginWall: true, keywordCount: keywords.length, observedCards });
             }
-            await page.evaluate(HYDRATE_LIST_SCRIPT);
-            const cards = (await page.evaluate(EXTRACT_CARDS_SCRIPT)) as Card[];
+            const cards = await extractCardsWithRetry(page);
             observedCards += cards.length;
             let fresh = 0;
             for (const card of cards) {
