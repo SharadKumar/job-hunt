@@ -99,6 +99,23 @@ function isChromeOnProfile(pid: number, dir: string): boolean {
   catch { return false; }
 }
 
+/** True while a Chrome process is running on this user-data-dir. */
+export function profileInUse(dir: string, list: () => string = () => execFileSync("ps", ["-axo", "command="], { timeout: 5_000 }).toString()): boolean {
+  const flag = `--user-data-dir=${dir}`;
+  return list().split("\n").some((line) => /Chrome|chrome/.test(line)
+    && line.split(/\s+/).includes(flag));
+}
+
+async function waitForProfileFree(dir: string, timeoutMs = Number(process.env.HARNESS_PROFILE_WAIT_MS ?? 15 * 60_000)): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let logged = false;
+  while (profileInUse(dir)) {
+    if (Date.now() > deadline) throw new Error(`browser profile ${dir} stayed in use for ${Math.round(timeoutMs / 60_000)} minutes; another harness step is still running`);
+    if (!logged) { console.error(`[browser] profile in use by another harness step; waiting up to ${Math.round(timeoutMs / 60_000)} minutes`); logged = true; }
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+}
+
 async function freePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -120,6 +137,9 @@ async function freePort(): Promise<number> {
  */
 export async function openBackgroundChromeContext(channel: ChannelKey): Promise<BrowserContext> {
   const dir = await profileDirFor(channel);
+  // One Chrome per profile: wait for another harness step to finish with it
+  // rather than failing a send into the manual queue.
+  await waitForProfileFree(dir);
   const port = await freePort();
   const prior = frontmostPid();
   const launcher = spawn("open", ["-g", "-n", "-a", MAC_CHROME_APP, "--args",
