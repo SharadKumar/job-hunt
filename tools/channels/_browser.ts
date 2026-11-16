@@ -56,6 +56,20 @@ export async function launchWithChromeFallback<T>(
   }
 }
 
+/** SEEK runs in a visible window by default: its Cloudflare check challenges
+ * headless Chrome far more often, and a visible window lets a managed check
+ * pass by itself. Set HARNESS_SEEK_HEADLESS=1 to hide it. */
+export function seekHeadless(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.HARNESS_SEEK_HEADLESS === "1";
+}
+
+/** Gap between SEEK advert reads: a random 4 to 9 seconds, so reads arrive at
+ * a person's pace rather than in a burst. HARNESS_SEEK_PACE_MS fixes it. */
+export function seekPaceMs(env: NodeJS.ProcessEnv = process.env, random = Math.random): number {
+  if (env.HARNESS_SEEK_PACE_MS !== undefined) return Math.max(0, Number(env.HARNESS_SEEK_PACE_MS) || 0);
+  return 4_000 + Math.round(random() * 5_000);
+}
+
 async function profileDirFor(channel: ChannelKey): Promise<string> {
   const dir = path.resolve(CHROME_PROFILES_ROOT, channel);
   await fs.mkdir(dir, { recursive: true });
