@@ -69,8 +69,7 @@ export function isSeekHumanVerification(text: string): boolean {
   return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots|sorry, you have been blocked|attention required! \| cloudflare/i.test(text);
 }
 
-/** A managed check in a real, visible Chrome often passes by itself within
- * seconds. Poll the visible text, never interact with the check, and report
+/** A managed check often passes by itself within seconds. Poll the visible text, never interact with the check, and report
  * whether SEEK let the page through. */
 export async function waitForSeekChallengeToClear(
   page: Pick<Page, "locator" | "waitForTimeout">,
