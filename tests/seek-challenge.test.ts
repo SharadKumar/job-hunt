@@ -4,10 +4,10 @@ import { waitForSeekChallengeToClear } from "../tools/channels/seek-submit.ts";
 import { SEEK_CHECK_ACTION, seekCheckReason } from "../tools/daily-summary.ts";
 import { SEEK_SHORTLIST_ENRICH_LIMIT } from "../tools/daily-front-half.ts";
 
-// SEEK runs visibly unless explicitly hidden.
-assert.equal(seekHeadless({}), false);
-assert.equal(seekHeadless({ HARNESS_SEEK_HEADLESS: "0" }), false);
-assert.equal(seekHeadless({ HARNESS_SEEK_HEADLESS: "1" }), true);
+// Scheduled SEEK work stays hidden so it never takes focus; headed is opt-in.
+assert.equal(seekHeadless({}), true);
+assert.equal(seekHeadless({ HARNESS_SEEK_HEADED: "0" }), true);
+assert.equal(seekHeadless({ HARNESS_SEEK_HEADED: "1" }), false);
 
 // Advert reads are spaced 4 to 9 seconds apart; tests can pin the gap.
 assert.equal(seekPaceMs({}, () => 0), 4_000);

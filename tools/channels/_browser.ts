@@ -56,11 +56,11 @@ export async function launchWithChromeFallback<T>(
   }
 }
 
-/** SEEK runs in a visible window by default: its Cloudflare check challenges
- * headless Chrome far more often, and a visible window lets a managed check
- * pass by itself. Set HARNESS_SEEK_HEADLESS=1 to hide it. */
+/** Scheduled SEEK work runs hidden: a visible window takes focus from the
+ * person on every new page. HARNESS_SEEK_HEADED=1 shows it for debugging.
+ * The person clears a check in a visible window with npm run seek:clear. */
 export function seekHeadless(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.HARNESS_SEEK_HEADLESS === "1";
+  return env.HARNESS_SEEK_HEADED !== "1";
 }
 
 /** Gap between SEEK advert reads: a random 4 to 9 seconds, so reads arrive at
