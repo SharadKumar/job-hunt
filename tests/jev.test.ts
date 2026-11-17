@@ -106,7 +106,29 @@ const operationalUncertain = await classifyWithJev(
   { title: "Technology Consultant", description: "A detailed contract with ambiguous location wording and otherwise strong architecture evidence for the candidate." },
   { evaluate: nearTieOperational, credential: null },
 );
-assert.equal(operationalUncertain.status, "uncertain", "a near-tied operational answer must not be applied automatically");
+assert.equal(operationalUncertain.status, "automatic", "a near-tied soft side answer must not hold back a confident core role");
+assert.equal(operationalUncertain.work_arrangement, "unknown", "a near-tied arrangement is recorded as unknown, not as the narrow winner");
+
+const nearTieEvidence = async () => {
+  const result = await evaluator(0.9)();
+  return { ...result, answers: { ...result.answers, evidence_strength: { type: "score" as const, score: 1.54, probabilities: { 0: 0.03, 1: 0.39, 2: 0.58 } } } };
+};
+const evidenceTie = await classifyWithJev(
+  { title: "Senior Project Manager", description: "A detailed delivery contract with programme governance, stakeholder management and vendor coordination responsibilities." },
+  { evaluate: nearTieEvidence, credential: null },
+);
+assert.equal(evidenceTie.status, "automatic");
+assert.match(evidenceTie.profile_relevance_reason, /evidence level 2 of 3/, "a near-tied evidence answer takes the lower level (1 of 0-2, shown as 2 of 3)");
+
+const nearTiePayg = async () => {
+  const result = await evaluator(0.9)();
+  return { ...result, answers: { ...result.answers, requires_payg: { type: "boolean" as const, probability: 0.45 } } };
+};
+const paygTie = await classifyWithJev(
+  { title: "Technology Consultant", description: "A detailed contract with ambiguous engagement wording and otherwise strong architecture evidence for the candidate." },
+  { evaluate: nearTiePayg, credential: null },
+);
+assert.equal(paygTie.status, "uncertain", "a near-tied PAYG answer stays strict");
 
 const semanticPaygEvaluator = async () => {
   const result = await evaluator(0.9)();

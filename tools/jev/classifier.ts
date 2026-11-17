@@ -142,8 +142,29 @@ function confidencePass(decisions: Record<string, DecisionDistribution>, policy:
     && (resume.margin ?? 0) >= policy.thresholds.resume_margin;
   if (!headlinePass) return false;
   return Object.entries(decisions)
-    .filter(([id]) => id !== "discipline_fit" && id !== "matched_resume")
+    .filter(([id]) => id !== "discipline_fit" && id !== "matched_resume" && !SOFT_QUESTIONS.has(id))
     .every(([, decision]) => (decision.margin ?? 0) >= policy.thresholds.operational_margin);
+}
+
+/**
+ * Side questions whose near tie has a safe fallback, so it need not hold back
+ * a role whose discipline and resume answers are confident. A near tie on
+ * location, arrangement or seniority is recorded as "unknown" (non-blocking by
+ * profile policy); a near tie on evidence strength takes the lower of the two
+ * leading levels. PAYG and exclusivity stay strict: a wrong "false" there could
+ * let a blocked role through.
+ */
+const SOFT_QUESTIONS = new Set(["location_flexibility", "work_arrangement", "seniority", "evidence_strength"]);
+
+export function nearTie(decision: DecisionDistribution | undefined, policy: JevPolicy): boolean {
+  return Boolean(decision) && (decision!.margin ?? 0) < policy.thresholds.operational_margin;
+}
+
+/** Lower of the two most probable evidence levels, for a near tie. */
+export function conservativeEvidence(decision: DecisionDistribution): number {
+  const ranked = Object.entries(decision.probabilities ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([level]) => Number(level));
+  const levels = ranked.filter(Number.isFinite);
+  return levels.length ? Math.min(...levels) : Math.floor(Number(decision.selected));
 }
 
 export async function classifyWithJev(input: JevInput, opts: JevClassifyOptions = {}): Promise<ClassificationV2> {
@@ -197,14 +218,16 @@ export async function classifyWithJev(input: JevInput, opts: JevClassifyOptions 
   const providerConfidence = ((result.providerMetadata?.typesafe as { confidence?: Record<string, number> } | undefined)?.confidence) ?? {};
   const decisions = Object.fromEntries(Object.entries(result.answers).map(([id, answer]) => [id, distribution(answer, providerConfidence[id])]));
   const discipline = String(decisions.discipline_fit.selected) as DisciplineFit;
-  const evidence = Math.max(0, Math.min(2, Math.round(Number(decisions.evidence_strength.selected))));
+  const evidence = Math.max(0, Math.min(2, nearTie(decisions.evidence_strength, policy)
+    ? conservativeEvidence(decisions.evidence_strength)
+    : Math.round(Number(decisions.evidence_strength.selected))));
   const matched = String(decisions.matched_resume.selected);
   const routeFingerprint = evaluation.gateway_route_fingerprint;
   const identityMatches = evaluation.route_fingerprint_matches;
   const automatic = identityMatches && confidencePass(decisions, policy);
-  const selectedArrangement = String(decisions.work_arrangement?.selected ?? mechanical.work_arrangement) as ClassificationV2["work_arrangement"];
-  const selectedFlex = String(decisions.location_flexibility?.selected ?? mechanical.location_flexibility) as ClassificationV2["location_flexibility"];
-  const selectedSeniority = String(decisions.seniority?.selected ?? mechanical.seniority) as ClassificationV2["seniority"];
+  const selectedArrangement = String((nearTie(decisions.work_arrangement, policy) ? "unknown" : decisions.work_arrangement?.selected) ?? mechanical.work_arrangement) as ClassificationV2["work_arrangement"];
+  const selectedFlex = String((nearTie(decisions.location_flexibility, policy) ? "unknown" : decisions.location_flexibility?.selected) ?? mechanical.location_flexibility) as ClassificationV2["location_flexibility"];
+  const selectedSeniority = String((nearTie(decisions.seniority, policy) ? "unknown" : decisions.seniority?.selected) ?? mechanical.seniority) as ClassificationV2["seniority"];
   const validDiscipline = Object.hasOwn(RELEVANCE, discipline);
   const validResume = matched === "none" || context.resumes.some((resume) => resume.id === matched);
   const validArrangement = ["remote", "hybrid", "onsite", "unknown"].includes(selectedArrangement);
