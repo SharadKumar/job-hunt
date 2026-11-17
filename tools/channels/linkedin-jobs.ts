@@ -347,8 +347,19 @@ export async function fetchLinkedInJob(page: Page, url: string): Promise<ViewDat
   await page.waitForTimeout(jitter(2500, 1500));
   if (await loginWallDetected(page)) throw new Error("login wall — run: npm run login:linkedin");
   await expandDescription(page);
+  const first = (await page.evaluate(EXTRACT_VIEW_SCRIPT)) as ViewData;
+  if (first.applyMethod !== "unknown" || first.closed) return first;
+  // The apply button and the closed notice render after the description, so a
+  // fast read can see neither (probed 2026-11-18: 61 core roles were left
+  // "unknown"). Wait for either, then read once more.
+  await page.locator(APPLY_BUTTONS).or(page.getByText(/No longer accepting applications/i)).first().waitFor({ timeout: 8_000 }).catch(() => undefined);
   return (await page.evaluate(EXTRACT_VIEW_SCRIPT)) as ViewData;
 }
+
+const APPLY_BUTTONS = [
+  'a[aria-label^="Easy Apply"]', 'button[aria-label^="Easy Apply"]',
+  'a[aria-label^="Apply on company website"]', 'button[aria-label^="Apply on company website"]',
+].join(", ");
 
 export function applyLinkedInEnrichment(role: Opportunity, data: ViewData): boolean {
   const employment = data.pills.find((p) => /^(Contract|Full-time|Part-time|Temporary|Casual|Internship)$/i.test(p));
