@@ -198,7 +198,25 @@ export async function openBackgroundChromeContext(channel: ChannelKey): Promise<
   const browser = await chromium.connectOverCDP(endpoint);
   const context = browser.contexts()[0];
   const browserSession = await browser.newBrowserCDPSession();
+  // Background tabs are not painted, so client-rendered pages such as the
+  // Quick Apply form stay blank in them. Hand out Chrome's own front tab first
+  // (navigating it does not take focus) and reset it instead of closing it;
+  // only a second concurrent page becomes a background tab.
+  const frontTab = context.pages()[0];
+  let frontTabInUse = false;
+  if (frontTab) {
+    const closeFrontTab = frontTab.close.bind(frontTab);
+    frontTab.close = async () => {
+      if (!frontTabInUse) return closeFrontTab();
+      frontTabInUse = false;
+      await frontTab.goto("about:blank").catch(() => {});
+    };
+  }
   context.newPage = async () => {
+    if (frontTab && !frontTabInUse && !frontTab.isClosed()) {
+      frontTabInUse = true;
+      return frontTab;
+    }
     const opened = context.waitForEvent("page", { timeout: 15_000 });
     await browserSession.send("Target.createTarget", { url: "about:blank", background: true });
     return await opened;
