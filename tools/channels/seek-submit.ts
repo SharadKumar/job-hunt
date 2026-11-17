@@ -604,6 +604,9 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
       host = null;
     }
     if (host === null) return await fail("could not read page url after apply");
+    // Chrome's own error page (host "chromewebdata") is a failed load, not an
+    // external ATS; report it as one so the row is retried, not sent to a portal.
+    if (page.url().startsWith("chrome-error://")) return await fail("SEEK apply page failed to load; nothing was submitted");
     if (!SEEK_HOST.test(host)) {
       console.error(`[seek-submit] ${opportunity.id}: apply link left SEEK → ${host}`);
       return { ok: false, needsManual: true, reason: `external ATS: ${host}` };
