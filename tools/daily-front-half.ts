@@ -24,6 +24,15 @@ export function seekVerificationRequired(step: Pick<Step, "result" | "error"> | 
  * in full regardless; the cap keeps routine reads to a person's pace. */
 export const SEEK_SHORTLIST_ENRICH_LIMIT = process.env.HARNESS_SEEK_ENRICH_LIMIT ?? "12";
 
+/** Promising discovered SEEK cards whose full advert is read each run. A card
+ * alone leaves Jev uncertain, and an uncertain row never reaches the queue, so
+ * without this read strong roles stayed in discovered indefinitely. */
+export const SEEK_DISCOVERED_ENRICH_LIMIT = process.env.HARNESS_SEEK_DISCOVERED_ENRICH_LIMIT ?? "40";
+export const SEEK_DISCOVERED_MIN_SCORE = process.env.HARNESS_SEEK_DISCOVERED_MIN_SCORE ?? "50";
+
+/** Discovered LinkedIn cards whose full advert is read each run (was 25). */
+export const LINKEDIN_DISCOVERED_ENRICH_LIMIT = process.env.HARNESS_LINKEDIN_DISCOVERED_ENRICH_LIMIT ?? "60";
+
 /** Daily enrichment is a separate, scored and bounded pass. Do not let the
  * LinkedIn search adapter also open up to 60 new advert pages first. */
 export function huntArgsFor(channelId: string): string[] {
@@ -121,12 +130,20 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
     await runStep("seek_shortlist_enrichment", "seek:enrich", ["--status", "shortlisted", "--concurrency", "1", "--limit", SEEK_SHORTLIST_ENRICH_LIMIT]);
     seekChallenge ||= seekVerificationRequired(steps.at(-1));
   }
+  if (seekChallenge) {
+    steps.push({ name: "seek_discovered_enrichment", ok: true, partial: true, exit_code: 0, duration_ms: 0,
+      result: { skipped: "seek_human_verification_required" } });
+  } else {
+    await runStep("seek_discovered_enrichment", "seek:enrich", ["--status", "discovered", "--min-score", SEEK_DISCOVERED_MIN_SCORE,
+      "--concurrency", "1", "--limit", SEEK_DISCOVERED_ENRICH_LIMIT, "--missing-advert"]);
+    seekChallenge ||= seekVerificationRequired(steps.at(-1));
+  }
   // LinkedIn search cards do not contain the full JD or a reliable button
   // destination. Enrich a bounded mix of promising scored backlog and fresh
   // cards before classification, then refresh the active queue so closed ads
   // and external portals do not appear send-ready.
   if (channels.linkedin_jobs?.enabled) {
-    await runStep("linkedin_new_enrichment", "linkedin:enrich", ["--status", "discovered", "--limit", "25"]);
+    await runStep("linkedin_new_enrichment", "linkedin:enrich", ["--status", "discovered", "--limit", LINKEDIN_DISCOVERED_ENRICH_LIMIT]);
     await runStep("linkedin_shortlist_enrichment", "linkedin:enrich", ["--status", "shortlisted", "--force", "--limit", "25"]);
     await runStep("linkedin_queue_reconciliation", "pipeline:rescore", ["--status", "shortlisted"]);
   }

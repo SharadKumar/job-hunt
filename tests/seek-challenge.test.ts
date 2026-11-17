@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { profileInUse, reapOrphanedChrome, seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
-import { rotateKeywords } from "../tools/channels/seek.ts";
+import { hasFullSeekAdvert, rotateKeywords } from "../tools/channels/seek.ts";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +36,11 @@ assert.ok(existsSync(join(profileDir, "harness-owner.json")));
 assert.equal(await reapOrphanedChrome(profileDir, () => false), true);
 assert.equal(existsSync(join(profileDir, "harness-owner.json")), false);
 assert.equal(await reapOrphanedChrome(profileDir, () => false), false);
+
+// A search-card teaser is not a full advert; a stored advert is.
+assert.equal(hasFullSeekAdvert({ description: "[Employment type: Contract] Lead delivery of a platform." }), false);
+assert.equal(hasFullSeekAdvert({ description: "x".repeat(1200) }), true);
+assert.equal(hasFullSeekAdvert({}), false);
 
 // Advert reads are spaced 4 to 9 seconds apart; tests can pin the gap.
 assert.equal(seekPaceMs({}, () => 0), 4_000);

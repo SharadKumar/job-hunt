@@ -222,6 +222,12 @@ export async function closeSeekAdvertFromPageText(role: Opportunity, bodyText: s
   return Boolean(await closeOpportunityAsExpired(role.id, { source: "channel", channelName: "SEEK" }, { apply: true }));
 }
 
+/** Search cards carry a teaser of a few hundred characters at most; a stored
+ * full advert is far longer. */
+export function hasFullSeekAdvert(role: Pick<Opportunity, "description">): boolean {
+  return (role.description ?? "").length >= 600;
+}
+
 export async function enrichSeekRoles(options: {
   id?: string;
   savedPending?: boolean;
@@ -231,6 +237,8 @@ export async function enrichSeekRoles(options: {
   limit?: number;
   /** Only rows matched to this resume id (pipeline resumeId or classification matched_resume_id). */
   resume?: string;
+  /** Only rows still holding search-card text, not a stored full advert. */
+  missingAdvert?: boolean;
 } = {}): Promise<{ selected: number; enriched: number; unchanged: number; expired: number; failed: number; challenge: boolean; deferred: number }> {
   const roles = await loadPipeline();
   const status = options.status ?? (options.savedPending ? "any" : "shortlisted");
@@ -245,6 +253,7 @@ export async function enrichSeekRoles(options: {
     .filter((role) => !options.resume || role.resumeId === options.resume || role.classification?.matched_resume_id === options.resume)
     .filter((role) => status === "any" || role.status === status)
     .filter((role) => (role.score ?? 0) >= minScore)
+    .filter((role) => !options.missingAdvert || !hasFullSeekAdvert(role))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
 
@@ -627,6 +636,7 @@ async function main() {
       concurrency: args.concurrency ? Number(args.concurrency) : undefined,
       limit: args.limit ? Number(args.limit) : undefined,
       resume: args.resume,
+      missingAdvert: args["missing-advert"] === "true",
     });
     console.log(JSON.stringify(result, null, 2));
     if (result.failed) process.exitCode = 1;
