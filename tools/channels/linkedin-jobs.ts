@@ -62,7 +62,10 @@ type LinkedInSearchConfig = SearchConfig & {
 
 function buildSearchUrl(keyword: string, geo: string, jobType: string[], postedWithinDays: number, start: number): string {
   // f_JT=C is the contract filter; f_TPR=r<seconds> is "posted within".
-  const k = encodeURIComponent(keyword);
+  // LinkedIn's AI-powered search (Nov 2026) redirects to /jobs/search-results/
+  // and drops f_JT, so the contract constraint also goes into the query text.
+  const contract = jobType.includes("contract") && !/\bcontract\b/i.test(keyword);
+  const k = encodeURIComponent(contract ? `${keyword} contract` : keyword);
   const loc = encodeURIComponent(geo);
   const typeCode = jobType.includes("contract") ? "&f_JT=C" : "";
   const postedSecs = Math.max(60, postedWithinDays * 86_400);
@@ -94,6 +97,7 @@ const HYDRATE_LIST_SCRIPT = `(async () => {
 const EXTRACT_CARDS_SCRIPT = `(() => {
   const out = [];
   const clean = function (s) { return (s || "").replace(/\\s+/g, " ").trim(); };
+  // Legacy layout: li[data-occludable-job-id].
   document.querySelectorAll("li[data-occludable-job-id]").forEach(function (card) {
     const link = card.querySelector('a[href*="/jobs/view/"]');
     if (!link) return;
@@ -115,6 +119,35 @@ const EXTRACT_CARDS_SCRIPT = `(() => {
       easyApply: /\\bEasy Apply\\b/.test(text),
       viewed: /\\bViewed\\b/.test(text),
       promoted: /\\bPromoted\\b/.test(text),
+    });
+  });
+  if (out.length) return out;
+  // AI-powered search layout (Nov 2026): [componentkey="job-card-component-ref-<id>"].
+  // Lines: accessibility label, title, company, location, then signals.
+  const ago = function (line) {
+    const m = /^Posted\\s+(\\d+|an?|one)\\s+(minute|hour|day|week|month)s?\\s+ago$/i.exec(line);
+    if (!m) return "";
+    const n = /^\\d+$/.test(m[1]) ? Number(m[1]) : 1;
+    const unit = { minute: 6e4, hour: 36e5, day: 864e5, week: 6048e5, month: 2592e6 }[m[2].toLowerCase()];
+    return new Date(Date.now() - n * unit).toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" });
+  };
+  document.querySelectorAll('[componentkey^="job-card-component-ref-"]').forEach(function (card) {
+    const jobId = (card.getAttribute("componentkey") || "").replace("job-card-component-ref-", "");
+    if (!/^\\d+$/.test(jobId)) return;
+    const lines = (card.innerText || "").split("\\n").map(clean).filter(Boolean);
+    const label = (lines[0] || "").replace(/^Selected,\\s*/, "").replace(/\\s*\\(Verified job\\)$/, "");
+    const at = lines[1] === label ? 1 : 0;
+    const title = at ? lines[1] : label;
+    out.push({
+      jobId: jobId,
+      href: "/jobs/view/" + jobId + "/",
+      title: title || "",
+      company: lines[at + 1] || "",
+      location: lines[at + 2] || "",
+      postedDate: lines.map(ago).find(Boolean) || "",
+      easyApply: lines.indexOf("Easy Apply") >= 0,
+      viewed: lines.indexOf("Viewed") >= 0,
+      promoted: lines.some(function (l) { return /^Promoted\\b/.test(l); }),
     });
   });
   return out;
