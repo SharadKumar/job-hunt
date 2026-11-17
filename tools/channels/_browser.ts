@@ -106,9 +106,38 @@ export function profileInUse(dir: string, list: () => string = () => execFileSyn
     && line.split(/\s+/).includes(flag));
 }
 
+const OWNER_FILE = "harness-owner.json";
+
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
+/** A background Chrome outlives a harness step killed by its time limit. If
+ * the step that opened it has died, quit that Chrome so the profile frees. */
+export async function reapOrphanedChrome(dir: string, alive: (pid: number) => boolean = processAlive): Promise<boolean> {
+  let owner: { ownerPid?: number; chromePids?: number[] };
+  try { owner = JSON.parse(await fs.readFile(path.join(dir, OWNER_FILE), "utf8")); } catch { return false; }
+  if (!owner.ownerPid || alive(owner.ownerPid)) return false;
+  for (const pid of owner.chromePids ?? []) { try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ } }
+  await fs.rm(path.join(dir, OWNER_FILE), { force: true });
+  console.error(`[browser] closed a Chrome left open by an ended harness step (owner ${owner.ownerPid})`);
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+  return true;
+}
+
+function chromePidsOnProfile(dir: string): number[] {
+  const flag = `--user-data-dir=${dir}`;
+  try {
+    return execFileSync("ps", ["-axo", "pid=,command="], { timeout: 5_000 }).toString().split("\n")
+      .filter((line) => line.split(/\s+/).includes(flag) && !/Helper/.test(line))
+      .map((line) => Number(line.trim().split(/\s+/)[0])).filter((pid) => pid > 0);
+  } catch { return []; }
+}
+
 async function waitForProfileFree(dir: string, timeoutMs = Number(process.env.HARNESS_PROFILE_WAIT_MS ?? 15 * 60_000)): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let logged = false;
+  if (profileInUse(dir)) await reapOrphanedChrome(dir);
   while (profileInUse(dir)) {
     if (Date.now() > deadline) throw new Error(`browser profile ${dir} stayed in use for ${Math.round(timeoutMs / 60_000)} minutes; another harness step is still running`);
     if (!logged) { console.error(`[browser] profile in use by another harness step; waiting up to ${Math.round(timeoutMs / 60_000)} minutes`); logged = true; }
@@ -165,6 +194,7 @@ export async function openBackgroundChromeContext(channel: ChannelKey): Promise<
     }
   }
 
+  await fs.writeFile(path.join(dir, OWNER_FILE), JSON.stringify({ ownerPid: process.pid, chromePids: chromePidsOnProfile(dir), at: new Date().toISOString() }) + "\n");
   const browser = await chromium.connectOverCDP(endpoint);
   const context = browser.contexts()[0];
   const browserSession = await browser.newBrowserCDPSession();
@@ -176,6 +206,7 @@ export async function openBackgroundChromeContext(channel: ChannelKey): Promise<
   context.close = async () => {
     await browserSession.send("Browser.close").catch(() => {});
     await browser.close().catch(() => {});
+    await fs.rm(path.join(dir, OWNER_FILE), { force: true }).catch(() => {});
   };
   return context;
 }

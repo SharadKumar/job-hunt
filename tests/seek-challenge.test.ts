@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { profileInUse, seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
+import { profileInUse, reapOrphanedChrome, seekBrowserMode, seekPaceMs } from "../tools/channels/_browser.ts";
+import { rotateKeywords } from "../tools/channels/seek.ts";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { waitForSeekChallengeToClear } from "../tools/channels/seek-submit.ts";
 import { SEEK_CHECK_ACTION, seekCheckReason } from "../tools/daily-summary.ts";
 import { SEEK_SHORTLIST_ENRICH_LIMIT } from "../tools/daily-front-half.ts";
@@ -15,6 +19,23 @@ const psOut = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --us
 assert.equal(profileInUse("/x/chrome-profile/seek", () => psOut), true);
 assert.equal(profileInUse("/x/chrome-profile/linkedin", () => psOut), false);
 assert.equal(profileInUse("/x/chrome-profile/seek", () => "/usr/bin/node tools/channels/seek.ts --user-data-dir=/x/chrome-profile/seek-old"), false);
+
+// Keyword rotation moves the start every two hours and keeps every keyword.
+const kws = Array.from({ length: 130 }, (_, i) => i);
+const rotated = rotateKeywords(kws, 2 * 60 * 60_000);
+assert.equal(rotated[0], 40);
+assert.deepEqual([...rotated].sort((a, b) => a - b), kws);
+assert.equal(rotateKeywords(kws, 0)[0], 0);
+assert.deepEqual(rotateKeywords([], 5), []);
+
+// An owner file from a live step is left alone; a dead owner is reaped.
+const profileDir = mkdtempSync(join(tmpdir(), "seek-owner-"));
+writeFileSync(join(profileDir, "harness-owner.json"), JSON.stringify({ ownerPid: 4242, chromePids: [] }));
+assert.equal(await reapOrphanedChrome(profileDir, () => true), false);
+assert.ok(existsSync(join(profileDir, "harness-owner.json")));
+assert.equal(await reapOrphanedChrome(profileDir, () => false), true);
+assert.equal(existsSync(join(profileDir, "harness-owner.json")), false);
+assert.equal(await reapOrphanedChrome(profileDir, () => false), false);
 
 // Advert reads are spaced 4 to 9 seconds apart; tests can pin the gap.
 assert.equal(seekPaceMs({}, () => 0), 4_000);
