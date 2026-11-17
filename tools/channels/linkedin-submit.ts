@@ -49,6 +49,7 @@
  *   exit 0 = ok, 1 = needsManual, 2 = error
  */
 
+import { takeLinkedInLoad } from "./linkedin-throttle.ts";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Locator, Page } from "playwright";
@@ -558,6 +559,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
     page = await ctx.newPage();
     page.on("crash", () => log("page crashed"));
     page.on("close", () => log("page closed"));
+    await takeLinkedInLoad("apply");
     await page.goto(`https://www.linkedin.com/jobs/view/${jobId}/`, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForTimeout(3000);
 

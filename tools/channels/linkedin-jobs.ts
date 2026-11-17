@@ -43,6 +43,8 @@ import { keywordsForChannel } from "../resumes.ts";
 import { repoPath } from "../repo-root.ts";
 import { canonicaliseUrl } from "../url-canonical.ts";
 import { openChromeContext } from "./_browser.ts";
+import { LinkedInBudgetExhausted, takeLinkedInLoad } from "./linkedin-throttle.ts";
+import { rotateKeywords } from "./seek.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
 const CHANNEL_ID = "linkedin_jobs";
@@ -214,7 +216,11 @@ export const linkedinJobs: HuntChannel = {
   id: CHANNEL_ID,
   async search(config: LinkedInSearchConfig): Promise<DiscoveredOpportunity[]> {
     const resumeKeywords = await keywordsForChannel(CHANNEL_ID);
-    const keywords = config.keywords ?? (resumeKeywords.length ? resumeKeywords : ["Solution Architect"]);
+    const allKeywords = config.keywords ?? (resumeKeywords.length ? resumeKeywords : ["Solution Architect"]);
+    // A few keywords per run, rotating every two hours, so the day's searches
+    // stay inside the shared LinkedIn page budget (linkedin-throttle.ts).
+    const perRun = Math.max(1, Number(process.env.HARNESS_LINKEDIN_KEYWORDS_PER_RUN ?? 3));
+    const keywords = rotateKeywords(allKeywords, Date.now(), perRun).slice(0, perRun);
     if (!keywords.length) {
       console.error(`[linkedin-jobs] no keywords. Skipping.`);
       return [];
@@ -222,7 +228,8 @@ export const linkedinJobs: HuntChannel = {
     const geo = config.geo ?? "Australia";
     const jobType = config.job_type ?? ["contract"];
     const postedWithinDays = config.posted_within_days ?? 7;
-    const maxPages = Math.max(1, config.max_pages ?? 2);
+    // One page per keyword unless explicitly raised; every page counts against the daily budget.
+    const maxPages = Math.max(1, Number(process.env.HARNESS_LINKEDIN_MAX_PAGES ?? 1));
 
     // Preflight checks only that a persistent profile exists. Card-count health
     // is meaningful only after the search loop has actually observed pages.
@@ -231,12 +238,18 @@ export const linkedinJobs: HuntChannel = {
     const ctx = await openChromeContext("linkedin", { headless: true });
     const byUrl = new Map<string, DiscoveredOpportunity>();
     let observedCards = 0;
+    let searched = 0;
     try {
-      for (let i = 0; i < keywords.length; i++) {
+      keywordLoop: for (let i = 0; i < keywords.length; i++) {
         const kw = keywords[i];
         let found = 0;
         for (let p = 0; p < maxPages; p++) {
           const url = buildSearchUrl(kw, geo, jobType, postedWithinDays, p * PAGE_SIZE);
+          try { await takeLinkedInLoad("search"); } catch (e) {
+            if (!(e instanceof LinkedInBudgetExhausted)) throw e;
+            console.error(`[linkedin-jobs] ${e.message}; keeping ${byUrl.size} cards from ${searched} keywords`);
+            break keywordLoop;
+          }
           const page = await ctx.newPage();
           try {
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -264,10 +277,11 @@ export const linkedinJobs: HuntChannel = {
           }
           await sleep(jitter(2500, 2000));
         }
+        searched++;
         if (found === 0) console.error(`[linkedin-jobs] "${kw}" → 0 cards; if this repeats across keywords the search DOM has changed`);
         if (i < keywords.length - 1) await sleep(jitter(4000, 3000));
       }
-      assertLinkedInSearchHealth({ profileAvailable: true, loginWall: false, keywordCount: keywords.length, observedCards });
+      assertLinkedInSearchHealth({ profileAvailable: true, loginWall: false, keywordCount: searched, observedCards });
       return [...byUrl.values()];
     } finally {
       await ctx.close();
@@ -343,6 +357,7 @@ function arrangementFromPills(pills: string[], fallback: Opportunity["workArrang
 }
 
 export async function fetchLinkedInJob(page: Page, url: string): Promise<ViewData> {
+  await takeLinkedInLoad("advert");
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForTimeout(jitter(2500, 1500));
   if (await loginWallDetected(page)) throw new Error("login wall — run: npm run login:linkedin");
@@ -450,6 +465,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
         const msg = (error as Error).message;
         console.error(`[linkedin:enrich] ${role.id} failed: ${msg.slice(0, 180)}`);
         if (/login wall/.test(msg)) break;
+        if (error instanceof LinkedInBudgetExhausted) { console.error(`[linkedin:enrich] ${msg}`); break; }
       } finally {
         await page.close();
         const complete = enriched + unchanged + failed;
