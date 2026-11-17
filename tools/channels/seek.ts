@@ -31,15 +31,30 @@ import { openSeekContext, seekPaceMs } from "./_browser.ts";
 import { isSeekHumanVerification, waitForSeekChallengeToClear } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 
-export const seek: HuntChannel = {
+/** Called after each keyword with that keyword's new cards, so a stop or
+ * timeout keeps everything already found. */
+export type SeekKeywordSink = (cards: DiscoveredOpportunity[]) => Promise<void>;
+
+/** Start each run at a different keyword so a budget stop does not always
+ * starve the same tail of the list. */
+export function rotateKeywords<T>(keywords: T[], now = Date.now(), step = 40): T[] {
+  if (!keywords.length) return keywords;
+  const offset = (Math.floor(now / (2 * 60 * 60_000)) * step) % keywords.length;
+  return [...keywords.slice(offset), ...keywords.slice(0, offset)];
+}
+
+export const seek: HuntChannel & { searchWith(config: SearchConfig, sink?: SeekKeywordSink): Promise<DiscoveredOpportunity[]> } = {
   id: "seek",
   async search(config: SearchConfig): Promise<DiscoveredOpportunity[]> {
+    return this.searchWith(config);
+  },
+  async searchWith(config: SearchConfig, sink?: SeekKeywordSink): Promise<DiscoveredOpportunity[]> {
     // Combine the SEEK-specific broad taxonomy with active resume-positioning
     // keywords. This prevents a channel override from silently hiding a new
     // profile's search terms, while retaining deliberate single-word coverage.
     const resumeKeywords = await keywordsForChannel("seek");
     const configuredKeywords = (config.keywords as string[] | undefined) ?? [];
-    const keywords = mergeSearchKeywords(configuredKeywords, resumeKeywords);
+    const keywords = rotateKeywords(mergeSearchKeywords(configuredKeywords, resumeKeywords));
     if (!keywords.length) keywords.push("Solutions Architect");
     if (!keywords.length) {
       console.error(`[seek] no keywords (no active resumes prefer 'seek' and no override in channels.yaml). Skipping.`);
@@ -54,8 +69,15 @@ export const seek: HuntChannel = {
       const all: DiscoveredOpportunity[] = [];
       let challenged = false;
       let pagesRequested = 0;
+      const budgetMs = Number(process.env.HARNESS_SEEK_SEARCH_BUDGET_MS ?? 15 * 60_000);
+      const searchStartedAt = Date.now();
+      const sunk = new Set<string>();
       for (const [keywordIndex, kw] of keywords.entries()) {
         if (challenged) break;
+        if (Date.now() - searchStartedAt > budgetMs) {
+          console.error(`[seek] search budget of ${Math.round(budgetMs / 60_000)} minutes reached after ${keywordIndex}/${keywords.length} keywords; keeping ${all.length} cards`);
+          break;
+        }
         const keywordStartedAt = Date.now();
         const beforeKeyword = all.length;
         let pagesRead = 0;
@@ -128,6 +150,11 @@ export const seek: HuntChannel = {
           } finally {
             await page.close();
           }
+        }
+        if (sink) {
+          const fresh = all.slice(beforeKeyword).filter((card) => !sunk.has(card.url));
+          for (const card of fresh) sunk.add(card.url);
+          if (fresh.length) await sink(fresh);
         }
         const elapsedSeconds = ((Date.now() - keywordStartedAt) / 1000).toFixed(1);
         console.error(`[seek] ${keywordIndex + 1}/${keywords.length} "${kw}": ${pagesRead} page(s), +${all.length - beforeKeyword} technical contract cards, ${elapsedSeconds}s`);
@@ -683,12 +710,12 @@ async function main() {
   const upsertFlag = argv.includes("--upsert");
   const cfg = await loadConfig();
   console.error(`[seek] searching with config: ${JSON.stringify(cfg)}`);
-  const opportunities = await seek.search(cfg);
+  // With --upsert, cards are saved after each keyword in one transaction per
+  // keyword, so a budget stop or step timeout keeps what was found.
+  const toRows = (cards: DiscoveredOpportunity[]) => cards.map((r) => ({ ...r, id: opportunityIdFor(r.channel, r.url), status: "discovered" as const }));
+  const opportunities = await seek.searchWith(cfg, upsertFlag ? async (cards) => { await upsertMany(toRows(cards)); } : undefined);
   console.error(`[seek] discovered ${opportunities.length} opportunities`);
   if (upsertFlag) {
-    // One transaction for the whole page of cards: the old per-card upsert
-    // reloaded and rewrote the entire pipeline ~750 times per hunt.
-    await upsertMany(opportunities.map((r) => ({ ...r, id: opportunityIdFor(r.channel, r.url), status: "discovered" as const })));
     console.error(`[seek] upserted ${opportunities.length} opportunities`);
   } else {
     console.log(JSON.stringify(opportunities, null, 2));
