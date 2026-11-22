@@ -45,7 +45,7 @@ Today your data lives in local files under `state/` (SQLite for the pipeline). A
 
 ## Get started
 
-You need macOS or Linux, Node 20 or later, Git, and Claude Code or Codex CLI.
+You need macOS or Linux, Node 20 or later, Git, Claude Code or Codex CLI, your master CV as a `.docx`, and an account on at least one job channel (for example SEEK).
 
 1. **Clone and install.**
 
@@ -56,7 +56,7 @@ You need macOS or Linux, Node 20 or later, Git, and Claude Code or Codex CLI.
    brew install poppler                         # counts PDF pages (apt install poppler-utils on Linux)
    ```
 
-2. **Add your credentials.** Copy `.env.example` to `.env`, and put the Jev model key in the ignored `.env.local` as `AI_GATEWAY_API_KEY` (a Vercel AI Gateway key; Jev is the classification layer). Claude Code or Codex uses its own sign-in.
+2. **Add your credentials.** Copy `.env.example` to `.env` and set `HARNESS_CLI` (`claude` or `codex`); the Google variables are only for the optional Sheet. Put the Jev model key in the ignored `.env.local` as `AI_GATEWAY_API_KEY`. Jev is the classification layer; the key is a Vercel AI Gateway API key, created in the Vercel dashboard under AI Gateway. Claude Code or Codex uses its own sign-in.
 
    ```bash
    cp .env.example .env
