@@ -9,7 +9,7 @@ It runs on Claude Code (primary) or Codex CLI (best effort), on your own machine
 | Area | What the harness does |
 |---|---|
 | Find | Scans job boards, recruiter sites and hiring posts on a schedule, removes duplicates across channels, and closes adverts once they expire. |
-| Qualify | Classifies each role (contract or permanent, seniority, rate, location, red flags) and scores it against your positionings, with the reasons shown. A role you save on a job board is treated as an order to apply. |
+| Qualify | Classifies each role (contract or permanent, seniority, rate, location, red flags) and scores it against your positionings, with the reasons shown. A role you save on SEEK is treated as an order to apply. |
 | Pursue | Composes an ATS-safe CV for the best-fitting positioning and a cover letter in your voice. Independent critics check every CV and letter, and deterministic gates check slop, voice, page fill and that no claim goes beyond your CV source. |
 | Apply | Submits one-click applications (for example SEEK Quick Apply) when every gate passes and autopilot is on. External portals and recruiter messages become prepared packages and drafts for you. |
 | Track | Keeps every role, status change and submission in a pipeline with an audit trail, plus a daily summary of what was sent and what needs you. |
@@ -50,13 +50,20 @@ You need macOS or Linux, Node 20 or later, Git, and Claude Code or Codex CLI.
 1. **Clone and install.**
 
    ```bash
-   git clone <this-repo> job-hunt && cd job-hunt
+   git clone <your fork's URL> job-hunt && cd job-hunt
    npm install                                  # also installs the pre-commit guard
    npx playwright install chromium              # renders CVs and drives the channels
    brew install poppler                         # counts PDF pages (apt install poppler-utils on Linux)
    ```
 
-2. **Create your profile.** Open the agent in the repo and run the setup skill. It scaffolds `state/profile/` from `templates/profile/` and asks you for the facts it needs.
+2. **Add your credentials.** Copy `.env.example` to `.env`, and put the Jev model key in the ignored `.env.local` as `AI_GATEWAY_API_KEY` (a Vercel AI Gateway key; Jev is the classification layer). Claude Code or Codex uses its own sign-in.
+
+   ```bash
+   cp .env.example .env
+   echo 'AI_GATEWAY_API_KEY=<your key>' >> .env.local
+   ```
+
+3. **Create your profile.** Open the agent in the repo and run the setup skill. It scaffolds `state/profile/` from `templates/profile/` (the templates show the expected shape of each file) and asks you for the facts it needs.
 
    ```bash
    claude            # or: codex
@@ -75,15 +82,17 @@ You need macOS or Linux, Node 20 or later, Git, and Claude Code or Codex CLI.
    | `screening-answers.yaml` | Answers to common application questions |
    | `submission-policy.yaml` | Kill switch, autopilot channels and daily caps |
 
-   Everything under `state/` is ignored by git, and the pre-commit guard blocks it as well, so personal data never enters the repository.
+   Everything under `state/` is ignored by git (apart from two example files in `state/org/`), and the pre-commit guard blocks it as well, so personal data never enters the repository.
 
-3. **Approve your baseline CVs.** `/setup` hands off to `/resume-review`, which renders each positioning's CV, runs the critic, and asks you to approve it.
+4. **Confirm your positionings and approve your baseline CVs.** `/setup` hands off to `/onboarding`, which proposes positionings from your CV for you to confirm, then to `/resume-review`, which renders each positioning's CV, runs the critic, and asks you to approve it.
 
-4. **Sign in to your channels once.** `npm run login:seek` (and `npm run login:linkedin` if enabled) opens a browser for you to sign in. The harness never signs in for you.
+5. **Sign in to your channels once.** `npm run login:seek` (and `npm run login:linkedin` if enabled) opens a browser for you to sign in. The harness never signs in for you.
 
-5. **First run.** Run `/hunt` to search, then `/daily` for a full pass. Review what it prepared with `npm run ui` (local UI at `http://127.0.0.1:7788`) or `/review-drafts`.
+6. **First run.** Run `/hunt` to search, then `/daily` for a full pass. Review what it prepared with `npm run ui` (local UI at `http://127.0.0.1:7788`) or `/review-drafts`.
 
-6. **Schedule it.** `bash scripts/install-launchd.sh` (macOS) runs the daily pass on a schedule. Turn autopilot on only after at least one attended `/apply`.
+7. **Schedule it.** `HARNESS_CLI=claude bash scripts/install-launchd.sh` (macOS) runs the daily pass every two hours on weekdays from 07:00 to 17:00; the script defaults to Codex if `HARNESS_CLI` is unset. On Linux, add a cron line that runs `scripts/daily.sh`.
+
+8. **Turn autopilot on when you're ready.** We recommend at least one attended `/apply` first. `/setup` then asks whether to switch autopilot on and writes `autopilot.enabled` and the channels into `state/profile/submission-policy.yaml`; `kill_switch: true` in the same file stops every send.
 
 After the first run you get a daily summary of what was sent, what needs you and how the queue moved, in `state/journal/summary/`. `npm run setup:check` tells you which setup stage is still open; [Setup stages in detail](#setup-stages-in-detail) lists them.
 
