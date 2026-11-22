@@ -69,6 +69,8 @@
     "letter:critic": "tsx tools/letter-critic.ts",
     "autopilot:submit": "tsx tools/autopilot-submit.ts",
     "test": "tsc --noEmit && tsx tests/run.ts",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "leak:check": "tsx tools/leak-check.ts",
     "typecheck": "tsc --noEmit",
     "login:linkedin": "tsx scripts/login-channel.ts linkedin",
     "login:seek": "tsx scripts/login-channel.ts seek",
