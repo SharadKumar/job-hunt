@@ -13,10 +13,15 @@
   https://job-hunt.localhost as well; that proxy is local too and changes
   nothing about the binding here.
 
-  To reach it from a phone over Tailscale or the LAN, append
-  --host <address> to the command below and uncomment HARNESS_UI_TOKEN with a
-  long random value (the server refuses a non-local bind without one), then
-  kickstart the job.
+  To reach it from a phone, keep the loopback bind and put it behind
+  `tailscale serve --bg __PORT__`, which proxies your tailnet only. Then set
+  HARNESS_UI_TOKEN=<long random value> in the checkout's ignored .env.local:
+  the command below reads it from there, so the secret never sits in this
+  plist, and every /api call then needs the token (paste it once in Settings
+  on each browser). Kickstart the job after changing it.
+
+  For a LAN bind instead, append --host <address>; the server refuses a
+  non-local bind without the token.
 -->
 <plist version="1.0">
 <dict>
@@ -26,7 +31,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "__REPO_DIR__" &amp;&amp; exec npm run -s ui -- --port __PORT__</string>
+    <string>cd "__REPO_DIR__" &amp;&amp; t=$(sed -n 's/^HARNESS_UI_TOKEN=//p' .env.local 2&gt;/dev/null | tail -1); if [ -n "$t" ]; then export HARNESS_UI_TOKEN="$t"; fi; exec npm run -s ui -- --port __PORT__</string>
   </array>
   <key>WorkingDirectory</key>
   <string>__REPO_DIR__</string>
@@ -38,10 +43,7 @@
     <string>/tmp</string>
     <key>PATH</key>
     <string>__PATH__</string>
-    <!-- Required only when the server is bound beyond 127.0.0.1:
-    <key>HARNESS_UI_TOKEN</key>
-    <string>replace-with-a-long-random-token</string>
-    -->
+    <!-- HARNESS_UI_TOKEN comes from .env.local; see the comment at the top. -->
   </dict>
   <key>RunAtLoad</key>
   <true/>
