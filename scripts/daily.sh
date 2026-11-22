@@ -223,6 +223,14 @@ run_cli() {
     fi
   fi
 
+  # The escalation digest: grouped bullets with links, to Slack when
+  # SLACK_WEBHOOK_URL is set (.env). It sends the full list on the day's first
+  # run, then only new escalations, and always on a failed run. Tolerated like
+  # the POST above: the run's work is already done.
+  if [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
+    npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
+  fi
+
   echo "=== $(date -Iseconds) finished daily run (exit $EXIT) ==="
 } >>"$LOG_FILE" 2>&1
 
