@@ -45,8 +45,22 @@ const down = (v?: string | null) => (v ? v.toLowerCase() : undefined);
 const micros = (n?: number | null) => (n == null ? null : Math.round(n * 1_000_000));
 const day = (iso?: string | null) => (iso ? iso.slice(0, 10) : null);
 
+/** Postgres JSON refuses NUL characters and lone UTF-16 surrogates (half an emoji); scraped text carries both. */
+export function stripNul<T>(v: T): T {
+  if (typeof v === "string") return v.replace(/\u0000/g, "").replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "") as unknown as T;
+  if (Array.isArray(v)) return v.map((x) => stripNul(x)) as unknown as T;
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, stripNul(x)])) as T;
+  return v;
+}
+
+export function webUrl(u?: string | null): string {
+  if (!u) return "";
+  try { const x = new URL(u.trim()); return x.protocol === "http:" || x.protocol === "https:" ? x.toString() : ""; } catch { return ""; }
+}
+
 /** The person-facing projection of a row, plus the lossless copy. */
-export function toOpening(row: Opportunity): Record<string, unknown> {
+export function toOpening(input: Opportunity): Record<string, unknown> {
+  const row = stripNul(input);
   const { description, ...rest } = row as Opportunity & { description?: string };
   const currency = row.dayRate?.currency ?? "AUD";
   const out: Record<string, unknown> = {
@@ -54,7 +68,8 @@ export function toOpening(row: Opportunity): Record<string, unknown> {
     harnessId: row.id,
     title: row.title,
     channel: row.channel,
-    url: { primaryLinkUrl: row.url ?? "", primaryLinkLabel: "", secondaryLinks: [] },
+    // Twenty refuses a link that is not a web address; such a value still lives in harnessData.
+    url: { primaryLinkUrl: webUrl(row.url), primaryLinkLabel: "", secondaryLinks: [] },
     location: row.location ?? null,
     arrangement: up(row.workArrangement),
     applyMethod: up(row.applyMethod),
