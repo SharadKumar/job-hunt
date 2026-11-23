@@ -9,8 +9,9 @@
  *   4. write consumedAt, result (APPLIED or REFUSED) and resultReason.
  * Each verdict is printed as one JSON line (the run log keeps the stamp).
  *
- * Proposal, baseline and engagement decisions are left unconsumed until their
- * executors exist (F14), so nothing the person confirmed is dropped.
+ * Confirm and decline set the proposal's status for the executor queue
+ * (proposals.ts). Baseline and engagement decisions stay unconsumed until
+ * their executors exist, so nothing the person confirmed is dropped.
  *
  * Needs HARNESS_STORE=twenty, TWENTY_API_URL, TWENTY_API_KEY (Harness role)
  * and TWENTY_OWNER_MEMBER_ID (state/twenty/keys.env).
@@ -72,6 +73,17 @@ export async function runIntake(opts: { url: string; key: string; ownerMemberId:
           await pipeline.patch(row!.id, action.fields, "twenty:decision", `decision ${d.decisionType}`);
           await consume("APPLIED", `updated ${Object.keys(action.fields).join(", ")}`);
           break;
+        case "proposal": {
+          const pr = (await call("GET", `/rest/proposals/${d.proposalId}`)).data?.proposal;
+          if (!pr) { await consume("REFUSED", "the proposal no longer exists"); break; }
+          if (pr.status !== "PROPOSED") { await consume("REFUSED", `the proposal is already ${String(pr.status).toLowerCase()}`); break; }
+          // The confirm button may carry an edited value (an answer, a letter): it becomes the payload the executor uses.
+          const patch: Record<string, unknown> = { status: action.confirm ? "CONFIRMED" : "DECLINED" };
+          if (action.confirm && action.value) patch.payload = { ...(pr.payload ?? {}), confirmedValue: action.value };
+          await call("PATCH", `/rest/proposals/${d.proposalId}`, patch);
+          await consume("APPLIED", action.confirm ? "proposal confirmed for the executor" : "proposal declined");
+          break;
+        }
         default:
           out.push({ id: d.id, type: d.decisionType, result: "DEFERRED", reason: `${action.kind} executor not available yet`, stamp });
       }
