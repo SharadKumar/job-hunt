@@ -2,6 +2,10 @@
 
 All notable changes to this application are documented in this file.
 
+## 0.1.8
+
+- Add the `KEYWORD_REJECTS` document kind: the harness-owned log of keyword terms the triage refused, kept as a machine document
+
 ## 0.1.6
 
 - Give the Harness role the UPLOAD_FILE flag, so it can attach CVs, letters, screenshots and migrated archives to their records

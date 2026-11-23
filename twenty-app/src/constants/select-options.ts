@@ -136,6 +136,7 @@ export const DOCUMENT_KIND_OPTIONS = [
   option('POSITIONINGS', 'Positionings', 'iris'),
   option('KEYWORD_CLOUDS', 'Keyword clouds', 'cyan'),
   option('MARKET_CONFIRMATIONS', 'Market confirmations', 'mint'),
+  option('KEYWORD_REJECTS', 'Keyword rejects', 'pink'),
   option('WORKSPACE_MANIFEST', 'Workspace manifest', 'gray'),
   option('OTHER', 'Other', 'gray'),
 ] as const;
