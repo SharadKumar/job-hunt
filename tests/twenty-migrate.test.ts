@@ -200,7 +200,7 @@ function makeTree(root: string, tag: string, archived: { id: string; title: stri
   ].join("\n"));
 }
 
-const EXPECTED = { company: 1, positioning: 1, document: 16, documentRevision: 16, application: 1, screeningQuestion: 2, keywordQuestion: 2, run: 2, person: 2, note: 1, attachment: 15 };
+const EXPECTED = { company: 1, positioning: 1, resumeVersion: 1, document: 16, documentRevision: 16, application: 1, screeningQuestion: 2, keywordQuestion: 2, run: 2, person: 2, note: 1, attachment: 14 };
 
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "migrate-unit-"));
@@ -230,11 +230,15 @@ const EXPECTED = { company: 1, positioning: 1, document: 16, documentRevision: 1
   assert.match(String(app.manualChecklist), /synthetic step/);
   assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetApplicationId").map((x) => x.name).sort(),
     ["Synthetic_Architect.docx", "Synthetic_Tailored.docx", "Synthetic_Tailored.pdf", "confirmation.txt", "cover-letter.md", "interview-brief.md", "jd.md", "letter-critic.json", "manual-checklist.md", "metadata.json", "seek-x-success.png"]);
-  assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetPositioningId").map((x) => x.name).sort(), ["Synthetic_Architect.docx", "Synthetic_Architect.pdf", "metadata.json"]);
+  assert.equal(plan.attachments.some((x) => x.targetField === "targetPositioningId"), false, "positionings carry no files");
   assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetDocumentId").map((x) => x.name), ["meta.yaml"], "the profile's cv/ files attach to CV_SOURCE");
   assert.ok(plan.documents.some((x) => x.record.kind === "OTHER" && /^resumes\/arch-[^/]+\/editorial-rules\.md$/.test(String(x.record.name))), "per-positioning rules are a document");
-  assert.equal(plan.positionings[0].record.approvalStatus, "APPROVED");
-  assert.equal(plan.positionings[0].record.criticVerdict, "PASS");
+  // Approval and critic verdict belong to the CV version; only its PDF and DOCX are attachments.
+  const ver = plan.resumeVersions[0];
+  assert.equal(plan.positionings[0].record.approvalStatus, undefined);
+  assert.deepEqual([ver.record.approvalStatus, ver.record.criticVerdict, ver.record.isCurrent, ver.record.positioningId], ["APPROVED", "PASS", true, plan.positionings[0].id]);
+  assert.deepEqual(Object.keys(ver.record.workFiles as object), ["metadata.json"]);
+  assert.deepEqual(plan.attachments.filter((x) => x.targetId === ver.id).map((x) => x.name).sort(), ["Synthetic_Architect.docx", "Synthetic_Architect.pdf"]);
   assert.deepEqual(plan.positionings[0].record.rateMin, { amountMicros: 1_000_000_000, currencyCode: "AUD" });
   assert.equal(plan.documents.every((x) => x.record.migratedAt && x.record.currentRevision === 1), true);
   assert.equal(plan.documentRevisions.find((x) => x.record.kind === "SLOP_BANLIST")!.record.body, "- delve\n");
@@ -247,7 +251,7 @@ const EXPECTED = { company: 1, positioning: 1, document: 16, documentRevision: 1
   assert.equal(plan.notes[0].targetOpeningId !== "", true);
   for (const p of plan.people) assert.equal("phones" in p.record, false);
   // Every app record carries migratedAt; ids are stable across plans.
-  for (const list of [plan.positionings, plan.documents, plan.documentRevisions, plan.applications, plan.screeningQuestions, plan.keywordQuestions, plan.runs]) {
+  for (const list of [plan.positionings, plan.resumeVersions, plan.documents, plan.documentRevisions, plan.applications, plan.screeningQuestions, plan.keywordQuestions, plan.runs]) {
     for (const x of list) assert.equal(x.record.migratedAt, "2026-02-01T00:00:00.000Z");
   }
   const again = await buildPlan(rows, "later");

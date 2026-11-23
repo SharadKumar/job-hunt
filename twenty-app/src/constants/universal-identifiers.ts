@@ -23,6 +23,7 @@ export const OBJECT_IDS = {
   engagement: 'dd6d21ca-d535-450a-804b-bd273b0a3354',
   control: '55f63b16-90ca-49df-a79f-0cff69df8ccd',
   verification: '9812ee15-5920-434f-8f44-7358c00acc55',
+  resumeVersion: 'f9aadcbb-de7d-4f38-99a4-9e52667b2451',
 } as const;
 
 export const FIELD_IDS = {
@@ -145,14 +146,26 @@ export const FIELD_IDS = {
     harnessId: '20c87835-2c1b-4b69-8317-109fa9a2e888',
     rateMin: 'e44fb2c2-d907-499f-970c-fec42872a53d',
     rateMax: 'aa8a4cf5-961b-406c-9342-dffe0593eb90',
-    approvalStatus: '51f1138e-41fb-46c2-a28b-c3052a15fcfc',
-    approvedAt: '34ecd701-8bcd-433e-aed1-1ef458f46123',
-    contentHash: '402921b9-c155-46b0-a025-2c047dc61509',
-    criticVerdict: '098dbcc2-1184-438c-946d-a069e35ad05b',
     migratedAt: 'a24b0787-3071-4752-bf47-c8795c668990',
     openings: 'efea77d4-c55c-4ad6-ab98-81193ec37589',
     decisions: '94841e80-dfd0-43ab-8e1d-db35281bbf37',
     keywordQuestions: '268ab601-a4c1-4fdd-ade4-1ce7ba24a300',
+    versions: 'bdb9dd5e-1d8d-4826-9e32-d267a56cd4cc',
+  },
+  // One rendered CV of a positioning. The approval, the critic verdict and
+  // the hash belong to this exact render, not to the positioning.
+  resumeVersion: {
+    name: 'ac6d6ba5-5da8-4df8-ade5-90dbe3eb0f3f',
+    kind: '267d7378-40fd-47ed-bcfe-e235f0b411f3',
+    isCurrent: '971645a4-7802-40c4-bf1e-9af4c705b647',
+    contentHash: 'b87438b9-4f3e-4c7d-89c6-a843f984f216',
+    renderedAt: 'd265d157-8862-4d35-a941-ceb0fbc4705b',
+    approvalStatus: '70fb5006-6165-4a51-93a5-29ba5f31d03e',
+    approvedAt: 'c169227d-5830-46ef-82fd-17a0057293d8',
+    criticVerdict: 'c9edae59-8509-417d-a4ca-0d7c38efc065',
+    workFiles: 'bbc00575-4a13-404e-8ff3-477b45bcddba',
+    migratedAt: 'f507af08-e2f9-4aa5-9eda-0f010abf2c03',
+    positioning: '69accde8-00c7-4b66-93a8-9d6372df5c77',
   },
   run: {
     name: '28453dad-aa50-4a88-a9b4-5e65d37e4093',

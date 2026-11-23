@@ -161,6 +161,11 @@ export const APPROVAL_STATUS_OPTIONS = [
   option('REJECTED', 'Rejected', 'red'),
 ] as const;
 
+export const RESUME_VERSION_KIND_OPTIONS = [
+  option('BASELINE', 'Baseline', 'blue'),
+  option('TAILORED', 'Tailored', 'purple'),
+] as const;
+
 export const RUN_KIND_OPTIONS = [
   option('DAILY', 'Daily', 'blue'),
   option('HUNT', 'Hunt', 'turquoise'),

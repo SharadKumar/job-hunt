@@ -36,7 +36,7 @@ const R = await import("../tools/store/runs.ts");
 
 type Rec = Record<string, any>;
 function fakeTwenty() {
-  const db: Record<string, Rec[]> = { documents: [], documentRevisions: [], proposals: [], runs: [], openings: [], positionings: [], attachments: [] };
+  const db: Record<string, Rec[]> = { documents: [], documentRevisions: [], proposals: [], runs: [], openings: [], positionings: [], resumeVersions: [], attachments: [] };
   const calls: { method: string; path: string; body?: any }[] = [];
   let n = 0;
   const id = () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;

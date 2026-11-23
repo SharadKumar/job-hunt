@@ -185,12 +185,12 @@ export const BUTTONS = {
   },
   positioningApproveBaseline: {
     label: 'Approve baseline',
-    target: 'positioning',
+    target: 'resumeVersion',
     decisionTypes: ['APPROVE_BASELINE'],
     mode: 'headless',
     confirm: {
       title: 'Approve this baseline CV?',
-      subtitle: 'The version you reviewed becomes the approved baseline.',
+      subtitle: 'This exact version becomes the approved baseline.',
       confirmButtonText: 'Approve',
       accent: 'blue',
     },

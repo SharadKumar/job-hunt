@@ -14,8 +14,9 @@
  *     DOCX, letter (markdown; the harness has no letter renderer),
  *     screenshots and checklist attached; briefs and debriefs become Notes;
  *   - documents and their first revisions: one per profile file kind;
- *   - screening questions, keyword questions, positionings (baseline PDF and
- *     DOCX attached), runs (latest 50 daily summaries);
+ *   - screening questions, keyword questions, positionings with their current
+ *     CV version (PDF and DOCX attached, working files in a JSON field),
+ *     runs (latest 50 daily summaries);
  *   - people: contacts minimised to name, role title, company, email and
  *     LinkedIn URL, deduplicated by email or LinkedIn URL;
  *   - open escalations, through tools/twenty/escalations.ts (--apply only).
@@ -94,6 +95,7 @@ export function planCounts(openings: number, plan: MigrationPlan): Record<string
     opening: openings,
     company: plan.companies.length,
     positioning: plan.positionings.length,
+    resumeVersion: plan.resumeVersions.length,
     document: plan.documents.length,
     documentRevision: plan.documentRevisions.length,
     application: plan.applications.length,
@@ -209,6 +211,7 @@ async function main(): Promise<number> {
   results.opening = { planned: keep.length, created: ops.length, already_present: keep.length - ops.length };
 
   results.positioning = await createMissing(call, "positionings", plan.positionings, apply);
+  results.resumeVersion = await createMissing(call, "resumeVersions", plan.resumeVersions, apply);
   results.document = await createMissing(call, "documents", plan.documents, apply);
   results.documentRevision = await createMissing(call, "documentRevisions", plan.documentRevisions, apply);
   results.application = await createMissing(call, "applications", plan.applications, apply);
