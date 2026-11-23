@@ -278,7 +278,11 @@ describe('views, navigation and pages', () => {
       }
       expect(config.parentUniversalIdentifier, file).toBe(NAVIGATION_IDS.section);
       if (config.type === 'OBJECT') {
-        expect(Object.values(OBJECT_IDS), file).toContain(config.targetObjectUniversalIdentifier);
+        // App objects, plus the standard company, person and task the suite uses.
+        const standard = ['company', 'person', 'task'].map(
+          (k) => STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS[k as 'company' | 'person' | 'task'].universalIdentifier,
+        );
+        expect([...Object.values(OBJECT_IDS), ...standard], file).toContain(config.targetObjectUniversalIdentifier);
       } else {
         expect(config.type, file).toBe('PAGE_LAYOUT');
         expect(layouts.map((l) => l.config.universalIdentifier)).toContain(
@@ -286,7 +290,7 @@ describe('views, navigation and pages', () => {
         );
       }
     }
-    expect(items.filter((i) => i.config.type === 'OBJECT')).toHaveLength(7);
+    expect(items.filter((i) => i.config.type === 'OBJECT')).toHaveLength(10);
   });
 
   it('hosts the Today front component on a standalone page', async () => {

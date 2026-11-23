@@ -4,8 +4,8 @@
  *
  * Twenty seeds every workspace with its own sidebar items (objects, a
  * Workflows folder, a Campaigns folder). The suite keeps the standard objects
- * it uses (by default company, person, task, note), removes the rest, and puts
- * the app's section first. Only items with no owner member (workspace-wide
+ * named in SIDEBAR_KEEP (by default none: the app's section links company,
+ * person and task itself), removes the rest, and puts the app's section first. Only items with no owner member (workspace-wide
  * items) and not created by this app are considered; a person's own pinned
  * items are never touched.
  *
@@ -30,7 +30,8 @@ export type NavItem = {
 
 export type SidebarPlan = { remove: { id: string; label: string }[]; sectionToTop: { id: string; position: number } | null };
 
-export const DEFAULT_KEEP = ["company", "person", "task", "note"];
+/** None: the app's Job hunt section holds Companies, People and Tasks, so the Workspace group hides and Home opens Today. */
+export const DEFAULT_KEEP: string[] = [];
 
 /** Pure: which workspace-wide items to remove and whether the suite section must move. */
 export function planSidebar(items: NavItem[], objectNames: Record<string, string>, appId: string, keep: string[] = DEFAULT_KEEP): SidebarPlan {
