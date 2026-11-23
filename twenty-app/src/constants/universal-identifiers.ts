@@ -178,6 +178,8 @@ export const FIELD_IDS = {
     grokDeliveredAt: 'ece73fed-e7f4-427b-a6e3-6ee531c89115',
     migratedAt: '86cb6232-004e-40cc-b206-e438ef45eaf4',
     opening: '97a3f974-3e78-497a-b15b-55cf0487c82a',
+    resolvedAt: '24fe35f1-6731-4db1-9a54-aa7ebde7b41d',
+    notifyMemberId: '8cc0ea0a-cafd-4290-ae1f-f3dccbf7d6b8',
   },
   emailDraft: {
     subject: 'ad33fbab-e92b-4ae2-9233-a8a2ec17c502',
@@ -295,6 +297,15 @@ export const BUTTON_IDS = {
   haltSends: {
     frontComponent: '2b659673-71ec-4aef-9612-09e0860a3a16',
     commandMenuItem: '6d2e255b-b72c-4639-b6d7-cf497943af22',
+  },
+} as const;
+
+export const WORKFLOW_IDS = {
+  notifyNewEscalation: {
+    workflow: '26c44e06-2f98-49f5-af06-b896a90c207a',
+    trigger: 'ba1920d6-cb17-4599-bb5c-c7b7b444c24a',
+    filter: '619520fe-eb71-43ab-99ed-c1c5c77640da',
+    send: '1d32095e-1f50-40e6-8342-5a6ef8aeeef0',
   },
 } as const;
 
