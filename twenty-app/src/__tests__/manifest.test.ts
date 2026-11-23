@@ -258,7 +258,7 @@ describe('views, navigation and pages', () => {
     expect(board?.groups?.map((g) => g.fieldValue)).toEqual(OPENING_STATUS_OPTIONS.map((o) => o.value));
   });
 
-  it('puts every object item and Today under one Job hunt section', async () => {
+  it('puts Today at the top and every object item under one Job hunt section', async () => {
     const items = await loadEntities<{
       universalIdentifier: string;
       type: string;
@@ -276,7 +276,9 @@ describe('views, navigation and pages', () => {
       if (config.type === 'SECTION') {
         continue;
       }
-      expect(config.parentUniversalIdentifier, file).toBe(NAVIGATION_IDS.section);
+      expect(config.parentUniversalIdentifier, file).toBe(
+        config.type === 'PAGE_LAYOUT' ? undefined : NAVIGATION_IDS.section,
+      );
       if (config.type === 'OBJECT') {
         // App objects, plus the standard company, person and task the suite uses.
         const standard = ['company', 'person', 'task'].map(
