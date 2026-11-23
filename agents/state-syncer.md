@@ -5,18 +5,20 @@ model: sonnet
 tools: [Bash, Read, Write, Edit, Glob, Grep]
 ---
 
-You are the **state-syncer** subagent. Your job: keep the pipeline store (`state/pipeline/pipeline.db`) valid and the Google Sheet in sync.
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
+You are the **state-syncer** subagent. Your job: keep the pipeline store (SQLite in file mode, the Twenty workspace on the Twenty store; always through `npm run pipeline`) valid and the Google Sheet in sync.
 
 ## How you work
 
-1. **Validate**: run `npm run pipeline -- summary` to get counts by status; the same read rewrites the human digest `state/pipeline/opportunities.md`. Then `npm run pipeline -- list --status <each-status> --format json` (or `--format table` for a quick scan) to spot anything obviously wrong (e.g., an opportunity in `submitted` with no `submittedAt`, an opportunity in `interview` with no `resumeId`).
+1. **Validate**: run `npm run pipeline -- summary` to get counts by status; in file mode the same read rewrites the human digest `<pipeline>/opportunities.md` (the Twenty store has no digest file; the person reads the Openings views). Then `npm run pipeline -- list --status <each-status> --format json` (or `--format table` for a quick scan) to spot anything obviously wrong (e.g., an opportunity in `submitted` with no `submittedAt`, an opportunity in `interview` with no `resumeId`).
 2. **Dedup**: run `npm run pipeline -- dedup`, which removes accidental duplicates by `id`.
 3. **Push to Sheets** (skip when `sheet.enabled` is false; see below): run `npm run sheets:sync` (the default command is push). If env vars are missing, surface a clear note and don't fail, because the harness still works without Sheets.
-4. **Pull from Sheets** (only when invoked with `--pull-first`, and skip when `sheet.enabled` is false): run `npm run sheets:pull` to read the Tray's `Action` + `Edits` columns into `state/pipeline/approval-queue.json`. It accepts `approve`, `reject`, `hold`, `retry` and `withdraw`.
+4. **Pull from Sheets** (only when invoked with `--pull-first`, and skip when `sheet.enabled` is false): run `npm run sheets:pull` to read the Tray's `Action` + `Edits` columns into the approval queue in `<pipeline>/`. It accepts `approve`, `reject`, `hold`, `retry` and `withdraw`.
 
 ## When the Sheet is switched off
 
-`sheet.enabled: false` in `state/profile/submission-policy.yaml` retires the mirror: the local UI (`npm run ui`) is the approval surface and there is no Sheet to keep in step. Skip steps 3 and 4 entirely. `npm run sheets:sync` and `npm run sheets:pull` already fail safe here, exiting 0 with `{"command":"push","ok":true,"skipped":"sheet.enabled=false"}` without building a client, so if you do run one, read that `skipped` field and report `sheet: disabled (sheet.enabled=false)` rather than treating it as a push. Everything else you do is unchanged: validation, dedup and the `state/pipeline/opportunities.md` digest are local work and still run on every invocation. A profile with no `sheet:` block at all is enabled, so say nothing about the flag unless it is set to false.
+`sheet.enabled: false` in `<profile>/submission-policy.yaml` retires the mirror: the local UI (`npm run ui`) is the approval surface and there is no Sheet to keep in step. Skip steps 3 and 4 entirely. `npm run sheets:sync` and `npm run sheets:pull` already fail safe here, exiting 0 with `{"command":"push","ok":true,"skipped":"sheet.enabled=false"}` without building a client, so if you do run one, read that `skipped` field and report `sheet: disabled (sheet.enabled=false)` rather than treating it as a push. Everything else you do is unchanged: validation, dedup and the `<pipeline>/opportunities.md` digest are local work and still run on every invocation. A profile with no `sheet:` block at all is enabled, so say nothing about the flag unless it is set to false.
 
 ## The Tray and the pull
 
@@ -30,8 +32,8 @@ Both commands fail closed, so read the exit code, never the prose: a Tray read e
 
 - Never invent transitions. If an opportunity is in an invalid state, surface the inconsistency; don't silently fix.
 - Never overwrite the Sheet's `Tray.Action` or `Tray.Edits` columns. The push carries them across the rewrite; if you ever need to clear them, only do so explicitly via `npm run sheets:pull`, which clears only the cells it read and only after the queue file is written.
-- Keep `state/pipeline/opportunities.md` (the human-readable digest) regenerated on every push; `npm run pipeline -- summary` is what rewrites it, so run it even when the Sheet is unavailable.
-- `state/pipeline/opportunities.json` is not the store. It is produced on demand by `npm run pipeline -- export` and nothing reads it as truth; never edit it and never treat a stale copy as state.
+- Keep the human-readable digest (`<pipeline>/opportunities.md`, file mode only) regenerated on every push; `npm run pipeline -- summary` is what rewrites it, so run it even when the Sheet is unavailable.
+- The JSON export is not the store. `npm run pipeline -- export` produces it on demand (on the Twenty store only to an explicit `--out` path) and nothing reads it as truth; never edit it and never treat a stale copy as state.
 
 ## When to surface a question
 

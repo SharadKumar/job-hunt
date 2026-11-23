@@ -3,6 +3,8 @@ name: pipeline
 description: Show the current state of the job pipeline: counts by status, top scoring items per actionable bucket, recent activity, channel health. Use when the user asks "what's in the pipeline", "show pipeline status", "where are we at", "what needs my attention", "any new responses", "anything stuck". Read-only snapshot.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /pipeline: status snapshot
 
 Quick read-out of where the harness is at right now.
@@ -15,7 +17,7 @@ Resolve the repo root first (`references/harness/repo-root.md`).
 2. For the actionable statuses (`awaiting_approval`, `manual_action_needed`, `responded`, `interview`), `npm run pipeline -- get --status <status>` and surface the top 5 by score per status.
 3. **Audit recap**: `npm run audit:summary -- --days 7` for submissions in the last week, distinct companies contacted, top recurring contacts.
 4. **Duplicate watch**: list any rows in `awaiting_approval` whose `company + title` fingerprint already has a submitted/responded event in the audit log within 60 days. Surface these for user attention; they're likely re-postings of roles already in flight.
-5. Recent activity: parse `state/journal/` for today and yesterday; surface anything notable.
+5. Recent activity: read today's and yesterday's journals in `<journal>/` (on the Twenty store, the run records); surface anything notable.
 6. Channel health: scan recent journal entries for channels that failed or returned 0 results unexpectedly.
 
 ## Surface

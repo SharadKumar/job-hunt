@@ -1,5 +1,7 @@
 # CV quality checks (universal)
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 The checks resume-writer runs against EVERY rendered CV, regardless of template. These are template-agnostic: they describe what makes any CV proper at a structural and visual level.
 
 resume-writer reads this file first, then optionally overlays per-template overrides from `templates/resume/<name>/quality-checks.md` (rare, and only used when a template genuinely contradicts or extends a universal check).
@@ -54,13 +56,13 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 - **severity**: fail
 
 ### source_provenance
-- **what**: authored resume claims are traceable back to canonical source (`state/profile/cv-source.md` plus profile frontmatter). Summary, highlights, skills, featured-experience summaries, bullets, and mentioned one-liners must have source line references in `ResumeContent.source_provenance`; `unsupported_claims` must be empty.
-- **how**: run `npm run resume:provenance -- --content-json <prefix>.composition.json`, then spot-check line references against `state/profile/cv-source.md`. The script validates that provenance exists, hashes match when supplied, cited line ranges exist, and `unsupported_claims` is empty. The writer still performs the semantic check: for re-authored prose, verify the underlying fact, number, system name, company, date, and scope are supported by the cited source lines; exact wording does not need to match.
+- **what**: authored resume claims are traceable back to canonical source (`<profile>/cv-source.md` plus profile frontmatter). Summary, highlights, skills, featured-experience summaries, bullets, and mentioned one-liners must have source line references in `ResumeContent.source_provenance`; `unsupported_claims` must be empty.
+- **how**: run `npm run resume:provenance -- --content-json <prefix>.composition.json`, then spot-check line references against `<profile>/cv-source.md`. The script validates that provenance exists, hashes match when supplied, cited line ranges exist, and `unsupported_claims` is empty. The writer still performs the semantic check: for re-authored prose, verify the underlying fact, number, system name, company, date, and scope are supported by the cited source lines; exact wording does not need to match.
 - **auto_fix**: resume-writer must either cite the correct source lines, re-author the claim so it is source-supported, or drop the unsupported claim.
 - **severity**: fail
 
 ### profile_editorial_rules
-- **what**: all rendered candidate-facing content honours the durable profile-specific presentation, confidentiality, and terminology rules in `state/profile/resume-editorial-rules.md` plus the selected resume's `editorial-rules.md`.
+- **what**: all rendered candidate-facing content honours the durable profile-specific presentation, confidentiality, and terminology rules in `<profile>/resume-editorial-rules.md` plus the selected resume's `editorial-rules.md`.
 - **how**: read both rule files, inspect the final composition and rendered markdown, and check every explicit prohibition or required framing. Context-sensitive rules must be checked as combinations rather than treating a generally valid word as globally banned.
 - **auto_fix**: re-author the violating unit in the composition JSON, preserve source provenance, render once, and rerun affected deterministic and visual checks.
 - **severity**: fail
@@ -84,7 +86,7 @@ resume-writer reads page PNGs (produced by `npm run resume:to-images -- --pdf <p
 - **severity**: warn
 
 ### evidence_weighting_alignment
-- **what**: when `state/profile/resumes.yaml` declares `evidence_strategy`, the rendered CV gives visible weight accordingly: magnified evidence leads summary/highlights/featured blocks, supporting evidence stays secondary, and de-emphasised evidence does not dominate page 1.
+- **what**: when `<profile>/resumes.yaml` declares `evidence_strategy`, the rendered CV gives visible weight accordingly: magnified evidence leads summary/highlights/featured blocks, supporting evidence stays secondary, and de-emphasised evidence does not dominate page 1.
 - **how**: compare the composition report, rendered markdown, and page 1 PNG against `evidence_strategy.magnify`, `support`, and `de_emphasize`.
 - **auto_fix**: recompose: reorder highlights, change featured/mention placement, reduce or restore bullets, or revise summary emphasis.
 - **severity**: warn
