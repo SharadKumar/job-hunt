@@ -17,6 +17,7 @@ import { load, type Opportunity } from "../pipeline.ts";
 import { store } from "../pipeline-store.ts";
 import { repoPath } from "../repo-root.ts";
 import { activeResumes } from "../resumes.ts";
+import { readBenchmark } from "./private-benchmarks.ts";
 
 export type HumanDisciplineLabel = DisciplineFit | "insufficient_evidence";
 export type HumanResumeLabel = string | "none" | "insufficient_evidence";
@@ -185,10 +186,9 @@ export async function getAdjudicationQueue(options: {
     options.cohortFile ?? repoPath("docs/benchmarks/jev-cohort.json"),
     [],
   );
-  const agentReview = await readJsonOr<AgentReview>(
-    options.agentReviewFile ?? repoPath("docs/benchmarks/jev-agent-disagreement-review.json"),
-    {},
-  );
+  const agentReview = options.agentReviewFile
+    ? await readJsonOr<AgentReview>(options.agentReviewFile, {})
+    : await readBenchmark<AgentReview>("docs/benchmarks/jev-agent-disagreement-review.json", {});
   const shadowReview = await readJsonOr<ShadowReview>(
     options.shadowReviewFile ?? repoPath("docs/benchmarks/jev-calibration-review.json"),
     {},

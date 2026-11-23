@@ -49,7 +49,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "microsoft-consultant",
         "profile_relevance": 100,
-        "reason": "Core noun is Solution Architect and the dominant named platform is Microsoft 365 (workplace/endpoint/productivity transformation) — this is exactly the platform the candidate has the deepest sustained corpus for (3x SharePoint MVP, Goldman Sachs 35K-user M365 platform, multiple M365 migrations), so the platform is well evidenced rather than a gap."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "automatic",
@@ -99,7 +99,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 64,
-        "reason": "Delivery Manager is the exact title and a core discipline strongly evidenced via NSW DoE and EY Westpac Life delivery, but the role's defining duty is Salesforce CRM modernisation and legacy replacement, a named platform not evidenced by any concrete delivered engagement in the resume corpus (Salesforce only appears as a generic taxonomy/skill tag, not a demonstrated delivery)."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "automatic",
@@ -149,7 +149,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 87,
-        "reason": "Multi-hat SA + Tech Lead + PM + UAT contract sits squarely in the candidate's core role family (Solutions/Enterprise Architect, Delivery Manager). The candidate has strong end-to-end delivery and architecture evidence (NSW DoE, EY, CBA, QBE) but no direct life-insurance/SMSF quote-calculation or underwriting-threshold domain evidence, so the discipline is a clear match while the specific product domain is a gap."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -199,7 +199,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 64,
-        "reason": "Duties center on technical leadership guiding engineering decisions and AI adoption across the service delivery lifecycle, which maps to the candidate's Nterprise/[redacted] and NSW DoE GenAI-adoption evidence, but the underlying microservices/system-build engineering named in the title is not demonstrated."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -249,7 +249,7 @@
         "evidence_strength": 0,
         "matched_resume_id": null,
         "profile_relevance": 5,
-        "reason": "This is a specialist AI Testing & Assurance / Quality Engineering capability-lead role centred on building governance, validation, bias/drift/explainability assurance and release-gating frameworks for AI, explicitly not an architecture or delivery-leadership brief. The candidate's evidence is in enterprise architecture, delivery management and applied agentic-system building, not in testing/QA leadership or formal AI risk/assurance framework design, so this is a different discipline the candidate is unlikely to be shortlisted for."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -299,7 +299,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 87,
-        "reason": "The posting's AI Agents Lead / AI Solutions Architect roles (agentic AI rollout, agent-orchestration frameworks, Copilot/Power Platform coordination, AI governance and reusable architecture patterns) align with the candidate's demonstrated primary discipline of applied AI architecture and delivery via [redacted] and the [redacted] agentic framework."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -349,7 +349,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "The role is a hands-on AI/GenAI engineering position (LLM apps, RAG, agents, AI evaluation) which aligns with the candidate's agentic AI practitioner evidence, but the job is dominated by a specific .NET/C#/ASP.NET Core and Microsoft Graph/SharePoint Online engineering stack that is not evidenced as current hands-on coding."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -399,7 +399,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 64,
-        "reason": "Integration Architect is an architecture discipline that fits the candidate's core enterprise/solution architecture background, but the role is dominated by named platforms (Salesforce, MuleSoft, iPaaS) that are not evidenced as hands-on delivery in the candidate's demonstrated engagements."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -449,7 +449,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "Multi-agent systems, LLM fundamentals and MCP protocol work are evidenced through Nterprise/[redacted], but the role's dominant must-haves (EKS/Kubernetes, Terraform, enterprise auth platform engineering, security-by-design infrastructure) are a named platform stack not evidenced in the candidate's corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -499,7 +499,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 42,
-        "reason": "Scrum Master is a neighbouring Agile-delivery discipline; candidate has run Agile ceremonies, Jira/Confluence and cross-functional team facilitation as a Delivery Manager, but has not been evidenced as a dedicated, certified Scrum Master (CSM/PSM/SAFe SM) running ceremonies as the primary role."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -549,7 +549,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Title and seniority (Solution Architect, contract) match the candidate's core discipline, but the must-haves are dominated by a hands-on .NET Core/Java engineering stack (DDD, Microservices, Event-Driven Architecture, Kubernetes, Staff/Principal Engineer background) that is not evidenced in the corpus, which is built on enterprise/ServiceNow architecture and delivery leadership rather than software engineering."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -599,7 +599,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Solution Architect is a core discipline for the candidate, but this role is dominated by a specific commerce-platform technical stack (DDD, Domain Modelling, Microservices, Event Driven Architecture, Azure) that is not evidenced in the corpus beyond familiar-tier Azure AI exposure, so the named-platform/pattern gap outweighs the discipline match."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -649,7 +649,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 42,
-        "reason": "Full-time permanent employee role (conflicts with contract/fractional-only engagement model) but the duties (owning an enterprise applications portfolio spanning Salesforce/Microsoft platforms, roadmap/backlog ownership, vendor/delivery partner governance, and shaping where AI/automation creates value) sit adjacent to the candidate's EA and delivery leadership background rather than matching a demonstrated Product/Applications Manager role family."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -699,7 +699,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 100,
-        "reason": "Directly matches the candidate's core Director/Digital Transformation role family, reinforced by concrete AI delivery evidence: EY Director transformation leadership, NSW DoE enterprise GenAI adoption, and ongoing [redacted] agentic systems delivery through to production."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -749,7 +749,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 100,
-        "reason": "Core duties are leading functional streams/Feature Teams, Agile ceremonies, risk/dependency management and stakeholder leadership across business, technical and vendor groups — this is generic technology delivery leadership, not a platform-specialist role (Civica Ensure experience is only 'highly regarded', not mandatory)."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -799,7 +799,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Solution Architect discipline nominally fits, but the role demands hands-on .NET Core/software engineering depth, DDD, Kubernetes and Staff/Principal Engineer-level coding background that dominate the JD and are not evidenced in the candidate's enterprise/ServiceNow-oriented architecture corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -849,7 +849,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Solution/integration architecture is a core discipline family for the candidate, but this role requires 5+ years MuleSoft (or equivalent iPaaS) plus Kafka/event-streaming and IBM MQ/Azure/AWS integration services delivery evidence that is absent from the candidate's demonstrated work; the JD is dominated by a named platform stack, not general EA."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -899,7 +899,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Title is Technical Architect, which sits under the candidate's top-priority Solutions/Enterprise Architect family, but the must-haves (microservices, event-driven platforms, AI-enabled DevSecOps, engineering uplift) are a specific cloud-native engineering stack the candidate's ServiceNow/EA/transformation evidence does not cover."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -949,7 +949,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Integration architecture role family fits the candidate's solution-architect discipline, but the must-have is 5+ years hands-on MuleSoft/Anypoint plus Salesforce integration and Australian Citizenship (Federal Sector); no MuleSoft, iPaaS or Salesforce integration delivery appears in the candidate's evidence, so the named platform dominates without coverage."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -999,7 +999,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "Hands-on AI engineering delivery fits the candidate's applied-AI/agentic evidence ([redacted], MCP, RAG, agentic systems at Nterprise), but the JD is dominated by Azure AI Foundry/Azure OpenAI specifics where the candidate's taxonomy seniority is only 'familiar', plus an AGSVA clearance requirement with no evidence."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1049,7 +1049,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 100,
-        "reason": "Enterprise/solution architecture combined with AI transformation is a demonstrated primary role family: EY Director-level transformation leadership, NSW DoE GenAI adoption, and current [redacted] agentic delivery directly cover the architecture-plus-AI mandate, and financial services (CBA, QBE, Colonial First State) is a known industry vertical."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1099,7 +1099,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 100,
-        "reason": "AI Engineering Consultant blending business/BA translation, stakeholder influence, agentic tooling (Claude Code, Copilot, OpenAI Codex) and delivery-transformation leadership is a strong match to the candidate's consulting background plus current agentic delivery work at Nterprise (including Claude-based tooling and [redacted])."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1149,7 +1149,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 30,
-        "reason": "This is explicitly framed as a hands-on technical delivery role for large-scale EUC/device/tablet deployment (12,000 devices, ~100 sites) requiring infrastructure and device technical depth, not enterprise architecture or M&A/separation delivery. The candidate's delivery-manager evidence (NSW DoE Services Gateway, EY Westpac Life M&A separation) is at enterprise/programme level, not device rollout logistics or EUC infrastructure."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1199,7 +1199,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 100,
-        "reason": "Identical Forward Deployed Engineering-style AI Solutions Engineer brief (stakeholder-facing GenAI/agentic delivery on cloud platforms) that directly matches the candidate's current forward-deployed, business-facing agentic AI delivery role."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1249,7 +1249,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 87,
-        "reason": "Job is fundamentally program/delivery leadership (roadmaps, business cases, governance forums, stakeholder engagement, budget/risk reporting) which is a core resume family (Engineering Lead/Delivery Manager) with strong EY Westpac and NSW DoE precedent; however the specific domain focus (Unified Data Management Framework, data maturity, MDM-style governance) is not something the delivered evidence directly demonstrates, so it is mixed coverage."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1299,7 +1299,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 64,
-        "reason": "Technical architecture leadership discipline fits candidate's enterprise architecture background, but the role is dominated by named cloud-native platforms (Kubernetes, OpenShift, AKS/EKS/GKE) and deep DevSecOps/CI/CD engineering depth not evidenced in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1349,7 +1349,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 30,
-        "reason": "Information Architecture (taxonomy, metadata, enterprise information governance) is a neighbouring discipline to the candidate's core Enterprise/Solution Architecture family but is not a demonstrated primary specialism in the corpus; per the data-role boundary guidance, generic information/data governance mentions do not make this a core EA fit, and it also falls under the Federal Government umbrella rather than the NSW state government evidence base."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1399,7 +1399,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "Engineering Lead is a listed core role family and the candidate has genuine hands-on agentic AI delivery evidence ([redacted], Nterprise agentic pods, NSW DoE GenAI prototype), so the engineering-leadership-for-AI discipline fits. But the role is dominated by named platforms (Google Gemini, Vertex AI) and deep distributed-systems/microservices engineering at enterprise scale that are not evidenced anywhere in the corpus, which is a named-platform gap rather than a discipline mismatch."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1449,7 +1449,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 64,
-        "reason": "Enterprise/solution architecture is a core demonstrated role family (NSW DoE, EY, CBA, QBE, Scentre), but this role's principal must-have is GRC/IRM domain architecture and specific risk-compliance tech tooling, which is not evidenced in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1499,7 +1499,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "microsoft-consultant",
         "profile_relevance": 87,
-        "reason": "SharePoint/M365 consulting is a demonstrated primary role family (3x SharePoint MVP, Goldman Sachs 35K-user platform, migrations). Records/Information Management and Microsoft Purview specifics are not directly evidenced in the corpus (flagged as prep-tier/familiarity only), so it is mixed coverage: strong on SharePoint/M365 but a material gap on the Records Management specialisation the JD leads with."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1549,7 +1549,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 87,
-        "reason": "Core duty is building and deploying production AI agents/GenAI solutions with enterprise integration, evaluation loops and governance — this matches the candidate's demonstrated agentic-systems work at [redacted] ([redacted] framework, MCP, agentic AI, RAG-adjacent taxonomy entries). Gaps: the JD's specific stack (LangChain/LlamaIndex/AutoGen, advanced Python, vector DB fine-tuning) is not directly evidenced in the corpus, only agentic/AI-platform-engineering at a practitioner level."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1599,7 +1599,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 64,
-        "reason": "Project/delivery management discipline fits candidate's delivery-manager evidence, but the role centres on named CMS/eCommerce platforms (Optimizely, Sitecore, Kentico, Contentful) and agency client-account management that are absent from the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1649,7 +1649,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "The role is a hands-on AI/agentic engineering discipline the candidate can credibly claim (agentic AI, LLM applications, TypeScript/Python-adjacent coding), but the must-haves are dominated by named platforms — Microsoft Foundry/Azure AI Foundry and Microsoft Fabric — where the corpus only shows 'familiar' Azure AI exposure and no Fabric evidence at all, so the platform-specific core is not demonstrated."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1699,7 +1699,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 64,
-        "reason": "The 'enterprise AI' and 'major Federal Government transformation program' framing aligns with the candidate's EY/NSW DoE transformation and GenAI-adoption evidence, giving partial coverage, but cloud-native and microservices architecture specifically is not evidenced."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1749,7 +1749,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 42,
-        "reason": "Release Train Engineer is a specialist SAFe/Agile facilitation role neighbouring the candidate's delivery management discipline; the candidate has demonstrated large-scale program delivery and stakeholder/governance leadership (NSW DoE, EY Westpac) that can support an argument for RTE-adjacent capability, but no evidenced SAFe certification or explicit RTE/cross-squad ceremony facilitation experience is present."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1799,7 +1799,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 64,
-        "reason": "Senior Solution Architect / enterprise architecture is a core, demonstrated role family (NSW Gov, EY, CBA, QBE, Scentre), so the discipline itself fits strongly. However the JD's principal must-haves single out SAS analytics and Salesforce solution delivery in a Federal Government context; Salesforce appears only as a scoring-taxonomy platform entry with no narrative delivery evidence in the corpus, and SAS analytics is not evidenced at all, so a named-platform gap sits on top of an otherwise core discipline."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1849,7 +1849,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Only a bare title and rate/location are given for this Lead Microservices & AI Architect contract; the architect discipline fits the candidate's core family but nothing in the ad ties to demonstrated microservices or AI-engineering delivery, and the sparse description offers no offsetting signal."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1899,7 +1899,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Same role family as the other Lead Microservices and AI Technical Architect postings for a Canberra government agency; the architect title fits the candidate's core discipline but the named technical stack (microservices, AI) is not demonstrated in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1949,7 +1949,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 30,
-        "reason": "Per the data-role boundary, a Domain Architect (Data) title with data-strategy-specific must-haves is a neighbouring specialism to the candidate's generalist enterprise architecture background, not a demonstrated primary role family, and no data architecture/data strategy delivery evidence exists in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -1999,7 +1999,7 @@
         "evidence_strength": 2,
         "matched_resume_id": "applied-ai",
         "profile_relevance": 100,
-        "reason": "This is explicitly a Forward Deployed Engineering-style role blending stakeholder engagement, solution design and hands-on GenAI/agentic delivery on cloud platforms - directly mirroring the candidate's current Forward Deployed Engineer/Principal Consultant role at [redacted] delivering agentic and GenAI solutions with business stakeholders."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2049,7 +2049,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 55,
-        "reason": "Title and core duties are Delivery Manager (coordinating workstreams, capacity/resource planning, agile ceremonies) which is a resume core family, but the must-have technical depth is hands-on Azure DevOps administration/reporting and Power BI, explicitly named platforms/tools with no evidence in the delivered corpus, and the role is scoped within the data-role boundary where generic delivery experience alone is insufficient."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2099,7 +2099,7 @@
         "evidence_strength": 0,
         "matched_resume_id": null,
         "profile_relevance": 5,
-        "reason": "This is a hands-on Technical Business Analyst role centred on device/tablet deployment requirements, configuration, provisioning and testing documentation — a distinct BA discipline that is not one of the candidate's demonstrated primary role families (Solutions/Enterprise Architect, Delivery Manager, Director Tech Consulting)."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2149,7 +2149,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Title and duties fit solution/technical architecture (requirements translation, solution design, architecture standards), but the role is dominated by named ETL/data-warehousing platform requirements (Ab Initio GDE/Express-IT/MHub/EME, advanced SQL, Kafka) that fall squarely in the excluded pure-ETL/data-engineering boundary and are entirely unevidenced in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2199,7 +2199,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 42,
-        "reason": "The role centres on LLM prompt engineering, fine-tuning, and Python/SQL data-driven application design for enterprise clients; candidate has LLM/GenAI production evidence via Nterprise/[redacted] but no evidenced fine-tuning or SQL-heavy data-application delivery, making this a neighbouring rather than primary demonstrated discipline."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2249,7 +2249,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 55,
-        "reason": "Same role as the Melbourne listing (Sydney location, higher geo priority): Solution Architect discipline is core, but the commerce-platform stack (DDD, Domain Modelling, Microservices, EDA, Azure) dominates and is not evidenced beyond familiar-tier Azure AI exposure."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2299,7 +2299,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "delivery-manager",
         "profile_relevance": 30,
-        "reason": "The Delivery Lead half of this combined posting sits in the candidate's delivery-leadership discipline (stakeholder management, supplier management, multi-stream coordination to Go-Live), but the must-have domain knowledge is ICT Infrastructure & Operations, EUC, Networking and Tablets/device deployment, which is not evidenced; the Technical BA half is outside the candidate's role families entirely."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2349,7 +2349,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 30,
-        "reason": "Title noun is 'Principal Engineer' with an 'engineering-led' quality-transformation duty — this reads as a hands-on senior IC engineering role, not the architecture/delivery leadership family the candidate's resumes are built around. Description is too sparse (one sentence) to confirm any specific must-have stack, and no enterprise architecture, delivery management or M&A signal is present at all."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2399,7 +2399,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 87,
-        "reason": "Lead AI Engineer duties (end-to-end GenAI/Agentic AI project leadership, architecture decisions, production LLM apps, agent workflows/tool integrations, evaluation frameworks) map directly onto the candidate's Nterprise forward-deployed engineering work and [redacted] agentic framework build, though deep Python software-engineering depth is not fully evidenced."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2449,7 +2449,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 64,
-        "reason": "Core duties (RAG, LLM tool/function calling, GenAI application build) match the candidate's practitioner-level agentic AI and LLM evidence, but the role is anchored on Databricks and AWS Bedrock as named platforms with no corresponding evidence in the corpus, and requires sustained hands-on Python engineering depth beyond what is demonstrated."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2499,7 +2499,7 @@
         "evidence_strength": 1,
         "matched_resume_id": "solution-architect",
         "profile_relevance": 87,
-        "reason": "Same discipline as the other 'Lead Microservices and AI Technical Architect' postings: cloud-native architecture shaping plus AI-enabled engineering practice is a core Enterprise Architect duty for this candidate, backed by EA seniority and current agentic delivery, but cloud-native/microservices depth itself is not demonstrated."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2549,7 +2549,7 @@
         "evidence_strength": 0,
         "matched_resume_id": "ai-developer",
         "profile_relevance": 30,
-        "reason": "This is a hands-on IC Web Developer role (React/TypeScript/Node.js coding, unit testing, APS6-equivalent build work) which is a neighbouring discipline to the candidate's architecture/delivery career rather than a demonstrated primary hands-on developer role family, and it also requires an active NV1 clearance not evidenced anywhere in the corpus."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2599,7 +2599,7 @@
         "evidence_strength": 0,
         "matched_resume_id": null,
         "profile_relevance": 5,
-        "reason": "IT Systems Engineer on a named PIMS project is a hands-on technical systems-engineering role, a different discipline family from the candidate's demonstrated architecture, delivery-management and applied-AI leadership positioning, with no description confirming any architecture/delivery scope."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2649,7 +2649,7 @@
         "evidence_strength": 0,
         "matched_resume_id": null,
         "profile_relevance": 5,
-        "reason": "This is a hands-on Senior Dynamics 365 CRM Developer role building Power Platform and Azure solutions -- a specialist CRM development discipline. The candidate has no Dynamics 365 CRM development experience in the corpus; Power Platform is only a prep-tier familiarity flag under the microsoft-consultant resume, explicitly guarded against being presented as delivery experience."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
@@ -2699,7 +2699,7 @@
         "evidence_strength": 0,
         "matched_resume_id": null,
         "profile_relevance": 5,
-        "reason": "Hands-on Exchange/infrastructure engineering role designing and assuring Defence messaging systems; candidate's demonstrated role families are Solution Architecture, Delivery Management and Director-level consulting, not specialist Exchange/infrastructure engineering. No corpus evidence of Exchange administration or infrastructure engineering delivery."
+        "reason": "(redacted: full text kept in state/jev/benchmarks/)"
       },
       "jev": {
         "status": "uncertain",
