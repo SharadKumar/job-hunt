@@ -172,7 +172,8 @@ export type ResolvedResume = {
   orgResumeTypesPath: string | null;
 };
 
-const DEFAULT_RESUMES_PATH = profilePath("resumes.yaml");
+// Resolved on use, so importing this module never needs the store.
+const defaultResumesPath = () => profilePath("resumes.yaml");
 const DEFAULT_ORG_RESUME_TYPES_PATH = repoPath("state/org/resume-types.yaml");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -227,7 +228,7 @@ function resolveResumePaths(options: ResumeLoadOptions): { profileResumesPath: s
   const context = resolveProfileContext(options.profileId);
   return {
     profileResumesPath: options.profileResumesPath ?? (
-      options.profileId || process.env.HARNESS_PROFILE ? context.resumesPath : DEFAULT_RESUMES_PATH
+      options.profileId || process.env.HARNESS_PROFILE ? context.resumesPath : defaultResumesPath()
     ),
     orgResumeTypesPath: options.orgResumeTypesPath ?? DEFAULT_ORG_RESUME_TYPES_PATH,
   };

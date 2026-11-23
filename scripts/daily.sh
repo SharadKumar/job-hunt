@@ -185,7 +185,7 @@ run_cli() {
     fi
     npm run -s daily:front-half || FRONT_EXIT=$?
   fi
-  echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
+  [ "$PREFLIGHT_EXIT" -eq 0 ] && echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
 
   # An explicit reuse request must never fall through to the agent when its
   # source report is missing or unhealthy. The ordinary run still lets the

@@ -74,8 +74,9 @@ import { archiveDir as packageDir, resolveRepoRef } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
-const POLICY_PATH = profilePath("submission-policy.yaml");
-const PROFILE_PATH = profilePath("profile.md");
+// Resolved on use, so importing this module never needs the store.
+const policyPath = () => profilePath("submission-policy.yaml");
+const profileMdPath = () => profilePath("profile.md");
 
 // Channels that are ALWAYS manual regardless of any auto_submit flag: the
 // policy documents these as FORCED FALSE.
@@ -139,7 +140,7 @@ export type Policy = {
 };
 
 async function loadPolicy(): Promise<Policy> {
-  return YAML.parse(await fs.readFile(POLICY_PATH, "utf8")) as Policy;
+  return YAML.parse(await fs.readFile(policyPath(), "utf8")) as Policy;
 }
 
 const VERDICT_BY_CODE: Record<number, "pass" | "warn" | "fail"> = { 0: "pass", 1: "warn", 2: "fail" };
@@ -158,7 +159,7 @@ async function runVerdict(npmScript: string, args: string[]): Promise<"pass" | "
 async function rateIsSet(): Promise<boolean> {
   // Policy intent: "if profile.md still has a TODO for rate, no auto-submit."
   let text: string;
-  try { text = await fs.readFile(PROFILE_PATH, "utf8"); } catch { return false; }
+  try { text = await fs.readFile(profileMdPath(), "utf8"); } catch { return false; }
   const rateLines = text.split("\n").filter((l) => /\brate\b/i.test(l));
   return !rateLines.some((l) => /TODO/i.test(l));
 }
@@ -173,7 +174,7 @@ async function submittedToday(nowISO: string, actor?: string): Promise<number> {
 /** Home city from profile.md (`city:` in the front matter); mirrors score.ts. */
 async function homeCityFromProfile(): Promise<string | undefined> {
   try {
-    const md = await fs.readFile(PROFILE_PATH, "utf8");
+    const md = await fs.readFile(profileMdPath(), "utf8");
     return md.match(/^\s*city:\s*([A-Za-z ]+)\s*$/m)?.[1]?.trim();
   } catch { return undefined; }
 }

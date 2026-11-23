@@ -58,7 +58,9 @@ import { pipelineFile } from "./store/paths.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
 const APPROVAL_QUEUE_PATH = pipelineFile("approval-queue.json");
-const SCORING_WEIGHTS_PATH = profilePath("scoring-weights.yaml");
+// Resolved on use: resolving the profile at import would materialise it from
+// the store, so importing this module could fail when the store is down.
+const scoringWeightsPath = () => profilePath("scoring-weights.yaml");
 const REASON_MAX = 160;
 
 export const TRAY_HEADER = [
@@ -420,7 +422,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
   await ensureTabs(sheets, spreadsheetId);
 
   const all = await loadPipeline();
-  const scoringWeights = (await readYamlIfExists<any>(SCORING_WEIGHTS_PATH, {})) ?? {};
+  const scoringWeights = (await readYamlIfExists<any>(scoringWeightsPath(), {})) ?? {};
   const pipelineSheetMinScore = scoringWeights.thresholds?.pipeline_sheet_min_score ?? 0;
 
   // Keep the operational view useful without requiring a manual Sheet sort:
