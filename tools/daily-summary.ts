@@ -483,9 +483,11 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
       action: "Record the answer in screening-answers.yaml (unknown_questions), then retry through autopilot:submit with all gates rechecked",
     });
   }
+  // On the Twenty store the Sheet Tray is retired; approval is a button on the opening.
+  const onTwenty = (process.env.HARNESS_STORE ?? "").toLowerCase() === "twenty";
   for (const r of rows.filter((x) => x.status === "awaiting_approval")) {
     if (runOwned(r)) continue;
-    esc.add({ kind: "awaiting_approval", id: r.id, title: r.title, company: r.company, reason: "Package waiting in the Tray", action: "Set Action to approve, hold or reject in the Sheet Tray, or review it with /review-drafts" });
+    esc.add({ kind: "awaiting_approval", id: r.id, title: r.title, company: r.company, reason: onTwenty ? "Package awaiting your approval" : "Package waiting in the Tray", action: onTwenty ? "Open the opening and use Approve, Hold or Reject" : "Set Action to approve, hold or reject in the Sheet Tray, or review it with /review-drafts" });
   }
   for (const r of rows.filter((x) => x.status === "submission_pending")) {
     esc.add({ kind: "submission_pending", id: r.id, title: r.title, company: r.company, reason: `Stuck mid-submission: ${short(lastReason(r), 120)}`, action: "Finish or withdraw it in an attended session (/submit-approved or pipeline set-status)" });
