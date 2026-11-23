@@ -47,38 +47,46 @@ const RowList = ({
     >
       {rows.map((row) => (
         <li key={row.id}>
-          <Button
-            variant="ghost"
-            color="neutral"
-            fullWidth
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() =>
               void navigate(AppPath.RecordShowPage, {
                 objectNameSingular,
                 objectRecordId: row.id,
               })
             }
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: theme.spacing[2],
+              padding: `${theme.spacing[2]} ${theme.spacing[2]}`,
+              borderRadius: theme.border.radius.sm,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
           >
-            <span
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: theme.spacing[2],
-                width: '100%',
-                minWidth: 0,
-              }}
-            >
+            {row.tag && (
               <span
                 style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  flex: '0 0 auto',
+                  fontSize: theme.font.size.xs,
+                  fontWeight: theme.font.weight.medium,
+                  padding: `0 ${theme.spacing[1]}`,
+                  borderRadius: theme.border.radius.xs,
+                  background: theme.background.tertiary,
+                  color: theme.font.color.secondary,
+                  lineHeight: '20px',
                 }}
               >
-                {row.title}
+                {row.tag}
               </span>
-              <Text color="tertiary">{row.detail}</Text>
+            )}
+            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <Text>{row.title}</Text>
+              {row.detail && <Text color="tertiary">{row.detail}</Text>}
             </span>
-          </Button>
+          </div>
         </li>
       ))}
     </ul>

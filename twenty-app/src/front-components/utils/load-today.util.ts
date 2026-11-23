@@ -13,6 +13,28 @@ const label = (value: string | null | undefined, fallback: string) =>
 
 // Reads the Today page as the signed-in member: open escalations, proposals
 // awaiting confirmation, applications sent today and the latest run.
+// A row says what needs the person in a few words; the record holds the rest.
+const KIND_TITLES: Record<string, string> = {
+  screening: 'Screening question to answer',
+  awaiting_approval: 'Package to approve',
+  manual: 'Apply yourself',
+  submission_pending: 'Submission to check',
+  channel: 'Channel needs attention',
+  gate: 'Send gate blocked',
+  cap: 'Daily cap reached',
+  kill_switch: 'Sends halted',
+};
+
+export const shortReason = (reason: string): string => {
+  const text = reason.replace(/^\s*\[[^\]]*\]\s*/, '').trim();
+  const question = text.match(/screening question:\s*"([^"]+)"/i);
+  if (question) return `"${question[1].replace(/\.{3,}$/, '')}"`;
+  const ats = text.match(/External ATS redirect to (\S+)/i);
+  if (ats) return `Apply on ${ats[1]}`;
+  const first = text.split(/(?<=[a-z0-9)])[.;]\s/i)[0].replace(/\.$/, '');
+  return first.length > 110 ? `${first.slice(0, 109).replace(/\s+\S*$/, '')}…` : first;
+};
+
 export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> => {
   const client = new CoreApiClient();
 
@@ -23,7 +45,7 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
         filter: { status: { eq: 'OPEN' } },
         orderBy: [{ priority: 'AscNullsLast' }],
       },
-      edges: { node: { id: true, name: true, priority: true, action: true } },
+      edges: { node: { id: true, name: true, priority: true, kind: true, reason: true } },
     },
     proposals: {
       __args: {
@@ -61,8 +83,9 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
   return {
     escalations: (result.escalations?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
-      title: label(node.name, 'Escalation'),
-      detail: [node.priority, node.action].filter(Boolean).join(' · '),
+      title: label(node.name, KIND_TITLES[String(node.kind ?? '')] ?? 'Escalation'),
+      detail: shortReason(String(node.reason ?? '')),
+      tag: node.priority ?? undefined,
     })),
     proposals: (result.proposals?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
