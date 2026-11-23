@@ -150,13 +150,27 @@ async function main(): Promise<number> {
     counts[v.why] = (counts[v.why] ?? 0) + 1;
     if (v.keep) { keep.push(row); byStatus[row.status] = (byStatus[row.status] ?? 0) + 1; }
   }
+  // --recent N: a first, checkable slice. Only the N most recently active
+  // openings (and so their applications and files) are included; the small
+  // sets (documents, positionings, questions, runs, people) go in full. The
+  // rest follows with a later run without --recent; ids are stable, so
+  // nothing is created twice.
+  const recentAt = argv.indexOf("--recent");
+  const recent = recentAt >= 0 ? Number(argv[recentAt + 1]) : 0;
+  if (recentAt >= 0 && !(Number.isInteger(recent) && recent > 0)) {
+    console.log(JSON.stringify({ ok: false, error: "--recent needs a positive whole number" }));
+    return 2;
+  }
+  const lastActive = (r: Opportunity) => (r.history ?? []).reduce((m, h) => (h.at > m ? h.at : m), (r as any).updatedAt ?? "");
+  const selected = recent ? [...keep].sort((x, y) => lastActive(y).localeCompare(lastActive(x))).slice(0, recent) : keep;
   const migratedAt = new Date().toISOString();
-  const plan = await buildPlan(keep, migratedAt);
+  const plan = await buildPlan(selected, migratedAt);
 
   const report: Record<string, unknown> = {
     mode: apply ? "apply" : "dry-run",
     source_rows: rows.length,
     in_scope: keep.length,
+    selected: selected.length,
     by_reason: counts,
     in_scope_by_status: byStatus,
     objects: planCounts(keep.length, plan),
@@ -188,9 +202,9 @@ async function main(): Promise<number> {
   // Openings through the store layer, which owns their projection.
   const { twentyBackend } = await import("../store/twenty-backend.ts");
   const target = await twentyBackend();
-  const openingIds = keep.map((r) => openingId(r.id));
+  const openingIds = selected.map((r) => openingId(r.id));
   const lacking = await missing(call, "openings", openingIds);
-  const ops = keep.filter((r) => lacking.has(openingId(r.id))).map((row) => ({ kind: "insert" as const, row: { ...row, migratedAt } as Opportunity }));
+  const ops = selected.filter((r) => lacking.has(openingId(r.id))).map((row) => ({ kind: "insert" as const, row: { ...row, migratedAt } as Opportunity }));
   if (apply) for (let i = 0; i < ops.length; i += 60) await target.upsert(ops.slice(i, i + 60));
   results.opening = { planned: keep.length, created: ops.length, already_present: keep.length - ops.length };
 
