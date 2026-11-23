@@ -46,7 +46,7 @@ import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import type { Opportunity } from "../pipeline.ts";
 import { repoPath } from "../repo-root.ts";
-import { openingId } from "../store/twenty-backend.ts";
+import { openingId, stripNul } from "../store/twenty-backend.ts";
 import { buildPlan, type MigrationPlan, type PlannedRecord } from "./migrate-plan.ts";
 import type { TwentyCall } from "./records.ts";
 
@@ -117,7 +117,7 @@ async function missing(call: TwentyCall, plural: string, ids: string[]): Promise
 async function createMissing(call: TwentyCall, plural: string, records: PlannedRecord[], write: boolean): Promise<Outcome> {
   const lacking = await missing(call, plural, records.map((r) => r.id));
   const todo = records.filter((r) => lacking.has(r.id));
-  if (write) for (let i = 0; i < todo.length; i += 60) await call("POST", `/rest/batch/${plural}`, todo.slice(i, i + 60).map((r) => r.record));
+  if (write) for (let i = 0; i < todo.length; i += 60) await call("POST", `/rest/batch/${plural}`, todo.slice(i, i + 60).map((r) => stripNul(r.record)));
   return { planned: records.length, created: todo.length, already_present: records.length - todo.length };
 }
 
