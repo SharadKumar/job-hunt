@@ -1,6 +1,7 @@
 import {
   defineRole,
   STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS as STANDARD,
+  SystemPermissionFlag,
 } from 'twenty-sdk/define';
 
 import {
@@ -36,7 +37,9 @@ export default defineRole({
   canBeAssignedToUsers: false,
   canBeAssignedToAgents: false,
   canBeAssignedToApiKeys: true,
-  permissionFlagUniversalIdentifiers: [],
+  // Upload only: the harness attaches the CVs, letters and screenshots it
+  // produces (and the one-time migration's archives) to their records.
+  permissionFlagUniversalIdentifiers: [SystemPermissionFlag.UPLOAD_FILE],
   recordsPermissions: {
     canReadAllRecords: true,
     canCreateAllRecords: false,

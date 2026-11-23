@@ -84,12 +84,18 @@ describe('role matrix', () => {
     }
   });
 
-  it('gives no role settings or tools, and only the Owner the AI flag', () => {
+  it('gives no role settings or tools; the Owner holds AI and the Harness UPLOAD_FILE', () => {
     for (const r of roles) {
       expect(r.canUpdateAllSettings, r.label).not.toBe(true);
       expect(r.canAccessAllTools, r.label).not.toBe(true);
-      // Only the Owner holds a flag, and only AI (AI chat, decided in R25).
-      const expected = r.label === 'Owner' ? [SystemPermissionFlag.AI] : [];
+      // The Owner holds AI (AI chat, decided in R25); the Harness holds
+      // UPLOAD_FILE so it can attach the files it produces. Nothing else.
+      const expected =
+        r.label === 'Owner'
+          ? [SystemPermissionFlag.AI]
+          : r.label === 'Harness'
+            ? [SystemPermissionFlag.UPLOAD_FILE]
+            : [];
       expect(r.permissionFlagUniversalIdentifiers ?? [], r.label).toEqual(expected);
     }
   });
