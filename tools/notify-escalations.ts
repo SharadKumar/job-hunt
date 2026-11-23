@@ -37,7 +37,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { buildSummary, type Escalation } from "./daily-summary.ts";
+import type { Escalation } from "./daily-summary.ts";
 import { loadLocalEnv } from "./jev/env.ts";
 import { loadLocale } from "./profile.ts";
 import { journalPath } from "./store/paths.ts";
@@ -103,7 +103,8 @@ function bullet(e: Escalation, uiUrl: string): string {
   const reason = slackEscape(shortReason(e));
   if (!e.title) return `• ${reason}`;
   const label = slackEscape(`${clip(e.title, 60)} at ${e.company ?? "?"}`);
-  const who = e.id ? `<${uiUrl}/#/row/${encodeURIComponent(e.id)}|${label}>` : label;
+  // No row link without the local UI (on the Twenty store the records carry their own links).
+  const who = e.id && uiUrl ? `<${uiUrl}/#/row/${encodeURIComponent(e.id)}|${label}>` : label;
   return `• ${who}: ${reason}`;
 }
 
@@ -142,6 +143,8 @@ export function compose(opts: {
   ledger: Ledger | null;
   exitCode: number;
   uiUrl: string;
+  /** Where "Open today" goes; defaults to the local UI's Today page. */
+  todayUrl?: string;
   timeLabel: string;
   force?: boolean;
 }): Message | null {
@@ -159,10 +162,10 @@ export function compose(opts: {
   else L.push(`*Job hunt, ${timeLabel}: ${fresh.length ? `${count(fresh.length, "new item")} need you` : "run failed"}*`);
   if (failed) L.push("", `:warning: The run failed (exit ${exitCode}). Sent totals are unverified until you check the pipeline; never retry an uncertain send.`);
 
-  L.push(...groupLines(fresh, (e) => e.kind, (e) => bullet(e, uiUrl)));
+  L.push(...groupLines(fresh, (e) => e.kind, (e) => bullet(e, opts.todayUrl ? "" : uiUrl)));
 
   if (waiting) L.push("", `Plus ${waiting} still waiting from earlier today.`);
-  L.push("", `<${uiUrl}/#/today|Open today in the harness>`);
+  L.push("", `<${opts.todayUrl ?? `${uiUrl}/#/today`}|Open today in the harness>`);
   return { text: L.join("\n"), newKeys: fresh.map(escalationKey), keys };
 }
 
@@ -208,6 +211,15 @@ async function writeLedger(l: Ledger): Promise<void> {
   await fs.writeFile(ledgerPath(), JSON.stringify(l, null, 2) + "\n");
 }
 
+/** On the Twenty store the link goes to the workspace (the local UI is retired). */
+async function storeUrl(): Promise<string | null> {
+  if ((process.env.HARNESS_STORE ?? "").toLowerCase() !== "twenty") return null;
+  try {
+    const { twentyConfig } = await import("./store/twenty-backend.ts");
+    return (await twentyConfig()).url;
+  } catch { return null; }
+}
+
 async function main(): Promise<number> {
   let args;
   try { args = parseArgs(process.argv.slice(2)); } catch (e: any) {
@@ -215,16 +227,33 @@ async function main(): Promise<number> {
     return 2;
   }
   await loadLocalEnv();
-  const { timezone } = await loadLocale();
+  // This is the fallback alert for when the store can't be read, so nothing
+  // here may depend on it: without the profile it uses the machine's time
+  // zone, and without the summary it reports the failed run with no list.
+  const timezone = await loadLocale().then((l) => l.timezone).catch(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   const now = new Date();
   const date = args.date || new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const timeLabel = new Intl.DateTimeFormat("en-AU", { timeZone: timezone, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(now);
-  const uiUrl = (process.env.HARNESS_UI_URL || DEFAULT_UI_URL).replace(/\/+$/, "");
+  // On the Twenty store the local UI is retired: the link opens the
+  // workspace, whose Home is Today.
+  const workspace = await storeUrl();
+  const uiUrl = (workspace || process.env.HARNESS_UI_URL || DEFAULT_UI_URL).replace(/\/+$/, "");
+  const todayUrl = workspace ? `${uiUrl}/` : undefined;
   const webhook = process.env.SLACK_WEBHOOK_URL || "";
 
-  const summary = await buildSummary(date);
+  let summary: { escalations: Escalation[] };
+  try {
+    // Loaded here: the summary's imports read the profile, which on the
+    // Twenty store fails when the workspace is down.
+    const { buildSummary } = await import("./daily-summary.ts");
+    summary = await buildSummary(date);
+  } catch (e: any) {
+    if (!args.exit) throw e;
+    summary = { escalations: [] };
+    console.error(`notify-escalations: summary unavailable (${e?.message ?? e}); alerting the failed run only`);
+  }
   const ledger = await readLedger();
-  const msg = compose({ date, escalations: summary.escalations, ledger, exitCode: args.exit, uiUrl, timeLabel, force: args.force });
+  const msg = compose({ date, escalations: summary.escalations, ledger, exitCode: args.exit, uiUrl, todayUrl, timeLabel, force: args.force });
   const base = { date, escalations: summary.escalations.length };
 
   if (!msg) {

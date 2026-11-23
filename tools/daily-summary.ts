@@ -52,8 +52,9 @@ const TZ = LOCALE.timezone;
 const SUMMARY_DIR = journalPath("summary");
 const JOURNAL_DIR = journalPath();
 const ARCHIVE_DIR = archiveRoot();
-const SCREENING_PATH = profilePath("screening-answers.yaml");
-const POLICY_PATH = profilePath("submission-policy.yaml");
+// Resolved on use, so importing this module never needs the store.
+const screeningPath = () => profilePath("screening-answers.yaml");
+const policyPath = () => profilePath("submission-policy.yaml");
 
 // ---------- types ----------
 
@@ -322,7 +323,7 @@ type Read<T> = { value: T; status: "ok" | "missing" | "error"; error?: string };
  * shows and exits 1 on, never a silent "nothing to answer".
  */
 async function unansweredQuestions(liveRowIds: Set<string>, rows: Opportunity[]): Promise<Read<UnknownQuestion[]> & { answeredTexts?: Set<string> }> {
-  const txt = await readIfExists(SCREENING_PATH);
+  const txt = await readIfExists(screeningPath());
   if (txt == null) return { value: [], status: "missing" };
   let doc: { unknown_questions?: UnknownQuestion[] };
   try { doc = YAML.parse(txt) ?? {}; } catch (e: any) {
@@ -359,7 +360,7 @@ type Policy = { killSwitch: boolean; autopilotEnabled: boolean; maxPerDay: numbe
 
 async function policy(): Promise<Read<Policy>> {
   const off: Policy = { killSwitch: false, autopilotEnabled: false, maxPerDay: null, channels: [] };
-  const txt = await readIfExists(POLICY_PATH);
+  const txt = await readIfExists(policyPath());
   if (txt == null) return { value: off, status: "missing" };
   try {
     const p = YAML.parse(txt) ?? {};
