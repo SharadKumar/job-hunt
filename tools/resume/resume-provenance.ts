@@ -9,7 +9,7 @@
 
 import { sha256 } from "../lib/hash.ts";
 import { promises as fs } from "node:fs";
-import { resolveProfileContext } from "../profile-context.ts";
+import { resolveProfileContext, CV_SOURCE_REF, PROFILE_REF } from "../profile-context.ts";
 import type { ResumeContent, ResumeSourceProvenance, SourceReference } from "../../templates/resume/_interface.ts";
 import { loadComposition } from "./lib/composition-io.ts";
 import { analyseCitations, runReanchorCli, WEAK_SCORE } from "./resume-reanchor.ts";
@@ -121,8 +121,8 @@ export async function runProvenance(args: { content: ResumeContent; profile?: st
   const fileLineCounts = new Map<string, number>([
     [profileContext.cvSourcePath, lineCount(cvSource)],
     [profileContext.profileMdPath, lineCount(profile)],
-    ["state/profile/cv-source.md", lineCount(cvSource)],
-    ["state/profile/profile.md", lineCount(profile)],
+    [CV_SOURCE_REF, lineCount(cvSource)],
+    [PROFILE_REF, lineCount(profile)],
   ]);
 
   if (provenance?.cv_source_hash && provenance.cv_source_hash !== sha256(cvSource)) {
@@ -204,8 +204,8 @@ export async function runProvenance(args: { content: ResumeContent; profile?: st
     const sources = new Map<string, string>([
       [profileContext.cvSourcePath, cvSource],
       [profileContext.profileMdPath, profile],
-      ["state/profile/cv-source.md", cvSource],
-      ["state/profile/profile.md", profile],
+      [CV_SOURCE_REF, cvSource],
+      [PROFILE_REF, profile],
     ]);
     const citations = analyseCitations({ content, provenance, sources });
     weakCitations = citations.weak.length;

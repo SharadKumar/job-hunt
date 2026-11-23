@@ -3,6 +3,8 @@ name: profile-report
 description: Generate a local HTML report for an individual profile or consulting team, including generated profile-specific narrative plus linked resume artefacts, source inputs, provenance, and market alignment.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /profile-report: local profile/team resume report
 
 This skill produces a local, browser-viewable report from the harness's profile, resume, template, and artefact state.
@@ -11,7 +13,7 @@ The report shell is deterministic and template-based (`templates/profile-report/
 
 ## Modes
 
-- **Individual**: write `state/profile/profile-report.html` for the default profile, or `state/profiles/<person-id>/profile-report.html` for team profiles.
+- **Individual**: write `<profile>/profile-report.html` for the default profile, or `profile-report.html` in the directory `HARNESS_PROFILE=<person-id> npm run -s profile:path` prints for team profiles.
 - **Team**: write `state/org/team-report.html` when `state/org/team.yaml` exists.
 
 ## Sequence
@@ -66,7 +68,7 @@ The renderer links PDFs/HTML/DOCX/MD/JSON/PNG artefacts by local relative path. 
 Return the report path and a short status summary:
 
 ```text
-Report: state/profile/profile-report.html
+Report: <profile>/profile-report.html
 Resumes: 6
 Warnings: applied-ai stale, missing composition for <resume-id>
 ```

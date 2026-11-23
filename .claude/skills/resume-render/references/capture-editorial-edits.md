@@ -1,5 +1,7 @@
 # Editorial instruction capture (#10, the learning loop)
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 Shared procedure used by both `/resume-render` and `/resume-review` skills. When the user edits a baseline before approving (or rejects a resume-writer suggestion), treat the feedback as a routing signal and materialise it into the narrowest durable instruction home that will improve future output. Do not maintain a separate feedback ledger when the instruction can be captured directly in source, profile rules, resume rules, or template code/rubric.
 
 ## When this fires
@@ -15,21 +17,21 @@ Classify every edit before applying it:
 
 | Route | Use when | Durable home |
 |---|---|---|
-| Source-level | The fact/evidence is missing, wrong, stale, or newly available | Master CV via `/refresh-cv`, or `state/profile/cv-source.md` for surgical local edits |
-| Profile-level | The preference should apply to this user's resumes across positionings | `state/profile/resume-editorial-rules.md`, `references/voice/slop-banlist.md`, or `references/voice/voice-rules.md` |
-| Resume-level | The preference applies only to this resume/positioning | `state/profile/resumes/<resume-id>/editorial-rules.md` |
-| Positioning evidence-weight | The feedback says true source evidence is over- or under-weighted for this resume's employers | `state/profile/resumes.yaml` → resume `evidence_strategy` |
+| Source-level | The fact/evidence is missing, wrong, stale, or newly available | Master CV via `/refresh-cv`, or `<profile>/cv-source.md` for surgical local edits |
+| Profile-level | The preference should apply to this user's resumes across positionings | `<profile>/resume-editorial-rules.md`, `references/voice/slop-banlist.md`, or `references/voice/voice-rules.md` |
+| Resume-level | The preference applies only to this resume/positioning | `<profile>/resumes/<resume-id>/editorial-rules.md` |
+| Positioning evidence-weight | The feedback says true source evidence is over- or under-weighted for this resume's employers | `<profile>/resumes.yaml` → resume `evidence_strategy` |
 | Template-level | The issue is layout, typography, heading policy, page budget, density, or rendering behaviour reusable across profiles | `templates/resume/<template>/styles.css`, `rubric.yaml`, `quality-checks.md`, `template.md`, or renderer code |
 
 Harness-level template changes must be profile-neutral. If the instruction depends on this user's career story or go-to-market strategy, it is profile-level or resume-level, not template-level.
 
 ## What gets captured
 
-For resume-level changes, store minimal instructions that resume-writer can read and act on. Each entry is one line plus a brief reason. Append to `state/profile/resumes/<resume-id>/editorial-rules.md`.
+For resume-level changes, store minimal instructions that resume-writer can read and act on. Each entry is one line plus a brief reason. Append to `<profile>/resumes/<resume-id>/editorial-rules.md`.
 
-For evidence weighting changes, update `state/profile/resumes.yaml` directly instead of appending another editorial note. Use `evidence_strategy.magnify`, `support`, and `de_emphasize` to encode how much visible weight a true experience should carry for this resume. Example: a technically relevant side project may be `support` or `de_emphasize` if employers value commercial client work more.
+For evidence weighting changes, update `<profile>/resumes.yaml` directly instead of appending another editorial note. Use `evidence_strategy.magnify`, `support`, and `de_emphasize` to encode how much visible weight a true experience should carry for this resume. Example: a technically relevant side project may be `support` or `de_emphasize` if employers value commercial client work more.
 
-For profile-level resume preferences, store the same style of minimal instruction in `state/profile/resume-editorial-rules.md`. That file belongs to this user's profile and should not be copied into the reusable harness.
+For profile-level resume preferences, store the same style of minimal instruction in `<profile>/resume-editorial-rules.md`. That file belongs to this user's profile and should not be copied into the reusable harness.
 
 For template-level changes, change the template artifact directly and update its rubric/quality checks when the rule should be enforced. Do not create an extra "feedback record" once the template has been improved.
 
@@ -66,9 +68,9 @@ For multi-thing edits or unstructured edits, fall back to "Other" with a short f
 
 ### 2. Materialise the instruction
 
-Resume-only path: `state/profile/resumes/<resume-id>/editorial-rules.md`.
+Resume-only path: `<profile>/resumes/<resume-id>/editorial-rules.md`.
 
-Profile-wide path: `state/profile/resume-editorial-rules.md`.
+Profile-wide path: `<profile>/resume-editorial-rules.md`.
 
 If the target-level file doesn't exist, create it with a header:
 ```markdown
@@ -111,7 +113,7 @@ Options:
   - Don't ask me again about this phrase
 ```
 
-On "promote to global": append to `references/voice/slop-banlist.md` with a brief reason, or patch the relevant template if the issue is visual/layout/rubric. On "per-resume only": do nothing (the per-resume entry already exists). On "profile only": move or copy the instruction to `state/profile/resume-editorial-rules.md`. On "don't ask": record a suppression note in the narrowest relevant instruction file.
+On "promote to global": append to `references/voice/slop-banlist.md` with a brief reason, or patch the relevant template if the issue is visual/layout/rubric. On "per-resume only": do nothing (the per-resume entry already exists). On "profile only": move or copy the instruction to `<profile>/resume-editorial-rules.md`. On "don't ask": record a suppression note in the narrowest relevant instruction file.
 
 ### 4. resume-writer reads, doesn't write
 

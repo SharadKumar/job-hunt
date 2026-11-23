@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import { resolveProfileContext } from "./profile-context.ts";
+import { fileProfileDir, isTwentyStore } from "./store/documents.ts";
 import { repoPath } from "./repo-root.ts";
 
 export type ProfileRef = { id: string | null; label: string };
@@ -54,12 +55,16 @@ export async function discoverProfiles(args: Record<string, string>): Promise<Pr
     return dedupeProfiles(refs);
   }
 
-  if (await exists(repoPath("state/profile/resumes.yaml"))) refs.push({ id: null, label: "default" });
+  // A Twenty workspace holds one person: the default profile, from the run's documents.
+  if (isTwentyStore()) return [{ id: null, label: "default" }];
 
-  const entries = await fs.readdir(repoPath("state/profiles"), { withFileTypes: true }).catch(() => []);
+  if (await exists(path.join(fileProfileDir(null), "resumes.yaml"))) refs.push({ id: null, label: "default" });
+
+  const teamDir = path.dirname(fileProfileDir("_"));
+  const entries = await fs.readdir(teamDir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    if (await exists(path.join("state", "profiles", entry.name, "resumes.yaml"))) {
+    if (await exists(path.join(teamDir, entry.name, "resumes.yaml"))) {
       refs.push({ id: entry.name, label: entry.name });
     }
   }

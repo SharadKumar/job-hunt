@@ -65,6 +65,7 @@ import { getPolicy } from "./policy-api.ts";
 import { channelLabel } from "./labels.ts";
 import { getScreening, type ScreeningSnapshot } from "./health-api.ts";
 import { blockingDegradation, readDegradation } from "../jev/degradation.ts";
+import { archiveRoot } from "../store/paths.ts";
 
 /** Resolve only the exact current blocker, never an older answered question. */
 export function screeningResolved(id: string, reason: string | null, bank: ScreeningSnapshot): boolean {
@@ -499,7 +500,7 @@ export function actionFor(row: ActionRow, reason: string | null, lane: Lane = "a
 // Where a row's package lives
 // ---------------------------------------------------------------------------
 
-const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? repoPath("state/pipeline/archive");
+const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? archiveRoot();
 
 /** The outreach tray the /follow-up skill writes LinkedIn nudges into. */
 const outreachDirOf = (ctx: ApiContext): string => path.join(path.dirname(archiveDirOf(ctx)), "outreach");

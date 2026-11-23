@@ -1,5 +1,7 @@
 # Channel modules
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 A channel is a single source of job postings (and optionally a way to submit
 applications back to it).
 
@@ -17,14 +19,14 @@ interface HuntChannel {
 
 Search-only channels return discovered opportunities; the harness handles dedup,
 scoring, and ingestion. Channels with a `submit` implementation can be
-opted into `auto_submit` in `state/profile/submission-policy.yaml`.
+opted into `auto_submit` in `<profile>/submission-policy.yaml`.
 Channels without `submit` always land approved rows in
 `manual_action_needed` so the user finishes the application themselves.
 
 ## Adding a channel
 
 1. Create `tools/channels/<id>.ts` exporting a `HuntChannel`.
-2. Add the channel to `state/profile/channels.yaml` (enabled, search config).
+2. Add the channel to `<profile>/channels.yaml` (enabled, search config).
 3. Add an npm script in `package.json` (`hunt:<id>`) and the id to `HUNT_SCRIPTS` in `_interface.ts`.
 4. Run `npm run hunt:<id>` to smoke-test.
 5. (Optional) Add `<id>-submit.ts` and wire it into the policy.
@@ -59,9 +61,9 @@ search starts hitting login walls, the search will fail with a clear
 Submit modules:
 - Are in `*-submit.ts` files (denied by `.claude/settings.json` for non-interactive runs).
 - Read screening questions from the rendered page, match against
-  `state/profile/screening-answers.yaml`, halt on unknown questions.
+  `<profile>/screening-answers.yaml`, halt on unknown questions.
 - Capture a screenshot of the confirmation page to
-  `state/pipeline/archive/<opportunity-id>/confirmation.png`.
+  `<archive>/<opportunity-id>/confirmation.png`.
 - Are subject to per-channel `auto_submit` opt-in, the daily cap, and the
   global kill switch — all in `submission-policy.yaml`.
 
@@ -89,7 +91,7 @@ leaves SEEK return `needsManual` with `reason: "external ATS: <host>"`.
 
 ### Screening answers: the `select` field
 
-Entries in `state/profile/screening-answers.yaml` gain an optional `select`
+Entries in `<profile>/screening-answers.yaml` gain an optional `select`
 list for choice questions (native select, radio group, checkbox group):
 
 ```yaml

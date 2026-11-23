@@ -13,7 +13,7 @@ import { load, patchMany, setStatus, type Opportunity, type PipelineStatus } fro
 import { scoreRole } from "./score.ts";
 import { canPromoteFromClassification, classificationContentHash } from "./classification.ts";
 import YAML from "yaml";
-import { repoPath } from "./repo-root.ts";
+import { profilePath } from "./profile-context.ts";
 
 type ScoreRoleResult = Awaited<ReturnType<typeof scoreRole>>;
 
@@ -275,7 +275,7 @@ async function main() {
     throw new Error("--ids-file must contain a JSON array of opportunity ids");
   }
   const targetIds = requestedIds ? new Set(requestedIds) : null;
-  const weights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
+  const weights = YAML.parse(await fs.readFile(profilePath("scoring-weights.yaml"), "utf8"));
   const shortlistMin = weights.thresholds?.shortlist_min_score ?? 55;
 
   const roles = await load();

@@ -52,12 +52,13 @@ import { get as getOpportunity, load as loadPipeline, setStatus, type Opportunit
 import path from "node:path";
 import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
-import { resolveProfileContext } from "./profile-context.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 import { canPromoteFromClassification } from "./classification.ts";
+import { pipelineFile } from "./store/paths.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
-const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
-const SCORING_WEIGHTS_PATH = repoPath("state/profile/scoring-weights.yaml");
+const APPROVAL_QUEUE_PATH = pipelineFile("approval-queue.json");
+const SCORING_WEIGHTS_PATH = profilePath("scoring-weights.yaml");
 const REASON_MAX = 160;
 
 export const TRAY_HEADER = [

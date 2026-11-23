@@ -46,6 +46,7 @@ import { openChromeContext } from "./_browser.ts";
 import { LinkedInBudgetExhausted, takeLinkedInLoad } from "./linkedin-throttle.ts";
 import { rotateKeywords } from "./seek.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
+import { profilePath } from "../profile-context.ts";
 
 const CHANNEL_ID = "linkedin_jobs";
 const PAGE_SIZE = 25;
@@ -487,7 +488,7 @@ export async function enrichLinkedInRoles(options: { id?: string; status?: strin
 // ---------------------------------------------------------------------------
 
 async function loadConfig(): Promise<LinkedInSearchConfig> {
-  const file = await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8");
+  const file = await fs.readFile(profilePath("channels.yaml"), "utf8");
   const all = YAML.parse(file);
   return all.channels?.linkedin_jobs?.search ?? {};
 }

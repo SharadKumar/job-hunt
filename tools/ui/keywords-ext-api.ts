@@ -48,7 +48,7 @@ import {
   type TriageVerdict,
 } from "../resume/keyword-triage.ts";
 import { resolveProfileContext } from "../profile-context.ts";
-import { repoPath } from "../repo-root.ts";
+import { archiveRoot } from "../store/paths.ts";
 
 /** What the UI shows beside the four answer buttons. Never an answer itself. */
 export type Recommendation = {
@@ -61,7 +61,7 @@ export type TermOpportunity = { id: string; title: string | null; company: strin
 
 const key = (term: string): string => normalise(term).trim();
 
-const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? repoPath("state/pipeline/archive");
+const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? archiveRoot();
 
 const ledgerPathOf = (ctx: ApiContext): string => resolveProfileContext(ctx.profileId ?? null).marketConfirmationsPath;
 

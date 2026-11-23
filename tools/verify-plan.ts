@@ -24,6 +24,10 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { repoRoot, repoPath } from "./repo-root.ts";
+import { profilePath } from "./profile-context.ts";
+
+/** A profile file, repo-relative (the on-disk profile in file mode, the run cache on the Twenty store). */
+const inProfile = (file: string): string => path.relative(repoRoot(), profilePath(file)).split(path.sep).join("/");
 
 type Check = { id: string; verdict: "pass" | "warn" | "fail"; detail: string };
 
@@ -93,13 +97,11 @@ async function checkArtefacts(checks: Check[]): Promise<void> {
     "templates/resume/modern/render.ts", "templates/resume/modern/template.md", "templates/resume/modern/quality-checks.md", "templates/resume/modern/rubric.yaml",
     "templates/resume/minimalist/render.ts", "templates/resume/minimalist/template.md", "templates/resume/minimalist/quality-checks.md", "templates/resume/minimalist/rubric.yaml",
     // Profile
-    "state/profile/profile.md", "state/profile/voice-samples.md",
+    ...["profile.md", "voice-samples.md"].map(inProfile),
     "references/voice/voice-rules.md", "references/voice/slop-banlist.md",
-    "state/profile/scoring-weights.yaml", "state/profile/skills-taxonomy.yaml",
-    "state/profile/channels.yaml", "state/profile/screening-answers.yaml",
-    "state/profile/submission-policy.yaml", "state/profile/resumes.yaml",
+    ...["scoring-weights.yaml", "skills-taxonomy.yaml", "channels.yaml", "screening-answers.yaml", "submission-policy.yaml", "resumes.yaml"].map(inProfile),
     // Canonical CV
-    "state/profile/cv/meta.yaml", "state/profile/cv-source.md",
+    inProfile("cv/meta.yaml"), inProfile("cv-source.md"),
     // Tools
     "tools/score.ts", "tools/slop-killer.ts", "tools/voice-check.ts",
     "tools/pipeline.ts", "tools/sheets-sync.ts", "tools/audit.ts", "tools/classification.ts",
@@ -175,7 +177,7 @@ async function checkTemplateSamples(checks: Check[]): Promise<void> {
 }
 
 async function checkCanonicalCV(checks: Check[]): Promise<void> {
-  const sourceFile = "state/profile/cv-source.md";
+  const sourceFile = inProfile("cv-source.md");
   if (!(await exists(sourceFile))) {
     checks.push({ id: "cv:source_file", verdict: "fail", detail: `${sourceFile} missing — run 'npm run markdownify:cv'` });
     return;
@@ -303,7 +305,7 @@ async function smokeCvRender(checks: Check[]): Promise<void> {
 }
 
 async function smokeProductionRenderGuard(checks: Check[]): Promise<void> {
-  const outDir = "state/profile/resumes/__verify-guard";
+  const outDir = inProfile("resumes/__verify-guard");
   const r = await runCmd("npm", ["run", "resume:render:raw", "--", "--resume", "solution-architect", "--flavours", "ats", "--out-dir", outDir]);
   checks.push({
     id: "smoke:resume_render_guard",

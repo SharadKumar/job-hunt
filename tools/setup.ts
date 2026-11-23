@@ -39,6 +39,7 @@ import { repoPath } from "./repo-root.ts";
 import { resolveProfileContext } from "./profile-context.ts";
 import { gatewayCredential } from "./jev/env.ts";
 import { loadJevPolicy } from "./jev/policy.ts";
+import { archiveRoot, journalPath } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
@@ -348,7 +349,7 @@ async function stageJev(): Promise<Stage> {
       id: "model",
       ok: policy.model === "typesafe-ai/jev",
       detail: policy.model,
-      fix: "set model: typesafe-ai/jev in state/profile/jev-policy.yaml",
+      fix: "set model: typesafe-ai/jev in the profile's jev-policy.yaml",
     },
     {
       id: "gateway_route_fingerprint",
@@ -397,7 +398,7 @@ async function scaffold(profileId: string | null): Promise<{ created: string[]; 
     }
   }
   await walk("");
-  for (const d of ["state/pipeline/archive", "state/audit", "state/journal/launchd", "state/channels/chrome-profile", "state/channels/storage-state", path.relative(repoPath("."), path.join(ctx.renderedResumesDir))]) {
+  for (const d of [path.relative(repoPath("."), archiveRoot()), "state/audit", path.relative(repoPath("."), journalPath("launchd")), "state/channels/chrome-profile", "state/channels/storage-state", path.relative(repoPath("."), path.join(ctx.renderedResumesDir))]) {
     await fs.mkdir(repoPath(d), { recursive: true });
   }
   if (!existsSync(repoPath(".env")) && existsSync(repoPath(".env.example"))) { await fs.copyFile(repoPath(".env.example"), repoPath(".env")); created.push(".env"); }
@@ -415,7 +416,7 @@ async function main() {
 
   if (cmd === "scaffold") {
     const r = await scaffold(profileId);
-    console.log(JSON.stringify({ profile_dir: resolveProfileContext(profileId).profileDir, ...r, next: "fill state/profile/profile.md, then npm run setup:check" }, null, 2));
+    console.log(JSON.stringify({ profile_dir: resolveProfileContext(profileId).profileDir, ...r, next: "fill profile.md in profile_dir, then npm run setup:check" }, null, 2));
     return;
   }
   if (cmd !== "check") { console.error("Usage: tsx tools/setup.ts (check|scaffold) [--stage N] [--profile <id>]"); process.exit(2); }

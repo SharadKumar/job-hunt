@@ -5,6 +5,8 @@
 set -euo pipefail
 
 REPO_DIR="$(bash "$(dirname "$0")/../.claude/hooks/repo-root.sh" "$(dirname "$0")")"
+# Run logs: state/logs/journal on the Twenty store, state/journal otherwise.
+if [ "$(printf '%s' "${HARNESS_STORE:-sqlite}" | tr '[:upper:]' '[:lower:]')" = "twenty" ]; then LOG_DIR="$REPO_DIR/state/logs/journal/launchd"; else LOG_DIR="$REPO_DIR/state/journal/launchd"; fi # scan:file-mode
 LABEL="com.job-hunt-harness.daily"
 PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
 INSTALL_CLI="${HARNESS_CLI:-codex}"
@@ -76,9 +78,9 @@ $CALENDAR_ENTRIES
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>$REPO_DIR/state/journal/launchd/stdout.log</string>
+  <string>$LOG_DIR/stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>$REPO_DIR/state/journal/launchd/stderr.log</string>
+  <string>$LOG_DIR/stderr.log</string>
 </dict>
 </plist>
 EOF
@@ -91,4 +93,4 @@ echo "Installed: $PLIST_PATH"
 echo "Schedule: weekdays, every $INTERVAL_HOURS hours from $START_HOUR:00 through $END_HOUR:00 local time"
 echo "Verify: launchctl print gui/$UID/$LABEL"
 echo "Test now: launchctl kickstart -k gui/$UID/$LABEL"
-echo "Logs: $REPO_DIR/state/journal/launchd/"
+echo "Logs: $LOG_DIR/"

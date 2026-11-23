@@ -21,6 +21,8 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Run logs: state/logs/journal on the Twenty store, state/journal otherwise.
+if [ "$(printf '%s' "${HARNESS_STORE:-sqlite}" | tr '[:upper:]' '[:lower:]')" = "twenty" ]; then LOG_DIR="$REPO_DIR/state/logs/journal/launchd"; else LOG_DIR="$REPO_DIR/state/journal/launchd"; fi # scan:file-mode
 LABEL="com.job-hunt-harness.ui"
 TEMPLATE="$REPO_DIR/templates/launchd/$LABEL.plist"
 PLIST_PATH="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -69,7 +71,7 @@ if [ "$MODE" = "dry-run" ]; then
   exit 0
 fi
 
-mkdir -p "$HOME/Library/LaunchAgents" "$REPO_DIR/state/journal/launchd"
+mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
 render > "$PLIST_PATH"
 plutil -lint "$PLIST_PATH" >/dev/null
 
@@ -94,5 +96,5 @@ if command -v portless >/dev/null 2>&1; then
 fi
 echo "Verify: launchctl print gui/$UID/$LABEL"
 echo "Restart: launchctl kickstart -k gui/$UID/$LABEL"
-echo "Logs: $REPO_DIR/state/journal/launchd/ui.log"
+echo "Logs: $LOG_DIR/ui.log"
 echo "Remove: bash scripts/install-ui-launchd.sh --uninstall"

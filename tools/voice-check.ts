@@ -21,7 +21,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveProfileContext } from "./profile-context.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 
 type Kind = "cover_letter" | "dm" | "comment" | "cv_bullet" | "generic";
 type Verdict = "pass" | "warn" | "fail";
@@ -200,7 +200,7 @@ async function main() {
   let filePath = "";
   let text = "";
   let kind: Kind = "generic";
-  let samplesPath = "state/profile/voice-samples.md";
+  let samplesPath = "";
   let profileId: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--file") filePath = argv[++i];
@@ -209,9 +209,7 @@ async function main() {
     else if (argv[i] === "--samples") samplesPath = argv[++i];
     else if (argv[i] === "--profile") profileId = argv[++i];
   }
-  if (profileId && samplesPath === "state/profile/voice-samples.md") {
-    samplesPath = resolveProfileContext(profileId).voiceSamplesPath;
-  }
+  if (!samplesPath) samplesPath = profileId ? resolveProfileContext(profileId).voiceSamplesPath : profilePath("voice-samples.md");
   if (filePath) text = await fs.readFile(filePath, "utf8");
   if (!text) {
     console.error("Usage: tsx tools/voice-check.ts (--file <path> | --text '...') [--kind cover_letter|dm|comment|cv_bullet|generic] [--samples <path>]");

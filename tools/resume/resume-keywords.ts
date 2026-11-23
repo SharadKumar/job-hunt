@@ -74,6 +74,7 @@ import {
   type KeywordCloudKind,
   type KeywordPlanCloud,
 } from "./keyword-lexicon.ts";
+import { archiveDir } from "../store/paths.ts";
 
 /**
  * The evidence interview's reusable answers. "Bring in as familiarity" is for a
@@ -1138,7 +1139,7 @@ async function main() {
   }
   const profileCtx = resolveProfileContext(args.profile);
   const outPath = args.out === "-" ? null
-    : args.out ?? (opportunityId ? path.join("state", "pipeline", "archive", opportunityId, "keyword-plan.json") : path.join(profileCtx.renderedResumesDir, resumeId, "keyword-plan.json"));
+    : args.out ?? (opportunityId ? archiveDir(opportunityId, "keyword-plan.json") : path.join(profileCtx.renderedResumesDir, resumeId, "keyword-plan.json"));
   if (outPath) {
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, `${JSON.stringify(plan, null, 2)}\n`);

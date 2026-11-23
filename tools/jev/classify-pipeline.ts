@@ -10,8 +10,8 @@ import { applyRescore } from "../rescore-pipeline.ts";
 import { classifyWithJev, currentJevCacheIdentity } from "./classifier.ts";
 import { clearDegradation, recordDegradation } from "./degradation.ts";
 import YAML from "yaml";
-import { repoPath } from "../repo-root.ts";
 import { sha256 } from "../lib/hash.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type ClassifyBatchSummary = {
   considered: number;
@@ -288,7 +288,7 @@ export async function classifyPipeline(
   else if (summary.requested > 0 && summary.deferred === 0 && summary.replay_misses === 0) await clearDegradation("classification");
   if (audit.length) await auditLogMany(audit);
   if (applyState && results.length && summary.degraded === 0) {
-    const weights = YAML.parse(await fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"));
+    const weights = YAML.parse(await fs.readFile(profilePath("scoring-weights.yaml"), "utf8"));
     const counts = await applyRescore(results, weights.thresholds?.shortlist_min_score ?? 55, { dryRun: opts.dryRun });
     summary.promoted = counts.promoted;
     summary.demoted = counts.demoted;
