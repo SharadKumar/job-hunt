@@ -49,6 +49,22 @@ export const escalationRecordId = (key: string) => uuid5(`escalation:${key}`);
 /** Fields delivery owns. Sync never writes them. */
 export const DELIVERY_FIELDS = ["deliveredAt", "grokDeliveredAt"] as const;
 
+/**
+ * The next step, said for the workspace. The summary's actions are written for
+ * file mode (local paths, the Sheet Tray, slash commands); in Twenty the person
+ * acts with the record's buttons. Kinds with no button keep the summary text.
+ */
+export function twentyAction(e: Escalation): string {
+  switch (e.kind) {
+    case "screening": return "Open the screening question and use Answer; the next autopilot run retries with every gate";
+    case "awaiting_approval": return "Open the opening and use Approve, Hold or Reject";
+    case "manual": return "Apply on the portal yourself, then use Mark sent on the opening (or Withdraw)";
+    case "submission_pending": return "Check the portal for this submission, then use Mark sent or Withdraw on the opening";
+    case "kill_switch": return "Sends are halted; use Enable autopilot (Cmd+K) when you want them back";
+    default: return e.action;
+  }
+}
+
 const CONTENT_FIELDS = ["name", "kind", "priority", "dedupeKey", "reason", "action", "openingId", "notifyMemberId"] as const;
 
 export function escalationName(e: Escalation): string {
@@ -66,7 +82,7 @@ export function toRecord(e: Escalation, opts: { notifyMemberId?: string | null; 
     priority: priorityFor(e.kind),
     dedupeKey: key,
     reason: e.reason,
-    action: e.action,
+    action: twentyAction(e),
     openingId: link ? openingId(e.id!) : null,
     notifyMemberId: opts.notifyMemberId || null,
   };
