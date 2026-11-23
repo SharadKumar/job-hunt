@@ -120,7 +120,11 @@ export function planSync(current: Escalation[], existing: Record<string, any>[],
   return plan;
 }
 
-export async function syncEscalations(call: TwentyCall, current: Escalation[], opts: { now?: string; notifyMemberId?: string | null; dryRun?: boolean } = {}) {
+/**
+ * createFields are merged into every record this call creates; the one-time
+ * migration passes { migratedAt } so delivery workflows skip what it brings in.
+ */
+export async function syncEscalations(call: TwentyCall, current: Escalation[], opts: { now?: string; notifyMemberId?: string | null; dryRun?: boolean; createFields?: Record<string, unknown> } = {}) {
   const now = opts.now ?? new Date().toISOString();
   const ids = [...new Set(current.map((e) => escalationRecordId(dedupeKey(e))))];
   const known = await getByIds(call, "escalations", ids);
@@ -129,6 +133,7 @@ export async function syncEscalations(call: TwentyCall, current: Escalation[], o
   const harnessIds = [...new Set(current.map((e) => e.id).filter((x): x is string => Boolean(x)))];
   const openings = await getByIds(call, "openings", harnessIds.map(openingId));
   const plan = planSync(current, [...known.values()], { now, notifyMemberId: opts.notifyMemberId, linkOpening: (h) => openings.has(openingId(h)) });
+  if (opts.createFields) plan.create = plan.create.map((r) => ({ ...r, ...opts.createFields }));
   if (!opts.dryRun) {
     for (let i = 0; i < plan.create.length; i += 60) await call("POST", "/rest/batch/escalations", plan.create.slice(i, i + 60));
     for (const u of plan.update) await call("PATCH", `/rest/escalations/${u.id}`, u.fields);
