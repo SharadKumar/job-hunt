@@ -87,9 +87,10 @@ export function fromOpening(rec: Record<string, any>, withDescription = false): 
   return row;
 }
 
-type Config = { url: string; key: string };
+export type TwentyConfig = { url: string; key: string };
+type Config = TwentyConfig;
 
-async function config(): Promise<Config> {
+export async function twentyConfig(): Promise<Config> {
   await loadLocalEnv();
   try {
     const text = await fs.readFile(repoPath("state", "twenty", "keys.env"), "utf8");
@@ -124,7 +125,7 @@ export function twentyClient(cfg: Config, fetchImpl: typeof fetch = fetch) {
 }
 
 export async function twentyBackend(opts: { config?: Config; fetchImpl?: typeof fetch } = {}): Promise<RowBackend> {
-  const cfg = opts.config ?? (await config());
+  const cfg = opts.config ?? (await twentyConfig());
   const { call } = twentyClient(cfg, opts.fetchImpl);
   const companyIds = new Map<string, string>();
 
