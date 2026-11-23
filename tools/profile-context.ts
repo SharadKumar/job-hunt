@@ -1,5 +1,5 @@
 import path from "node:path";
-import { repoRoot } from "./repo-root.ts";
+import { currentProfileDir, fileProfileDir } from "./store/documents.ts";
 
 export type ProfileContext = {
   profileId: string | null;
@@ -12,10 +12,16 @@ export type ProfileContext = {
   marketConfirmationsPath: string;
 };
 
-export function resolveProfileContext(profileId?: string | null): ProfileContext {
+/**
+ * The profile's paths. In file mode they sit under the on-disk profile
+ * directory (state/profile, or state/profiles/<id> in team mode); with
+ * HARNESS_STORE=twenty they sit in the run's materialised document cache
+ * (tools/store/documents.ts), so callers read the same file names either way.
+ * `files: true` forces the on-disk profile, for the one-time migration.
+ */
+export function resolveProfileContext(profileId?: string | null, opts: { files?: boolean } = {}): ProfileContext {
   const id = profileId || process.env.HARNESS_PROFILE || null;
-  const root = repoRoot();
-  const profileDir = id ? path.join(root, "state", "profiles", id) : path.join(root, "state", "profile");
+  const profileDir = opts.files ? fileProfileDir(id) : currentProfileDir(id);
   return {
     profileId: id,
     profileDir,
@@ -27,3 +33,19 @@ export function resolveProfileContext(profileId?: string | null): ProfileContext
     marketConfirmationsPath: path.join(profileDir, "market-confirmations.yaml"),
   };
 }
+
+/**
+ * A file in the default profile directory: state/profile in file mode (never
+ * HARNESS_PROFILE's, as the callers always hard-coded), the run cache in
+ * Twenty mode. Team-aware callers use resolveProfileContext(profileId).
+ */
+export function profilePath(...segments: string[]): string {
+  return path.join(currentProfileDir(null), ...segments);
+}
+
+/**
+ * Provenance keys stored in compositions and critic findings. They name the
+ * evidence file and open nothing, so they stay stable across stores.
+ */
+export const CV_SOURCE_REF = "state/profile/cv-source.md"; // scan:label
+export const PROFILE_REF = "state/profile/profile.md"; // scan:label
