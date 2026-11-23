@@ -110,7 +110,7 @@ const levels = (s: Snapshot, m = manifest) => diffWorkspace(m, s, NOW).filter((f
   assert.deepEqual(levels(snap((s) => { s.apiKeys.push({ id: "k3", name: "Break glass", role: "Admin", expiresAt: null, revokedAt: null }); })).filter((f) => f.area === "apiKeys"), []);
   assert.deepEqual(levels(snap((s) => { s.apiKeys.push({ id: "k4", name: "Gone", role: "Admin", expiresAt: null, revokedAt: "2027-01-01" }); })).filter((f) => f.area === "apiKeys"), [], "revoked keys ignored");
   // Workflows: undefined, edited, missing, unreadable (human).
-  one(snap((s) => { s.workflows!.push({ id: "wf2", name: "Sneaky", createdAt: at(6000), hash: "x" }); }), "workflows", /"Sneaky" is not defined/);
+  one(snap((s) => { s.workflows!.push({ id: "wf2", name: "Sneaky", createdAt: at(6000), hash: "x" }); }), "workflows", /"Sneaky" is not in the manifest/);
   one(snap((s) => { s.workflows![0].hash = "h2"; }), "workflows", /definition changed/);
   one(snap((s) => { s.workflows = []; }), "workflows", /missing/);
   assert.equal(one(snap((s) => { s.workflows = null; }), "workflows", /TWENTY_ADMIN_SESSION/, "human"), 10);
