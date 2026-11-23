@@ -8,6 +8,7 @@ import { Text } from 'twenty-ui/primitives/typography';
 import { useTheme } from 'twenty-ui/theme';
 
 import { TODAY_IDS } from 'src/constants/universal-identifiers';
+import { createDecision } from 'src/front-components/utils/create-decision.util';
 import { loadToday } from 'src/front-components/utils/load-today.util';
 import { type TodaySnapshot } from 'src/types/today-snapshot';
 
@@ -151,14 +152,17 @@ const Today = () => {
         title="Today"
         description="What needs you and what the harness did."
         actions={
-          <Button
-            variant="outline"
-            color="neutral"
-            onClick={refresh}
-            loading={state.kind === 'loading'}
-          >
-            Refresh
-          </Button>
+          <div style={{ display: 'flex', gap: theme.spacing[2] }}>
+            <HaltSendsButton />
+            <Button
+              variant="outline"
+              color="neutral"
+              onClick={refresh}
+              loading={state.kind === 'loading'}
+            >
+              Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -186,6 +190,47 @@ const Today = () => {
         </section>
       ))}
     </main>
+  );
+};
+
+// The safety control, labelled and one click from the start page. The first
+// click arms it, the second records one HALT_SENDS decision as the viewer. A
+// halt wins over any enable; resuming is a separate Enable autopilot decision.
+const HaltSendsButton = () => {
+  const [step, setStep] = useState<'idle' | 'armed' | 'saving' | 'done' | 'failed'>('idle');
+
+  const onClick = useCallback(async () => {
+    if (step === 'idle' || step === 'failed') {
+      setStep('armed');
+      return;
+    }
+    if (step !== 'armed') return;
+    setStep('saving');
+    try {
+      await createDecision({ decisionType: 'HALT_SENDS' });
+      setStep('done');
+    } catch {
+      setStep('failed');
+    }
+  }, [step]);
+
+  const label =
+    step === 'armed' ? 'Confirm: halt every send'
+      : step === 'saving' ? 'Halting'
+      : step === 'done' ? 'Sends halted'
+      : step === 'failed' ? 'Halt failed, try again'
+      : 'Halt sends';
+
+  return (
+    <Button
+      variant={step === 'armed' ? 'solid' : 'outline'}
+      color="danger"
+      onClick={onClick}
+      disabled={step === 'done'}
+      loading={step === 'saving'}
+    >
+      {label}
+    </Button>
   );
 };
 
