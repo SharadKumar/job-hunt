@@ -7,7 +7,9 @@
  * files that move into Twenty: state/pipeline (archives included),
  * pipeline.db, opportunities.json, state/profile(s), state/journal and
  * approval-queue.json. The one-time migration, the SQLite store and this
- * scanner are excluded; tests live outside the scanned folders.
+ * scanner are excluded; tests live outside the scanned folders. Paths git
+ * ignores (local eval workspaces, generated output) are skipped: they are not
+ * code the harness runs.
  *
  * What counts as direct:
  *   - a code line (comments are not accesses) or a prose line in a skill or
@@ -28,6 +30,7 @@
  * Prints counts per path and per pattern, never file contents.
  */
 
+import { execFileSync } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { repoRoot } from "../repo-root.ts";
@@ -120,9 +123,28 @@ async function walk(dir: string, out: string[]): Promise<void> {
   }
 }
 
+/**
+ * The subset of repo-relative paths git ignores. Outside a git work tree (or
+ * without git) nothing is ignored. Tracked files are never reported ignored.
+ */
+export function gitIgnored(root: string, rels: string[]): Set<string> {
+  if (!rels.length) return new Set();
+  try {
+    const out = execFileSync("git", ["-C", root, "check-ignore", "--stdin"], { input: rels.join("\n") + "\n", encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+    return new Set(out.split(/\r?\n/).filter(Boolean));
+  } catch (e: any) {
+    // Exit 1 means none of the paths is ignored; anything else (not a repo, no git) ignores nothing.
+    const out = typeof e?.stdout === "string" ? e.stdout : "";
+    return new Set(out.split(/\r?\n/).filter(Boolean));
+  }
+}
+
 export async function scan(root = repoRoot()): Promise<Record<string, unknown>> {
-  const files: string[] = [];
-  for (const d of SCAN_DIRS) await walk(path.join(root, d), files);
+  const walked: string[] = [];
+  for (const d of SCAN_DIRS) await walk(path.join(root, d), walked);
+  const relOf = (f: string) => path.relative(root, f).split(path.sep).join("/");
+  const ignored = gitIgnored(root, walked.map(relOf));
+  const files = walked.filter((f) => !ignored.has(relOf(f)));
   const paths: { path: string; hits: number; patterns: Record<string, number> }[] = [];
   const byPattern: Record<string, number> = {};
   const byDir: Record<string, number> = {};
@@ -159,6 +181,7 @@ export async function scan(root = repoRoot()): Promise<Record<string, unknown>> 
     by_pattern: byPattern,
     by_dir: byDir,
     excluded: [...EXCLUDED],
+    git_ignored_skipped: ignored.size,
     paths,
   };
 }
