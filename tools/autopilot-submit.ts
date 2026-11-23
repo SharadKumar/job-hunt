@@ -444,6 +444,23 @@ async function main() {
     finish(1);
   }
   const { submit, label: adapterLabel } = adapter as { submit: SubmitAdapter; label: string };
+  // On the Twenty store the send switch is the owner's own decisions, read
+  // fresh right before the claim (plan R44). Any doubt means no send, and the
+  // row stays approved for a later run.
+  if (!dryRun && (process.env.HARNESS_STORE ?? "").toLowerCase() === "twenty") {
+    const { readSendSwitch } = await import("./decisions/send-switch.ts");
+    const sw = await readSendSwitch({
+      url: process.env.TWENTY_API_URL ?? "",
+      key: process.env.TWENTY_API_KEY ?? "",
+      ownerMemberId: process.env.TWENTY_OWNER_MEMBER_ID ?? "",
+    });
+    if (!sw.allowed) {
+      summary.outcome = "send_switch_off";
+      summary.reason = sw.reason;
+      finish(1);
+    }
+    summary.notes.push(`send switch: ${sw.reason}`);
+  }
   if (!dryRun) {
     try {
       await setStatus(id, "submission_pending", `autopilot ${runId}: gate cleared, invoking ${adapterLabel}`, { actor: "autopilot" });
