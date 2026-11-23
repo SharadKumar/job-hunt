@@ -1,6 +1,7 @@
 import {
   defineRole,
   STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS as STANDARD,
+  SystemPermissionFlag,
 } from 'twenty-sdk/define';
 
 import {
@@ -20,7 +21,9 @@ const PERSON_OWNED_STANDARD = [
 
 // The person. Reads everything, confirms through buttons (create-only
 // decisions), and writes their own engagements, notes, tasks and contacts.
-// Every harness-owned field is uneditable. No settings, no permission flags.
+// Every harness-owned field is uneditable. No settings; the only permission
+// flag is AI, so AI chat works and can create proposals (stamped AGENT, never
+// accepted as a confirmation).
 export default defineRole({
   universalIdentifier: ROLE_IDS.owner,
   label: 'Owner',
@@ -31,7 +34,7 @@ export default defineRole({
   canBeAssignedToUsers: true,
   canBeAssignedToAgents: false,
   canBeAssignedToApiKeys: false,
-  permissionFlagUniversalIdentifiers: [],
+  permissionFlagUniversalIdentifiers: [SystemPermissionFlag.AI],
   recordsPermissions: {
     canReadAllRecords: true,
     canCreateAllRecords: false,
@@ -42,7 +45,14 @@ export default defineRole({
       ...Object.entries(HARNESS_OWNED_FIELD_IDS)
         .filter(([objectId]) => objectId !== OBJECT_IDS.decision)
         .map(([objectId, fieldIds]) =>
-          objectGrant(objectId, { read: true }, fieldIds),
+          // AI chat acts with this role, so it may create proposals; the
+          // harness-owned proposal fields (status, outcome) stay uneditable,
+          // which Twenty enforces on create too.
+          objectGrant(
+            objectId,
+            { read: true, create: objectId === OBJECT_IDS.proposal },
+            fieldIds,
+          ),
         ),
       objectGrant(
         OBJECT_IDS.decision,

@@ -3,6 +3,9 @@ import { CoreApiClient } from 'twenty-client-sdk/core';
 import { type TodaySnapshot } from 'src/types/today-snapshot';
 import { startOfLocalDay } from 'src/utils/start-of-local-day.util';
 
+// Fields read below; the generated client types them once `twenty app apply` has run.
+type TodayNode = Record<string, any> & { id: string };
+
 const LIMIT = 20;
 
 const label = (value: string | null | undefined, fallback: string) =>
@@ -56,17 +59,17 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
   const run = result.runs?.edges?.[0]?.node;
 
   return {
-    escalations: (result.escalations?.edges ?? []).map(({ node }) => ({
+    escalations: (result.escalations?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
       title: label(node.name, 'Escalation'),
       detail: [node.priority, node.action].filter(Boolean).join(' · '),
     })),
-    proposals: (result.proposals?.edges ?? []).map(({ node }) => ({
+    proposals: (result.proposals?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
       title: label(node.summary, 'Proposal'),
       detail: node.proposalType ?? '',
     })),
-    sentToday: (result.applications?.edges ?? []).map(({ node }) => ({
+    sentToday: (result.applications?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
       title: label(node.name, 'Application'),
       detail: node.actor ?? '',
