@@ -72,6 +72,7 @@
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "leak:check": "tsx tools/leak-check.ts",
     "twenty:preflight": "tsx tools/twenty/preflight.ts",
+    "twenty:setup": "tsx tools/twenty/setup.ts",
     "typecheck": "tsc --noEmit",
     "login:linkedin": "tsx scripts/login-channel.ts linkedin",
     "login:seek": "tsx scripts/login-channel.ts seek",

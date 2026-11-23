@@ -1,0 +1,101 @@
+# Workspace manifest for `npm run twenty:setup` (plan F9).
+#
+# This is the generic template. Copy it to state/twenty/manifest.yaml (git-ignored)
+# and fill in the private values there: the workspace URL and the role holders'
+# emails. Never commit the private copy.
+#
+#   npm run twenty:setup -- --check   read-only drift report (exit 0, 1 drift, 2 unreadable, 10 human step)
+#   npm run twenty:setup -- --apply   attended, idempotent: default role, demo content hard delete
+
+version: 1
+
+# The only workspace `--apply` may change (localhost is always allowed, for tests).
+workspaceUrl: https://crm.example.com
+
+# Minimum Twenty server version (from /client-config appVersion).
+serverVersion: 2.60.3
+
+# Set by the operator (plan C1). A flag that is off is a human step.
+featureFlags:
+  IS_CREATE_RECORDS_PERMISSION_ENABLED: true
+  IS_CUSTOMIZABLE_SIDEBAR_ENABLED: true
+  IS_AI_CHAT_INBOX_ENABLED: true
+
+# Role given to any new workspace member.
+defaultRole: No access
+
+# Roles the app defines (twenty-app/src/constants/universal-identifiers.ts, ROLE_IDS).
+roles:
+  - label: Owner
+    universalIdentifier: 4d66b021-6404-4258-afd6-f8b64f4702aa
+  - label: Harness
+    universalIdentifier: d2ee5907-2f81-4d67-bc4d-ad5ec6c70ecc
+  - label: Grok
+    universalIdentifier: 4db3a64a-25e9-40e9-b8a7-3ede1865b735
+  - label: No access
+    universalIdentifier: 29567f77-5a6a-4538-99af-8edbe9b0fcfd
+
+# Who holds which role, by symbolic id. Emails live only in the private copy;
+# an example.com address is treated as not filled in yet (human step).
+roleHolders:
+  owner:
+    role: Owner
+    email: owner@example.com
+  breakGlass:
+    role: Admin
+    email: admin@example.com
+
+# The harness app (APPLICATION_UNIVERSAL_IDENTIFIER). Install or upgrade with `twenty app apply`.
+app:
+  universalIdentifier: 7f164334-af46-473b-a2ec-6fcd47136dd8
+  minVersion: 0.1.3
+
+# API keys the harness expects, matched by name. A missing key is a human step.
+# Warned 14 days before expiresAt and once rotateBy has passed.
+apiKeys:
+  - name: Harness
+    role: Harness
+    expiresAt: 2027-11-01
+    rotateBy: 2027-10-01
+  - name: Grok
+    role: Grok
+    expiresAt: 2027-11-01
+    rotateBy: 2027-10-01
+
+# Attended break-glass keys, by name. Exempt from forbiddenApiKeyRoles, but always
+# warned: revoke them after use.
+breakGlassKeys: []
+
+# Any other unrevoked key holding one of these roles is drift.
+forbiddenApiKeyRoles: [Admin, Member, Owner]
+
+# Workflows the app defines: name -> sha256 of the published definition
+# (trigger and steps, outputSchema and position removed, keys sorted).
+# Any live workflow not listed here is drift.
+workflows: {}
+
+# Demo content Twenty creates with a new workspace (prefillCreatedWorkspaceRecords
+# in twenty-server workspace.service.ts, 2.60). A record matches only on exact
+# name AND createdAt within windowMinutes of the workspace's createdAt; a record
+# with the same name created later is never touched.
+demoRecords:
+  windowMinutes: 10
+  companies: [Airbnb, Anthropic, Stripe, Figma, Notion]
+  people:
+    - Brian Chesky
+    - Dario Amodei
+    - Patrick Collison
+    - Dylan Field
+    - Ivan Zhao
+  opportunities:
+    - Platform Migration
+    - AI Model Training
+    - Workspace Expansion
+    - API Integration Deal
+    - Enterprise Plan Upgrade
+    - Design Partnership
+  workflows:
+    - Quick Lead
+    - Create company when adding a new person
+  dashboards:
+    - My First Dashboard
