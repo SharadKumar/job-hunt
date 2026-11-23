@@ -236,11 +236,14 @@ export const SHEET_DISABLED = "sheet.enabled=false";
  * Is the Google Sheet mirror switched on for this profile?
  *
  * `sheet.enabled: false` in submission-policy.yaml retires the Sheet in favour
- * of the local UI. A missing block, a missing file or an unreadable one all
+ * of the local UI, and the Twenty store retires it outright. A missing block, a missing file or an unreadable one all
  * mean enabled: the Sheet is the older surface, so the flag only ever turns it
  * off deliberately, never by accident.
  */
 export async function sheetEnabled(profileId?: string | null): Promise<boolean> {
+  // The Twenty store retires the Sheet (plan F7): Twenty is the approval
+  // surface, and a Tray pull would apply approvals outside its verified decisions.
+  if ((process.env.HARNESS_STORE ?? "").toLowerCase() === "twenty") return false;
   const policyPath = path.join(resolveProfileContext(profileId).profileDir, "submission-policy.yaml");
   const policy = await readYamlIfExists<any>(policyPath, {}).catch(() => ({}));
   return policy?.sheet?.enabled !== false;
