@@ -24,7 +24,8 @@ const HARNESS_STANDARD = [
 ].map((entry) => entry.universalIdentifier);
 
 // The harness API key. Creates and updates what it owns, never creates a
-// decision, writes only the consume fields on one, and deletes nothing.
+// decision, writes only the consume fields on one, and only ever soft-deletes
+// openings (to the restorable trash).
 export default defineRole({
   universalIdentifier: ROLE_IDS.harness,
   label: 'Harness',
@@ -44,7 +45,14 @@ export default defineRole({
     canDestroyAllRecords: false,
     objects: [
       ...HARNESS_OBJECT_KEYS.map((key) =>
-        objectGrant(OBJECT_IDS[key], { read: true, create: true, update: true }),
+        objectGrant(OBJECT_IDS[key], {
+          read: true,
+          create: true,
+          update: true,
+          // Duplicate merges and stale-row flushes move openings to the trash,
+          // where they can be restored; nothing is ever destroyed.
+          softDelete: key === 'opening',
+        }),
       ),
       objectGrant(
         OBJECT_IDS.decision,

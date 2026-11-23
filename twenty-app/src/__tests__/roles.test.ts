@@ -72,12 +72,13 @@ describe('role matrix', () => {
     );
   });
 
-  it('lets no role delete anything', () => {
+  it('lets no role destroy anything, and only the Harness soft-delete openings', () => {
     for (const r of roles) {
       expect(r.recordsPermissions?.canSoftDeleteAllRecords, r.label).not.toBe(true);
       expect(r.recordsPermissions?.canDestroyAllRecords, r.label).not.toBe(true);
       for (const o of r.recordsPermissions?.objects ?? []) {
-        expect(o.canSoftDeleteAllRecords, r.label).not.toBe(true);
+        const harnessOpening = r.universalIdentifier === ROLE_IDS.harness && o.objectUniversalIdentifier === OBJECT_IDS.opening;
+        expect(o.canSoftDeleteAllRecords === true, `${r.label} ${o.objectUniversalIdentifier}`).toBe(harnessOpening);
         expect(o.canDestroyAllRecords, r.label).not.toBe(true);
       }
     }
