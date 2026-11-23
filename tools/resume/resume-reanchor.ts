@@ -46,7 +46,7 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { resolveProfileContext } from "../profile-context.ts";
+import { resolveProfileContext, CV_SOURCE_REF, PROFILE_REF } from "../profile-context.ts";
 import type { ResumeContent, ResumeSourceProvenance, SourceReference } from "../../templates/resume/_interface.ts";
 import { loadComposition, provenanceSidecarPath } from "./lib/composition-io.ts";
 import { STOPWORDS, normalise, stem, tokenInText, phraseInText, buildStemSet, candidateTerms, parseArgs } from "./keyword-lexicon.ts";
@@ -931,8 +931,8 @@ export async function loadSources(profile?: string): Promise<SourceFiles> {
   return new Map<string, string>([
     [ctx.cvSourcePath, cv],
     [ctx.profileMdPath, prof],
-    ["state/profile/cv-source.md", cv],
-    ["state/profile/profile.md", prof],
+    [CV_SOURCE_REF, cv],
+    [PROFILE_REF, prof],
   ]);
 }
 

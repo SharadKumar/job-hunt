@@ -70,11 +70,13 @@ import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
 import { classificationFreshnessIssue, type ClassificationIdentity } from "./jev/classification-freshness.ts";
 import { currentJevCacheIdentity } from "./jev/classifier.ts";
 import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveDir as packageDir } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
-const POLICY_PATH = repoPath("state/profile/submission-policy.yaml");
-const PROFILE_PATH = repoPath("state/profile/profile.md");
+const POLICY_PATH = profilePath("submission-policy.yaml");
+const PROFILE_PATH = profilePath("profile.md");
 
 // Channels that are ALWAYS manual regardless of any auto_submit flag: the
 // policy documents these as FORCED FALSE.
@@ -199,7 +201,7 @@ export type EvaluateOpts = {
   nowISO?: string;           // injectable for tests
   opportunities?: Opportunity[];    // injectable for tests (skip disk load)
   policy?: Policy;           // injectable for tests
-  archiveDir?: string;       // injectable for tests; default state/pipeline/archive/<id>
+  archiveDir?: string;       // injectable for tests; default archiveDir(<id>)
   homeCity?: string;         // injectable for tests; default from profile.md
   jevDegradation?: JevDegradation | null;
   classificationIdentity?: ClassificationIdentity; // injectable for tests
@@ -380,7 +382,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     //     additionally never lets a saved row bypass it (hard blocks only).
     // (e) letter-critic pass on the exact letter text.
     if (ap.require_letter_critic_pass !== false) {
-      const archiveDir = opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`);
+      const archiveDir = opts.archiveDir ?? packageDir(opportunity.id);
       const letterPath = opts.coverMdPath ?? `${archiveDir}/cover-letter.md`;
       let letterText: string;
       try { letterText = await fs.readFile(letterPath, "utf8"); } catch { return failGate("autopilot_letter_critic", `cover letter not readable at ${letterPath}`); }
@@ -418,7 +420,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
   //     exact artefact the package was prepared from AND that baseline is still
   //     approved with the same hash resume-approve recorded.
   const refCheck = await verifyBaselineRef({
-    archiveDir: opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`),
+    archiveDir: opts.archiveDir ?? packageDir(opportunity.id),
     cvDocxPath: opts.cvDocxPath,
   });
   if (refCheck) {

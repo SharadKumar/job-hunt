@@ -55,7 +55,6 @@ import path from "node:path";
 import type { BrowserContext, Locator, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
-import { repoPath } from "../repo-root.ts";
 import { openChromeContext } from "./_browser.ts";
 import {
   coverLetterToPlainText,
@@ -67,6 +66,7 @@ import {
   type QuestionDecision,
   type ScreeningAnswers,
 } from "./seek-submit.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type SubmitLinkedInOptions = {
   dryRun?: boolean;
@@ -117,7 +117,7 @@ async function screenshot(page: Page, dir: string | undefined, name: string): Pr
 
 async function loadProfilePhone(): Promise<string | undefined> {
   try {
-    const md = await fs.readFile(repoPath("state/profile/profile.md"), "utf8");
+    const md = await fs.readFile(profilePath("profile.md"), "utf8");
     const m = md.match(/^phone:\s*"?([^"\n]+)"?/m);
     return m?.[1].trim();
   } catch {

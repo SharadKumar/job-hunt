@@ -53,6 +53,8 @@ import { log as auditLog } from "./audit.ts";
 import { reencodeScreenshots } from "./archive-compact.ts";
 import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveDir as packageDir, journalPath } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
@@ -91,7 +93,7 @@ function seekJobId(url: string): string | null {
 
 function frontHalfReportPath(runId: string): string | null {
   const date = runId.match(/^daily-(\d{4}-\d{2}-\d{2})(?:$|[-_])/)?.[1];
-  return date ? repoPath(`state/journal/front-half/${date}.json`) : null;
+  return date ? journalPath("front-half", `${date}.json`) : null;
 }
 
 /** The front-half report is also the run's channel-health checkpoint. Once a
@@ -137,7 +139,7 @@ async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): 
   }
   const resumeId = opportunity.resumeId ?? opportunity.classification?.matched_resume_id;
   if (!resumeId) throw new Error("no metadata.json resume and no matched_resume_id to derive a baseline from");
-  const baselineDir = repoPath(`state/profile/resumes/${resumeId}`);
+  const baselineDir = profilePath("resumes", resumeId);
   const baselineMeta = path.join(baselineDir, "metadata.json");
   if (await exists(baselineMeta)) {
     const m = JSON.parse(await fs.readFile(baselineMeta, "utf8")) as { approval_status?: string; content_hash?: string; approved_hash?: string; artefacts?: { docx?: string } };
@@ -235,7 +237,7 @@ export async function deferForChannelVerification(id: string, reason: string, ru
 export async function appendUnknownQuestion(
   opportunity: Pick<Opportunity, "id" | "company" | "title">,
   q: { text: string; context: string },
-  file = repoPath("state/profile/screening-answers.yaml"),
+  file = profilePath("screening-answers.yaml"),
 ): Promise<boolean> {
   let text = await fs.readFile(file, "utf8");
   const target = normaliseQuestion(q.text);
@@ -327,7 +329,7 @@ async function main() {
     finish(1);
   }
 
-  const archiveDir = repoPath(`state/pipeline/archive/${id}`);
+  const archiveDir = packageDir(id);
   const letterPath = path.join(archiveDir, "cover-letter.md");
   const jdPath = path.join(archiveDir, "jd.md");
   if (!(await exists(letterPath))) {

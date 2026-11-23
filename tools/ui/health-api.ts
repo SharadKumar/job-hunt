@@ -45,6 +45,7 @@ import { gatewayCredential } from "../jev/env.ts";
 import { activeDegradations, blockingDegradation, readDegradation } from "../jev/degradation.ts";
 import { loadJevPolicy } from "../jev/policy.ts";
 import { decideQuestion, loadScreeningAnswers } from "../channels/seek-submit.ts";
+import { journalPath } from "../store/paths.ts";
 
 /**
  * The person answering a screening question is a policy-shaped act: it changes
@@ -313,7 +314,7 @@ async function enabledChannels(profileId: string | null | undefined): Promise<st
 /** GET /api/health */
 export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth> {
   const now = nowOf(opts);
-  const logDir = opts.logDir ?? repoPath("state/journal/launchd");
+  const logDir = opts.logDir ?? journalPath("launchd");
   const channelsDir = opts.channelsDir ?? repoPath("state/channels");
   const plistPath = opts.plistPath ?? path.join(os.homedir(), "Library", "LaunchAgents", PLIST_NAME);
 

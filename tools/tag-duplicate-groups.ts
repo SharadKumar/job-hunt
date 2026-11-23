@@ -9,9 +9,9 @@
  * distinct recruiter remains independently eligible for application.
  */
 
-import { repoPath } from "./repo-root.ts";
 import { promises as fs } from "node:fs";
 import { load, patchMany, type Opportunity } from "./pipeline.ts";
+import { pipelineFile } from "./store/paths.ts";
 
 type DuplicateGroup = {
   group: string;
@@ -31,7 +31,7 @@ type DuplicateGroup = {
   evidence?: string[];
 };
 
-const GROUPS_PATH = repoPath("state/pipeline/duplicate-groups.json");
+const GROUPS_PATH = pipelineFile("duplicate-groups.json");
 
 export function tagDuplicateGroups(
   opportunities: Opportunity[],

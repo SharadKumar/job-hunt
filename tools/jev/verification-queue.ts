@@ -14,7 +14,7 @@
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { load, type Opportunity } from "../pipeline.ts";
-import { repoPath } from "../repo-root.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type VerificationCandidate = {
   id: string;
@@ -92,8 +92,8 @@ async function main(): Promise<void> {
   const limitAt = argv.indexOf("--limit");
   const limit = limitAt >= 0 ? Math.max(1, Number(argv[limitAt + 1]) || 1) : 30;
   const [policyRaw, weightsRaw, rows] = await Promise.all([
-    fs.readFile(repoPath("state/profile/submission-policy.yaml"), "utf8"),
-    fs.readFile(repoPath("state/profile/scoring-weights.yaml"), "utf8"),
+    fs.readFile(profilePath("submission-policy.yaml"), "utf8"),
+    fs.readFile(profilePath("scoring-weights.yaml"), "utf8"),
     load(),
   ]);
   const policy = YAML.parse(policyRaw) as SubmissionPolicy;

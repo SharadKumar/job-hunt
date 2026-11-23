@@ -39,6 +39,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { repoPath } from "../repo-root.ts";
+import { profilePath } from "../profile-context.ts";
 
 /** A unit as persisted in the `line_units` block of a `*.audit.json`. */
 export type MeasuredUnit = {
@@ -410,7 +411,7 @@ async function main(): Promise<void> {
   const doc = YAML.parseDocument(raw);
   const rubric = doc.toJS() as { line_units?: Record<string, { max_lines?: number }> };
 
-  const dir = args.auditDir ? path.resolve(args.auditDir) : repoPath("state/profile/resumes");
+  const dir = args.auditDir ? path.resolve(args.auditDir) : profilePath("resumes");
   const files = args.audits.length ? args.audits.map((f) => path.resolve(f)) : await findAuditFiles(dir).catch(() => []);
   const { units, used } = await loadUnits(files, args.template);
   const cal = calibrateTemplate(args.template, units, rubric);

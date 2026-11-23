@@ -12,6 +12,7 @@ import { boundedCommand } from "./lib/bounded-command.ts";
 import { writeAtomic } from "./lib/fs.ts";
 import { loadLocale } from "./profile.ts";
 import { repoPath } from "./repo-root.ts";
+import { archiveDir, journalPath } from "./store/paths.ts";
 
 type Attempt = { id: string; channel: string; outcome: string; reason?: string; exit_code: number; duration_ms: number; finished_at: string };
 
@@ -34,7 +35,7 @@ export function priorSeekVerificationRequired(report: unknown): boolean {
 }
 
 async function seekBlockedEarlierToday(day: string): Promise<boolean> {
-  const reportPath = repoPath(`state/journal/front-half/${day}.json`);
+  const reportPath = journalPath("front-half", `${day}.json`);
   try { return priorSeekVerificationRequired(JSON.parse(await fs.readFile(reportPath, "utf8"))); }
   catch (error: any) {
     if (error?.code === "ENOENT") return false;
@@ -51,7 +52,7 @@ async function run(script: string, args: string[] = [], timeoutMs = 120_000) {
 
 async function ready(row: Opportunity, identity: ClassificationIdentity): Promise<boolean> {
   if (classificationFreshnessIssue(row, identity)) return false;
-  const archive = repoPath(`state/pipeline/archive/${row.id}`);
+  const archive = archiveDir(row.id);
   try {
     const letter = await fs.readFile(path.join(archive, "cover-letter.md"), "utf8");
     const verdict = await readCurrentVerdict(path.join(archive, "letter-critic.json"), letter);
@@ -74,7 +75,7 @@ async function main() {
       seek_blocked_by_previous_report: seekPreviouslyBlocked, candidates: planned }));
     return;
   }
-  const reportPath = repoPath(`state/journal/priority/${day}.json`);
+  const reportPath = journalPath("priority", `${day}.json`);
   const report = { started_at: started.toISOString(), finished_at: "", ok: false,
     preflight: [] as { step: string; exit_code: number; duration_ms: number; error?: string }[],
     selected: 0, attempts: [] as Attempt[], channel_health: { seek: {

@@ -46,7 +46,8 @@ import { log, query as auditQuery, type AuditEventType } from "../audit.ts";
 import { list as listOpportunities } from "../pipeline.ts";
 import { writeAtomic } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
-import { repoPath, repoRoot } from "../repo-root.ts";
+import { repoRoot } from "../repo-root.ts";
+import { journalPath } from "../store/paths.ts";
 
 /**
  * A promotion, an edit or a removal of a standing rule. `AuditEventType` is
@@ -89,7 +90,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * journal root and the launchd directory are its siblings. Deriving them keeps
  * a test that redirects the summaries from having to redirect three paths.
  */
-const summaryDirOf = (ctx: ApiContext): string => ctx.journalDir ?? repoPath("state/journal/summary");
+const summaryDirOf = (ctx: ApiContext): string => ctx.journalDir ?? journalPath("summary");
 const journalRootOf = (ctx: ApiContext): string => path.dirname(summaryDirOf(ctx));
 const launchdDirOf = (ctx: ApiContext): string => path.join(journalRootOf(ctx), "launchd");
 

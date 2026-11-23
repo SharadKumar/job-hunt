@@ -15,7 +15,7 @@
  */
 
 import { readYamlIfExists } from "./lib/fs.ts";
-import { resolveProfileContext } from "./profile-context.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 import { repoPath } from "./repo-root.ts";
 import { loadProfile } from "./profile.ts";
 import { defaultTeamResumeFormatId, getResumeFormat, type ResumeFormat } from "./resume-formats.ts";
@@ -172,7 +172,7 @@ export type ResolvedResume = {
   orgResumeTypesPath: string | null;
 };
 
-const DEFAULT_RESUMES_PATH = repoPath("state/profile/resumes.yaml");
+const DEFAULT_RESUMES_PATH = profilePath("resumes.yaml");
 const DEFAULT_ORG_RESUME_TYPES_PATH = repoPath("state/org/resume-types.yaml");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

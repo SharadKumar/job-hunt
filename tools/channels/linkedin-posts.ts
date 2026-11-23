@@ -23,8 +23,10 @@ import { type Page } from "playwright";
 import { openChromeContext } from "./_browser.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
 import { repoPath } from "../repo-root.ts";
+import { profilePath } from "../profile-context.ts";
+import { pipelineFile } from "../store/paths.ts";
 
-const QUEUE_PATH = repoPath("state/pipeline/linkedin-posts-queue.json");
+const QUEUE_PATH = pipelineFile("linkedin-posts-queue.json");
 
 export type HiringPost = {
   channel: "linkedin_posts";
@@ -139,7 +141,7 @@ export const linkedinPosts = {
 } satisfies HuntChannel & { scan: (cfg: SearchConfig) => Promise<HiringPost[]> };
 
 async function loadConfig(): Promise<SearchConfig> {
-  const file = await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8");
+  const file = await fs.readFile(profilePath("channels.yaml"), "utf8");
   const all = YAML.parse(file);
   return all.channels?.linkedin_posts ?? {};
 }

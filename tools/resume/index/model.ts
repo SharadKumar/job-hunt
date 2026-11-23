@@ -15,11 +15,11 @@ import path from "node:path";
 import { loadProfile } from "../../profile.ts";
 import { resolveProfileContext } from "../../profile-context.ts";
 import { loadResolvedResumes } from "../../resumes.ts";
-import { repoPath } from "../../repo-root.ts";
 import { loadComposition } from "../lib/composition-io.ts";
 import { applyComposition } from "../resume-keywords.ts";
 import type { ResumeContent } from "../../../templates/resume/_interface.ts";
 import { countWord, shortHumanDate } from "./vocabulary.ts";
+import { journalPath } from "../../store/paths.ts";
 
 /* ------------------------------------------------- artefacts as they sit on disk */
 
@@ -1089,7 +1089,7 @@ async function buildCard(args: {
 }
 
 async function latestJournal(): Promise<string | null> {
-  const dir = repoPath("state", "journal");
+  const dir = journalPath();
   const files = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".md")).sort();
   return files.length ? path.join(dir, files[files.length - 1]) : null;
 }

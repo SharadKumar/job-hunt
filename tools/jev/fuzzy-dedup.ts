@@ -4,9 +4,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { load, type Opportunity } from "../pipeline.ts";
 import { fingerprintFor } from "../audit.ts";
-import { repoPath } from "../repo-root.ts";
 import { evaluateWithJev } from "./evaluate.ts";
 import { recordDegradation } from "./degradation.ts";
+import { pipelineFile } from "../store/paths.ts";
 
 type Candidate = { a: Opportunity; b: Opportunity; lexical: number };
 
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
   }
   const output = { generated_at: new Date().toISOString(), candidates: candidates.length, matches, degraded, estimated_cost_usd: Number(cost.toFixed(8)), informational_only: true };
   if (degraded) await recordDegradation("fuzzy_dedup", `Jev fuzzy-dedup batch had ${degraded} degraded decision${degraded === 1 ? "" : "s"}`);
-  const file = repoPath("state/pipeline/jev-duplicate-candidates.json");
+  const file = pipelineFile("jev-duplicate-candidates.json");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(output, null, 2) + "\n");
   console.log(JSON.stringify({ candidates: candidates.length, matches: matches.length, degraded, estimated_cost_usd: output.estimated_cost_usd, file }));
