@@ -20,7 +20,10 @@ export const buildCommandMenuItem = (key: ButtonKey): CommandMenuItemConfig => {
     universalIdentifier: ids.commandMenuItem,
     frontComponentUniversalIdentifier: ids.frontComponent,
     label: spec.label,
-    isPinned: true,
+    // Not pinned: Twenty 2.60 shows every app command with the app's one icon,
+    // so pinned buttons are indistinguishable. Commands stay in Cmd+K and each
+    // record's menu with their names; Halt sends is also a labelled button on Today.
+    isPinned: false,
   };
 
   if (spec.target === 'global' || !('availability' in spec)) {

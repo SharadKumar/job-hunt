@@ -9,7 +9,7 @@ describe('buildCommandMenuItem', () => {
       universalIdentifier: BUTTON_IDS.openingUnpark.commandMenuItem,
       frontComponentUniversalIdentifier: BUTTON_IDS.openingUnpark.frontComponent,
       label: 'Unpark',
-      isPinned: true,
+      isPinned: false,
       availabilityType: 'RECORD_SELECTION',
       availabilityObjectUniversalIdentifier: OBJECT_IDS.opening,
       conditionalAvailabilityExpression:

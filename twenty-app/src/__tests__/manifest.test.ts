@@ -326,7 +326,7 @@ describe('buttons', () => {
 
       expect(command, key).toBeDefined();
       expect(command?.frontComponentUniversalIdentifier).toBe(BUTTON_IDS[key].frontComponent);
-      expect(command?.isPinned).toBe(true);
+      expect(command?.isPinned).toBe(false);
       expect(command?.label).toBe(spec.label);
       if ('availability' in spec) {
         expect(command?.availabilityType).toBe('RECORD_SELECTION');
