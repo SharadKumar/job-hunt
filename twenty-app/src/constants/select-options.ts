@@ -1,7 +1,7 @@
 // Option lists for SELECT fields. Values are UPPER_SNAKE; labels are sentence
 // case. Opening statuses mirror VALID_TRANSITIONS in tools/pipeline.ts.
 
-const option = (value: string, label: string, color: string) => ({
+const option = <V extends string>(value: V, label: string, color: string) => ({
   value,
   label,
   color,
@@ -88,7 +88,7 @@ export const PROPOSAL_STATUS_OPTIONS = [
   option('REFUSED', 'Refused', 'crimson'),
 ] as const;
 
-// Decision types. There is deliberately no RETRY_NOW and no send action.
+// Decision types. There is deliberately no retry action and no send action.
 export const DECISION_TYPE_OPTIONS = [
   option('CONFIRM', 'Confirm', 'green'),
   option('DECLINE', 'Decline', 'gray'),
