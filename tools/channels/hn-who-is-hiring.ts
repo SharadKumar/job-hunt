@@ -22,6 +22,7 @@ import { promises as fs } from "node:fs";
 import { fetch } from "undici";
 import { upsertMany, opportunityIdFor } from "../pipeline.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
+import { profilePath } from "../profile-context.ts";
 
 const ALGOLIA = "https://hn.algolia.com/api/v1";
 
@@ -129,7 +130,7 @@ export const hnWhoIsHiring: HuntChannel = {
 };
 
 async function loadConfig(): Promise<SearchConfig> {
-  const file = await fs.readFile("state/profile/channels.yaml", "utf8");
+  const file = await fs.readFile(profilePath("channels.yaml"), "utf8");
   const all = YAML.parse(file);
   return all.channels?.hn_who_is_hiring ?? {};
 }

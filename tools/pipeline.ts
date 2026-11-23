@@ -32,6 +32,7 @@ import { createHash } from "node:crypto";
 import { log as auditLog, logMany as auditLogMany, loadDedupIndex, fingerprintFor, type AuditEventType } from "./audit.ts";
 import { store, type ListFilter } from "./pipeline-store.ts";
 import { rows as rowBackend } from "./store/index.ts";
+import { isTwentyStore } from "./store/documents.ts";
 import { StatusChangedError, type RowPatch, type RowUpsert } from "./store/backend.ts";
 import type { ClassificationV2 } from "./classification.ts";
 
@@ -118,7 +119,7 @@ export type Opportunity = {
     approvedBy?: string;
     contentHash?: string;
   };
-  draftDir?: string;                // e.g. state/pipeline/archive/<id>/
+  draftDir?: string;                // e.g. the package folder, archiveDir(<id>)
   /** True when the user saved this job on the channel (e.g. SEEK "Saved jobs"); a strong interest signal. */
   userSaved?: boolean;
   userSavedAt?: string;             // ISO timestamp of the first time the saved-jobs watcher saw it
@@ -200,6 +201,8 @@ export async function save(roles: Opportunity[]): Promise<void> {
 
 /** Rewrite state/pipeline/opportunities.md from the current rows. */
 export async function writeDigest(): Promise<void> {
+  // On the Twenty store the person reads the Openings views; no digest file.
+  if (isTwentyStore()) return;
   const roles = await (await rowBackend()).list();
   const byStatus: Record<string, Opportunity[]> = {};
   for (const r of roles) (byStatus[r.status] ||= []).push(r);
@@ -440,7 +443,8 @@ export async function dedup(): Promise<{ removed: number }> {
 
 /** Write the rows out as a compact JSON array (backup, or a hand-off format). */
 export async function exportJson(outPath?: string): Promise<{ out: string; rows: number }> {
-  const target = outPath ? path.resolve(outPath) : sidecar("opportunities.json");
+  if (!outPath && isTwentyStore()) throw new Error("pipeline export on the Twenty store needs an explicit output path (--out); there is no default export file");
+  const target = outPath ? path.resolve(outPath) : sidecar("opportunities.json"); // scan:file-mode
   const rows = await (await rowBackend()).list({ withDescription: true });
   const tmp = `${target}.${process.pid}.tmp`;
   await fs.mkdir(path.dirname(target), { recursive: true });
@@ -455,7 +459,7 @@ export async function exportJson(outPath?: string): Promise<{ out: string; rows:
  * leaves the source file alone.
  */
 export async function migrate(opts: { from?: string; dryRun?: boolean; force?: boolean } = {}): Promise<Record<string, unknown>> {
-  const source = opts.from ? path.resolve(opts.from) : sidecar("opportunities.json");
+  const source = opts.from ? path.resolve(opts.from) : sidecar("opportunities.json"); // scan:file-mode (legacy JSON into SQLite)
   const s = store();
   const existing = s.count();
   if (existing > 0 && !opts.force) {

@@ -49,6 +49,7 @@ import { spawn } from "node:child_process";
 import YAML from "yaml";
 import { repoPath } from "./repo-root.ts";
 import { resolveProfileContext } from "./profile-context.ts";
+import { archiveRoot } from "./store/paths.ts";
 
 export type CriticFinding = { severity: "fail" | "warn"; quote: string; issue: string; fix: string; source?: "deterministic" | "llm" };
 
@@ -238,8 +239,8 @@ async function buildUserPrompt(letter: string, jd: string, rules: ProfileRules, 
   if (rules.profileFacts.length) parts.push("## Standing facts (profile-owned)", rules.profileFacts.map((f) => `- ${f}`).join("\n"));
   const profileFacts = parts.join("\n\n");
   return [
-    "=== PROFILE FACTS (state/profile/profile.md, excerpt) ===", profileFacts,
-    "", "=== CORPUS (state/profile/cv-source.md, complete) ===", corpus,
+    "=== PROFILE FACTS (state/profile/profile.md, excerpt) ===", profileFacts, // scan:label
+    "", "=== CORPUS (state/profile/cv-source.md, complete) ===", corpus, // scan:label
     "", "=== JD (context only, never evidence about the applicant) ===", jd || "(no JD supplied)",
     "", "=== LETTER UNDER REVIEW ===", letter,
     "", "Check the LETTER UNDER REVIEW against the CORPUS, PROFILE FACTS and STANDING RULES. Return only the JSON verdict.",
@@ -620,7 +621,7 @@ async function main() {
     if (argv[i].startsWith("--")) a[argv[i].slice(2)] = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
   }
   if (a.digest) {
-    const archiveDir = a.archive ? path.resolve(a.archive) : repoPath("state/pipeline/archive");
+    const archiveDir = a.archive ? path.resolve(a.archive) : archiveRoot();
     const since = a.since && a.since !== "true" ? a.since : "14d";
     try {
       console.log(JSON.stringify(await buildDigest({ archiveDir, since })));

@@ -39,7 +39,9 @@ import { chromium, type Browser } from "playwright";
 import { exists, readJsonIfExists } from "./lib/fs.ts";
 import { sha256 } from "./lib/hash.ts";
 import { parseArgs } from "./lib/args.ts";
-import { repoPath, repoRoot } from "./repo-root.ts";
+import { repoRoot } from "./repo-root.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveRoot } from "./store/paths.ts";
 
 /** Package files that are the package's own record and are never candidates for removal. */
 const PACKAGE_OWN_FILES = new Set([
@@ -330,8 +332,8 @@ export async function compactArchive(opts: {
 
 async function main(): Promise<void> {
   const { flags } = parseArgs(process.argv.slice(2));
-  const archiveDir = typeof flags.archive === "string" ? path.resolve(flags.archive) : repoPath("state/pipeline/archive");
-  const baselinesDir = typeof flags.baselines === "string" ? path.resolve(flags.baselines) : repoPath("state/profile/resumes");
+  const archiveDir = typeof flags.archive === "string" ? path.resolve(flags.archive) : archiveRoot();
+  const baselinesDir = typeof flags.baselines === "string" ? path.resolve(flags.baselines) : profilePath("resumes");
   if (!(await exists(archiveDir))) {
     console.error(`[archive-compact] no archive directory at ${archiveDir}`);
     process.exit(2);

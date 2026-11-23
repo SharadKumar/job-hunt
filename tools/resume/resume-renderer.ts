@@ -34,6 +34,8 @@ import { loadTemplateMeta, templateContentHash } from "../cv-templates.ts";
 import type { ResumeTemplate, Flavour, RenderOptions, RenderResult, ResumeContent, ResumeRenderPolicy } from "../../templates/resume/_interface.ts";
 import { writeComposition, loadComposition } from "./lib/composition-io.ts";
 import { repoPath, repoRoot } from "../repo-root.ts";
+import { archiveDir, archiveRoot } from "../store/paths.ts";
+import { currentProfileDir, fileProfileDir } from "../store/documents.ts";
 
 const exec = promisify(execFile);
 
@@ -58,12 +60,11 @@ function normalisedRelative(p: string): string {
 }
 
 function isProductionOutDir(outDir: string): boolean {
-  const rel = normalisedRelative(outDir);
-  return rel === "state/profile/resumes"
-    || rel.startsWith("state/profile/resumes/")
-    || rel.startsWith("state/profiles/")
-    || rel === "state/pipeline/archive"
-    || rel.startsWith("state/pipeline/archive/");
+  const abs = path.resolve(outDir);
+  const within = (root: string) => abs === root || abs.startsWith(root + path.sep);
+  return within(path.join(currentProfileDir(null), "resumes"))
+    || within(path.dirname(fileProfileDir("_")))
+    || within(archiveRoot());
 }
 
 /**
@@ -205,7 +206,7 @@ async function main() {
 
   const flavours: Flavour[] = (a.flavours || "ats").split(",").map((s) => s.trim() as Flavour);
   const profileContext = resolveProfileContext(a.profile);
-  const outDir = a["out-dir"] || `state/pipeline/archive/resume-render-${Date.now()}`;
+  const outDir = a["out-dir"] || archiveDir(`resume-render-${Date.now()}`);
 
   // Production guard: refuse to render to state/profile/resumes/** or
   // state/pipeline/archive/** without --content-json (resume-writer composition)
