@@ -269,6 +269,11 @@ run_cli() {
       echo "twenty escalations failed (tolerated)"
     fi
     npx tsx tools/twenty/followups.ts || echo "twenty followups failed (tolerated)"
+    # The Grok digest: new escalations and failed runs, at most one post per
+    # 15 minutes and 6 a day. Skips itself when the Grok webhook isn't set.
+    if [ -f "$REPO_DIR/tools/twenty/grok-digest.ts" ]; then
+      npx tsx tools/twenty/grok-digest.ts || echo "twenty grok digest failed (tolerated)"
+    fi
   fi
   if [ "$NOTIFY_FALLBACK" -eq 1 ] && [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
     npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
