@@ -63,6 +63,9 @@ export default defineObject({
     textField({ universalIdentifier: F.duplicateGroup, name: 'duplicateGroup', label: 'Duplicate group', icon: 'IconCopy' }),
     richTextField({ universalIdentifier: F.jd, name: 'jd', label: 'Job description', icon: 'IconFileDescription' }),
     rawJsonField({ universalIdentifier: F.classification, name: 'classification', label: 'Classification', icon: 'IconBraces' }),
+    // The harness's full row, lossless (history, package metadata, notes). The
+    // fields above are its display projection; the harness reads this one.
+    rawJsonField({ universalIdentifier: F.harnessData, name: 'harnessData', label: 'Harness data', icon: 'IconDatabase' }),
     dateTimeField({ universalIdentifier: F.submittedAt, name: 'submittedAt', label: 'Submitted', icon: 'IconSend' }),
     dateTimeField({ universalIdentifier: F.migratedAt, name: 'migratedAt', label: 'Migrated', icon: 'IconTransfer' }),
     manyToOneField({ universalIdentifier: F.employer, name: 'employer', label: 'Employer', icon: 'IconBuildingSkyscraper', targetObject: COMPANY, targetField: FIELD_IDS.company.employerOpenings }),

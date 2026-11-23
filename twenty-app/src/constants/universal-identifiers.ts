@@ -50,6 +50,7 @@ export const FIELD_IDS = {
     duplicateGroup: '2593dfe4-2aab-4d41-b5c9-4eb4e50e4ea5',
     jd: '7334d5d0-2826-4be8-99ac-4d308660039e',
     classification: '96bd53d2-bb84-4925-bd88-825cf2b3f726',
+    harnessData: '83d12e99-7d8e-4ccb-bd11-d13023e1c339',
     submittedAt: '5157c391-7336-481c-a17e-0954362ecfd6',
     migratedAt: '1ff5048b-0d9a-4816-9d22-f90e815abb73',
     employer: '7dcca77b-7777-487f-be50-6a467fec4133',
