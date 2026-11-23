@@ -107,7 +107,7 @@ describe('universal identifiers', () => {
 });
 
 describe('data model', () => {
-  it('defines the fifteen F5 objects', () => {
+  it('defines the sixteen objects', () => {
     expect(objects.map((o) => o.nameSingular).sort()).toEqual(
       [
         'application',
@@ -122,6 +122,7 @@ describe('data model', () => {
         'opening',
         'positioning',
         'proposal',
+        'resumeVersion',
         'run',
         'screeningQuestion',
         'verification',
@@ -331,7 +332,7 @@ describe('buttons', () => {
       if ('availability' in spec) {
         expect(command?.availabilityType).toBe('RECORD_SELECTION');
         expect(command?.availabilityObjectUniversalIdentifier).toBe(
-          OBJECT_IDS[spec.target as 'opening' | 'proposal' | 'positioning'],
+          OBJECT_IDS[spec.target as 'opening' | 'proposal' | 'resumeVersion'],
         );
         expect(command?.conditionalAvailabilityExpression).toBe(
           buildAvailabilityExpression(spec.availability.field, spec.availability.values),

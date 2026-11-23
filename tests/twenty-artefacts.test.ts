@@ -7,7 +7,7 @@
  *   - materialise downloads the packages of active openings only, every
  *     baseline and the CV source files into the run cache, and the letter sha
  *     check and the baseline reference check pass on the downloaded bytes;
- *   - a positioning record withdraws an approval it does not hold;
+ *   - a version record withdraws an approval it does not hold;
  *   - finish uploads only new or changed files (content-addressed, never
  *     twice), upserts the application, refuses to grant a baseline approval,
  *     proposes CV source and per-positioning rule changes, and writes the
@@ -54,7 +54,7 @@ type Rec = Record<string, any>;
 const BASE = "http://127.0.0.1:9999";
 
 function fakeTwenty() {
-  const db: Record<string, Rec[]> = { openings: [], applications: [], positionings: [], attachments: [], documents: [], documentRevisions: [], proposals: [] };
+  const db: Record<string, Rec[]> = { openings: [], applications: [], positionings: [], resumeVersions: [], attachments: [], documents: [], documentRevisions: [], proposals: [] };
   const blobs = new Map<string, Buffer>();
   const log = { puts: 0, downloads: 0, posts: [] as { path: string; body: any }[] };
   const failPut = { count: 0 };
@@ -170,11 +170,16 @@ t.attach({ targetApplicationId: uuid5("application:seek-unit-2") }, "cover-lette
 
 const archId = uuid5("positioning:arch");
 const devId = uuid5("positioning:dev");
-t.db.positionings.push({ id: archId, harnessId: "arch", approvalStatus: "APPROVED", contentHash: "h-arch" });
-t.db.positionings.push({ id: devId, harnessId: "dev", approvalStatus: "APPROVED", contentHash: "h-dev-new" });
-t.attach({ targetPositioningId: archId }, "metadata.json", baselineMeta("h-arch", "h-arch"));
-t.attach({ targetPositioningId: archId }, "Synthetic_Architect.docx", docx);
-t.attach({ targetPositioningId: devId }, "metadata.json", baselineMeta("h-dev-new", "h-dev-old"));
+t.db.positionings.push({ id: archId, harnessId: "arch" });
+t.db.positionings.push({ id: devId, harnessId: "dev" });
+// The current CV version of each: approval on the version, working files in workFiles, the DOCX attached.
+const work = (text: string) => ({ "metadata.json": { sha256: sha(text), text } });
+const archVer = uuid5("resumeVersion:arch:h-arch");
+const devVer = uuid5("resumeVersion:dev:h-dev-new");
+t.db.resumeVersions.push({ id: archVer, positioningId: archId, isCurrent: true, approvalStatus: "APPROVED", contentHash: "h-arch", workFiles: work(baselineMeta("h-arch", "h-arch")) });
+t.db.resumeVersions.push({ id: devVer, positioningId: devId, isCurrent: true, approvalStatus: "APPROVED", contentHash: "h-dev-new", workFiles: work(baselineMeta("h-dev-new", "h-dev-old")) });
+t.db.resumeVersions.push({ id: uuid5("resumeVersion:arch:h-arch-0"), positioningId: archId, isCurrent: false, approvalStatus: "APPROVED", contentHash: "h-arch-0", workFiles: work(baselineMeta("h-arch-0", "h-arch-0")) });
+t.attach({ targetResumeVersionId: archVer }, "Synthetic_Architect.docx", docx);
 
 const cvDoc = { id: randomUUID(), kind: "CV_SOURCE", name: "CV source", currentRevision: 1 };
 t.db.documents.push(cvDoc);
@@ -256,10 +261,11 @@ fs.appendFileSync(path.join(run1, "profile", "keyword-rejects.jsonl"), JSON.stri
 fs.writeFileSync(path.join(run1, "profile", "cv", "meta.yaml"), "source_file: master-v2.docx\n");
 f = await D.finishRun("u1", { ...deps, keep: true });
 assert.deepEqual(f.artefacts!.approvalRestored, ["dev"]);
-const devUploaded = JSON.parse((t.current("targetPositioningId", devId, "metadata.json") ?? Buffer.from("{}")).toString());
-assert.notEqual(devUploaded.approved_hash, "h-dev-new", "the uploaded baseline metadata grants nothing");
+const devRec = t.db.resumeVersions.find((v) => v.id === devVer)!;
+assert.notEqual(JSON.parse(devRec.workFiles["metadata.json"].text).approved_hash, "h-dev-new", "the saved baseline metadata grants nothing");
 assert.equal(JSON.parse(fs.readFileSync(devPath, "utf8")).approval_status, "fresh");
-assert.equal(t.db.positionings.find((p) => p.id === devId)!.approvalStatus, "APPROVED", "the record's approval is untouched here");
+assert.equal(devRec.approvalStatus, "APPROVED", "the version's approval is untouched here");
+assert.equal(t.db.attachments.some((a) => a.targetResumeVersionId === devVer), false, "working files are not attachments");
 
 const rulesProposal = t.db.proposals.find((p) => p.payload?.name === "resumes/arch/editorial-rules.md");
 assert.ok(rulesProposal, "per-positioning rules are the person's: a proposal");
@@ -278,14 +284,22 @@ f = await D.finishRun("u1", { ...deps, keep: true });
 assert.equal(t.db.proposals.length, proposalsNow, "no duplicate proposals on a repeat finish");
 assert.equal(f.artefacts!.uploaded.length, 0);
 
-// A baseline re-render after approval makes the record stale.
+// A re-render is a new current version awaiting approval; the approved one is kept, no longer current.
 const archDir = path.join(run1, "profile", "resumes", "arch");
 fs.writeFileSync(path.join(archDir, "metadata.json"), baselineMeta("h-arch-2", "h-arch"));
 fs.writeFileSync(path.join(archDir, "Synthetic_Architect.docx"), "PK re-rendered");
+fs.writeFileSync(path.join(archDir, "round-a.json"), "{}");
+fs.writeFileSync(path.join(archDir, "Synthetic_Architect.critic.json"), JSON.stringify({ verdict: "block" }));
 f = await D.finishRun("u1", { ...deps, keep: true });
 assert.deepEqual(f.artefacts!.positionings, ["arch"]);
-const arch = t.db.positionings.find((p) => p.id === archId)!;
-assert.deepEqual([arch.approvalStatus, arch.contentHash], ["STALE", "h-arch-2"]);
+const newVer = t.db.resumeVersions.find((v) => v.id === uuid5("resumeVersion:arch:h-arch-2"))!;
+assert.ok(newVer, "a new hash is a new version");
+assert.deepEqual([newVer.isCurrent, newVer.approvalStatus, newVer.contentHash, newVer.positioningId], [true, "PENDING", "h-arch-2", archId]);
+assert.deepEqual(Object.keys(newVer.workFiles).sort(), ["Synthetic_Architect.critic.json", "metadata.json"], "scratch files are not kept");
+assert.equal(t.db.resumeVersions.find((v) => v.id === archVer)!.isCurrent, false);
+assert.equal(t.db.resumeVersions.find((v) => v.id === archVer)!.approvalStatus, "APPROVED", "the approved render keeps its approval");
+assert.equal(t.current("targetResumeVersionId", uuid5("resumeVersion:arch:h-arch-2"), "Synthetic_Architect.docx")!.toString(), "PK re-rendered");
+assert.equal(t.db.attachments.some((a) => a.name === "round-a.json"), false);
 
 f = await D.finishRun("u1", deps);
 assert.equal(f.removed, true);

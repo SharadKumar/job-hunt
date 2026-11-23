@@ -21,6 +21,7 @@ export const HARNESS_OBJECT_KEYS = [
   'emailDraft',
   'control',
   'verification',
+  'resumeVersion',
 ] as const satisfies readonly (keyof typeof OBJECT_IDS)[];
 
 // Reverse relation fields hold no value of their own, so they never appear
@@ -37,7 +38,7 @@ const REVERSE_RELATION_FIELDS: Record<string, readonly string[]> = {
   ],
   proposal: ['decisions'],
   document: ['revisions'],
-  positioning: ['openings', 'decisions', 'keywordQuestions'],
+  positioning: ['openings', 'decisions', 'keywordQuestions', 'versions'],
 };
 
 const writableFieldIds = (objectKey: keyof typeof FIELD_IDS): string[] =>

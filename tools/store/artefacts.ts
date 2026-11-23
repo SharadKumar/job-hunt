@@ -8,8 +8,10 @@
  *
  *   archive/<harnessId>/<file>            the opening's package, attached to
  *                                         its `application` record
- *   profile/resumes/<resumeId>/<file>     the positioning's baseline, attached
- *                                         to its `positioning` record
+ *   profile/resumes/<resumeId>/<file>     the positioning's current CV version:
+ *                                         PDF and DOCX attached to its
+ *                                         `resumeVersion` record, working files
+ *                                         in that record's workFiles field
  *   profile/cv/<file>                     the person's CV source files,
  *                                         attached to the CV_SOURCE document
  *
@@ -20,8 +22,9 @@
  *   - a package: the application record is upserted from the package files
  *     (fields as the migration maps them) and each new or changed file is
  *     uploaded as an attachment;
- *   - a baseline: the positioning's harness fields are updated and each new or
- *     changed file is uploaded. Approval never moves this way: approval fields
+ *   - a baseline: a new content hash becomes a new current resume version,
+ *     the same hash refreshes that version; changed PDF and DOCX files are
+ *     uploaded to it. Approval never moves this way: approval fields
  *     in metadata.json are restored to what was materialised, because a
  *     baseline is approved only through the APPROVE_BASELINE decision;
  *   - a CV source file is the person's: a change becomes an UPDATE_DOCUMENT
@@ -60,6 +63,44 @@ export const RESUME_RULE_FILES = new Set(["editorial-rules.md", "cover-letter-ed
 /** Approval fields of a baseline's metadata.json; only the decision path moves them. */
 export const APPROVAL_FIELDS = ["approval_status", "approved_hash", "approved_at", "approved_by"] as const;
 
+/** A baseline's CV files: the only attachments on a resume version. */
+export function isCvFile(name: string): boolean {
+  return /\.(pdf|docx)$/i.test(name);
+}
+
+/**
+ * A baseline's working files, kept in the version's workFiles field: what the
+ * gates, the critic and the approval path read back. Scratch files (rounds,
+ * restores, numbered audits) stay in the run cache and are not kept.
+ */
+export function isWorkFile(name: string): boolean {
+  if (!safeName(name) || RESUME_RULE_FILES.has(name)) return false;
+  if (["metadata.json", "keyword-plan.json", "quality-report.json"].includes(name)) return true;
+  return /\.(audit|composition|critic|provenance|quality-report)\.json$/.test(name) || /\.md$/.test(name);
+}
+
+/** A file of a baseline folder that Twenty keeps. */
+export function isBaselineFile(name: string): boolean {
+  return isCvFile(name) || isWorkFile(name);
+}
+
+export type WorkFiles = Record<string, { sha256: string; text: string }>;
+
+/** The working files of a baseline folder, for a version's workFiles field. */
+export function readWorkFiles(dir: string): WorkFiles {
+  const out: WorkFiles = {};
+  for (const name of persistedFiles(dir).filter(isWorkFile)) {
+    const text = fs.readFileSync(path.join(dir, name), "utf8");
+    out[name] = { sha256: sha256(text), text };
+  }
+  return out;
+}
+
+/** A resume version's id: one per positioning and content hash. */
+export function resumeVersionKey(rid: string, contentHash: string | null | undefined): string {
+  return `resumeVersion:${rid}:${contentHash || "unhashed"}`;
+}
+
 /** A single safe file name (no directories, no dot files, no traversal). */
 export function safeName(name: unknown): name is string {
   return typeof name === "string" && name.length > 0 && name.length <= 200 && !name.startsWith(".") && !/[\/\\\x00-\x1f]/.test(name) && name !== "..";
@@ -91,6 +132,7 @@ async function ids() {
     openingId,
     applicationId: (hid: string) => uuid5(`application:${hid}`),
     positioningId: (rid: string) => uuid5(`positioning:${rid}`),
+    resumeVersionId: (rid: string, hash: string | null | undefined) => uuid5(resumeVersionKey(rid, hash)),
     attachmentId: (target: string, name: string, sha: string) => uuid5(`attachment:${target}:${name}:${sha}`),
     proposalId: (file: string, sha: string) => uuid5(`proposal:UPDATE_DOCUMENT:CV_SOURCE:${file}:${sha}`),
     uuid5,
@@ -199,23 +241,28 @@ export async function materialiseArtefacts(runDir: string, deps: ArtefactDeps & 
   }
   result.packages = pkgSeen.size;
 
-  // Baselines of every positioning.
-  const positionings = (await listAll(deps.call, "positionings")).filter((p) => typeof p.harnessId === "string" && safeName(p.harnessId) && !p.harnessId.startsWith("_"));
-  const posAtts = await attachmentsFor(deps.call, "targetPositioningId", positionings.map((p) => p.id));
-  for (const pos of positionings) {
-    const current = currentByName(posAtts.filter((a) => a.targetPositioningId === pos.id));
-    if (!current.size) continue;
+  // The current CV version of every positioning: the PDF and DOCX from its
+  // attachments, the working files from its workFiles field.
+  const positionings = new Map((await listAll(deps.call, "positionings")).filter((p) => typeof p.harnessId === "string" && safeName(p.harnessId) && !p.harnessId.startsWith("_")).map((p) => [p.id, p]));
+  const versions = (await listAll(deps.call, "resumeVersions", "isCurrent[eq]:true")).filter((v) => positionings.has(v.positioningId));
+  const verAtts = await attachmentsFor(deps.call, "targetResumeVersionId", versions.map((v) => v.id));
+  for (const ver of versions) {
+    const rid = positionings.get(ver.positioningId)!.harnessId as string;
     result.baselines++;
-    for (const [name, att] of current) {
-      if (!safeName(name)) continue;
-      let bytes = await download(deps, att);
-      const rel = path.posix.join("profile", "resumes", pos.harnessId, name);
+    for (const [name, att] of currentByName(verAtts.filter((a) => a.targetResumeVersionId === ver.id))) {
+      if (!safeName(name) || !isCvFile(name)) continue;
+      write(path.posix.join("profile", "resumes", rid, name), await download(deps, att), att.id);
+    }
+    const work: WorkFiles = ver.workFiles && typeof ver.workFiles === "object" ? ver.workFiles : {};
+    for (const [name, f] of Object.entries(work)) {
+      if (!isWorkFile(name) || typeof f?.text !== "string") continue;
+      let bytes: Buffer = Buffer.from(f.text, "utf8");
       if (name === "metadata.json") {
-        const { bytes: out, approval } = overlayApproval(bytes, pos);
+        const { bytes: out, approval } = overlayApproval(bytes, ver);
         bytes = out;
-        manifest.approvals[pos.harnessId] = approval;
+        manifest.approvals[rid] = approval;
       }
-      write(rel, bytes, att.id);
+      write(path.posix.join("profile", "resumes", rid, name), bytes, null);
     }
   }
 
@@ -234,7 +281,7 @@ export async function materialiseArtefacts(runDir: string, deps: ArtefactDeps & 
 }
 
 /**
- * The positioning record can withdraw a baseline's approval, never grant it:
+ * The version record can withdraw a baseline's approval, never grant it:
  * unless the record is APPROVED for the hash metadata.json says was approved,
  * the local copy is marked not approved. Unparseable metadata is left as is
  * (the gate refuses it anyway).
@@ -337,18 +384,26 @@ export async function persistArtefacts(runDir: string, deps: ArtefactDeps): Prom
     await uploadAll(names.map((name) => ({ rel: path.posix.join(relDir, name), name, path: path.join(dir, name), targetField: "targetApplicationId", targetId: appId, targetKey: `application:${hid}` })), existing);
   }
 
-  // Baselines.
+  // Baselines: a render with a new content hash is a new current version;
+  // the same hash updates that version's working files and CV files.
   for (const rid of subdirs(path.join(runDir, "profile", "resumes"))) {
     const relDir = path.posix.join("profile", "resumes", rid);
     const dir = path.join(runDir, relDir);
     if (restoreApproval(path.join(dir, "metadata.json"), manifest.approvals[rid])) out.approvalRestored.push(rid);
-    const names = changed(runDir, relDir, manifest);
+    const names = changed(runDir, relDir, manifest, isBaselineFile);
     if (!names.length) continue;
     const posId = I.positioningId(rid);
-    await upsertPositioning(deps.call, posId, rid, dir);
+    await upsertPositioning(deps.call, posId, rid);
+    const verId = await upsertVersion(deps.call, I, posId, rid, dir);
     out.positionings.push(rid);
-    const existing = await attachmentsFor(deps.call, "targetPositioningId", [posId]);
-    await uploadAll(names.map((name) => ({ rel: path.posix.join(relDir, name), name, path: path.join(dir, name), targetField: "targetPositioningId", targetId: posId, targetKey: `positioning:${rid}` })), existing);
+    for (const name of names.filter(isWorkFile)) {
+      const rel = path.posix.join(relDir, name);
+      manifest.files[rel] = { sha256: sha256(fs.readFileSync(path.join(runDir, rel))), attachmentId: null };
+    }
+    writeArtefactManifest(runDir, manifest);
+    const cvNames = persistedFiles(dir).filter(isCvFile);
+    const existing = await attachmentsFor(deps.call, "targetResumeVersionId", [verId]);
+    await uploadAll(cvNames.map((name) => ({ rel: path.posix.join(relDir, name), name, path: path.join(dir, name), targetField: "targetResumeVersionId", targetId: verId, targetKey: `resumeVersion:${verId}` })), existing);
   }
 
   // CV source files: the person's, so a change is a proposal.
@@ -415,21 +470,47 @@ export function restoreApproval(metaPath: string, materialised: Record<string, u
   return true;
 }
 
-/** Harness fields of a positioning from its metadata.json; created when missing. */
-async function upsertPositioning(call: Call, id: string, rid: string, dir: string): Promise<void> {
+/** A positioning record, created when a run renders a positioning Twenty does not have yet. */
+async function upsertPositioning(call: Call, id: string, rid: string): Promise<void> {
+  if (await getOne(call, "positionings", id)) return;
+  await call("POST", "/rest/positionings", { id, name: rid, harnessId: rid });
+}
+
+/**
+ * The version for this baseline's content hash. A new hash creates a new
+ * current version (approval PENDING: a run never grants one) and retires the
+ * previous current one; the same hash refreshes the working files and the
+ * critic verdict. Returns the version id.
+ */
+async function upsertVersion(call: Call, I: Awaited<ReturnType<typeof ids>>, posId: string, rid: string, dir: string): Promise<string> {
   let meta: any = null;
   try { meta = JSON.parse(fs.readFileSync(path.join(dir, "metadata.json"), "utf8")); } catch { /* none yet */ }
   const { criticVerdict } = await import("../twenty/migrate-plan.ts");
-  const fields: Record<string, unknown> = {
-    contentHash: typeof meta?.content_hash === "string" ? meta.content_hash : null,
-    criticVerdict: criticVerdict(meta?.critic?.verdict),
-  };
-  const rec = await getOne(call, "positionings", id);
-  if (!rec) {
-    await call("POST", "/rest/positionings", { id, name: rid, harnessId: rid, approvalStatus: "PENDING", ...fields });
-    return;
+  const hash = typeof meta?.content_hash === "string" ? meta.content_hash : null;
+  const id = I.resumeVersionId(rid, hash);
+  const fields: Record<string, unknown> = { criticVerdict: criticVerdict(meta?.critic?.verdict), workFiles: readWorkFiles(dir) };
+  const rec = await getOne(call, "resumeVersions", id);
+  if (rec) {
+    await call("PATCH", `/rest/resumeVersions/${id}`, { ...fields, isCurrent: true });
+  } else {
+    await call("POST", "/rest/resumeVersions", {
+      id, name: versionName(rid, hash), kind: "BASELINE", isCurrent: true, contentHash: hash,
+      renderedAt: isoOrNull(meta?.last_render_at), approvalStatus: "PENDING", positioningId: posId, ...fields,
+    });
   }
-  // A re-render after approval makes the baseline stale; approval itself never moves here.
-  if (String(rec.approvalStatus).toUpperCase() === "APPROVED" && fields.contentHash && meta?.approved_hash !== fields.contentHash) fields.approvalStatus = "STALE";
-  await call("PATCH", `/rest/positionings/${id}`, fields);
+  for (const v of await listAll(call, "resumeVersions", `and(positioningId[eq]:${posId},isCurrent[eq]:true)`)) {
+    if (v.id !== id) await call("PATCH", `/rest/resumeVersions/${v.id}`, { isCurrent: false });
+  }
+  return id;
+}
+
+/** A version's display name: the positioning and the first eight hash characters. */
+export function versionName(rid: string, hash: string | null | undefined): string {
+  return hash ? `${rid} ${hash.slice(0, 8)}` : `${rid} (no hash)`;
+}
+
+function isoOrNull(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }

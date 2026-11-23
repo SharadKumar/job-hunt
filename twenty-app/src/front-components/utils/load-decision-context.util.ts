@@ -90,24 +90,27 @@ export const loadDecisionContext = async (
   }
 
   const result = await client.query({
-    positioning: {
+    resumeVersion: {
       __args: { filter: { id: { eq: recordId } } },
       id: true,
       name: true,
       approvalStatus: true,
       contentHash: true,
+      positioningId: true,
     },
   });
-  const positioning = result.positioning;
+  const version = result.resumeVersion;
 
-  if (!positioning) {
-    throw new Error('That positioning could not be read');
+  if (!version?.positioningId) {
+    throw new Error('That CV version could not be read');
   }
 
+  // The decision names the positioning and the exact hash on screen; the
+  // harness approves only if that hash is still the current version.
   return {
-    title: positioning.name ?? 'Positioning',
-    statusSeen: positioning.approvalStatus ?? 'UNKNOWN',
-    contentHashSeen: positioning.contentHash ?? undefined,
-    positioningId: positioning.id,
+    title: version.name ?? 'CV version',
+    statusSeen: version.approvalStatus ?? 'UNKNOWN',
+    contentHashSeen: version.contentHash ?? undefined,
+    positioningId: version.positioningId,
   };
 };

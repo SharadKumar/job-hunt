@@ -16,7 +16,8 @@
  *     resumes/<id>/<file>; the profile's cv/ files attached to CV_SOURCE;
  *   - screening questions: screening-answers.yaml unknown_questions;
  *   - keyword questions: market-confirmations.yaml confirmations;
- *   - positionings: resumes.yaml, with the baseline artefacts attached;
+ *   - positionings: resumes.yaml, each with its current CV as a resume version
+ *     (PDF and DOCX attached, working files in workFiles);
  *   - runs: the latest 50 state/journal/summary/<date>.md files;
  *   - people (F18): contacts.jsonl and the audit log's contact fields,
  *     minimised to name, role title, company, email and LinkedIn URL.
@@ -30,7 +31,7 @@ import { sha256 } from "../lib/hash.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
 import { openingId, uuid5 } from "../store/twenty-backend.ts";
-import { persistedFile, RESUME_RULE_FILES, safeName } from "../store/artefacts.ts";
+import { isCvFile, persistedFile, readWorkFiles, RESUME_RULE_FILES, resumeVersionKey, safeName, versionName } from "../store/artefacts.ts";
 
 export const recordId = (object: string, sourceId: string) => uuid5(`${object}:${sourceId}`);
 export const companyId = (name: string) => uuid5(`company:${name.trim().toLowerCase()}`);
@@ -45,6 +46,7 @@ export type PlannedNote = { id: string; targetId: string; title: string; markdow
 export type MigrationPlan = {
   companies: PlannedRecord[];
   positionings: PlannedRecord[];
+  resumeVersions: PlannedRecord[];
   documents: PlannedRecord[];
   documentRevisions: PlannedRecord[];
   applications: PlannedRecord[];
@@ -307,22 +309,31 @@ async function planPositionings(plan: MigrationPlan, migratedAt: string): Promis
     const id = recordId("positioning", r.id);
     plan.positionings.push({
       id,
+      record: { id, name: r.label ?? r.id, harnessId: r.id, rateMin: money(band.floor), rateMax: money(band.ceiling), migratedAt },
+    });
+    // The current CV version: approval, critic verdict and hash belong to this
+    // render. Only the PDF and DOCX are attachments; the working files a run
+    // reads back go in workFiles. Scratch files and page renders stay behind.
+    // Per-positioning rule files become documents (planResumeRuleDocuments).
+    if (!meta) continue;
+    const hash = typeof meta.content_hash === "string" ? meta.content_hash : null;
+    const verId = uuid5(resumeVersionKey(r.id, hash));
+    plan.resumeVersions.push({
+      id: verId,
       record: {
-        id, name: r.label ?? r.id, harnessId: r.id,
-        rateMin: money(band.floor), rateMax: money(band.ceiling),
+        id: verId, name: versionName(r.id, hash), kind: "BASELINE", isCurrent: true, contentHash: hash,
+        renderedAt: isoOrNull(meta.last_render_at),
         approvalStatus: APPROVAL.has(approval) ? approval : "PENDING",
-        approvedAt: isoOrNull(meta?.approved_at),
-        contentHash: typeof meta?.content_hash === "string" ? meta.content_hash : null,
-        criticVerdict: criticVerdict(meta?.critic?.verdict),
+        approvedAt: isoOrNull(meta.approved_at),
+        criticVerdict: criticVerdict(meta.critic?.verdict),
+        workFiles: readWorkFiles(dir),
+        positioningId: id,
         migratedAt,
       },
     });
-    // The baseline: every artefact a run reads back (PDF, DOCX, composition,
-    // critic verdict, metadata with the approval), not the page renders.
-    // Per-positioning rule files become documents (planResumeRuleDocuments).
     for (const f of await listDir(dir)) {
-      if (!persistedFile(f) || !isRegularFile(path.join(dir, f))) continue;
-      plan.attachments.push({ id: recordId("attachment", `positioning:${r.id}:${f}`), name: f, path: path.join(dir, f), targetField: "targetPositioningId", targetId: id });
+      if (!persistedFile(f) || !isCvFile(f) || !isRegularFile(path.join(dir, f))) continue;
+      plan.attachments.push({ id: recordId("attachment", `resumeVersion:${r.id}:${hash}:${f}`), name: f, path: path.join(dir, f), targetField: "targetResumeVersionId", targetId: verId });
     }
   }
   return ids;
@@ -473,7 +484,7 @@ async function planPeople(plan: MigrationPlan): Promise<void> {
 // ----------------------------------------------------------------------- plan
 
 export async function buildPlan(inScopeRows: Opportunity[], migratedAt: string): Promise<MigrationPlan> {
-  const plan: MigrationPlan = { companies: [], positionings: [], documents: [], documentRevisions: [], applications: [], screeningQuestions: [], keywordQuestions: [], runs: [], people: [], notes: [], attachments: [], skipped: {} };
+  const plan: MigrationPlan = { companies: [], positionings: [], resumeVersions: [], documents: [], documentRevisions: [], applications: [], screeningQuestions: [], keywordQuestions: [], runs: [], people: [], notes: [], attachments: [], skipped: {} };
   const byId = new Map(inScopeRows.map((r) => [r.id, r]));
   const positionings = await planPositionings(plan, migratedAt);
   await planDocuments(plan, migratedAt);
