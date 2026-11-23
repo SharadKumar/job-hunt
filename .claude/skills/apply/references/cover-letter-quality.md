@@ -1,5 +1,7 @@
 # Cover-letter quality checks (universal)
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 The checks cover-letter-writer runs against every cover letter, regardless of template. Template-agnostic: they describe what makes any cover letter fit-to-send.
 
 cover-letter-writer reads this file on every invocation, then optionally overlays per-template overrides from `templates/cover-letter/<name>/quality-checks.md` (rare).
@@ -85,12 +87,12 @@ Each check declares:
 
 ### no_unsupported_claims
 - **what**: every concrete claim in the letter (years of experience, specific platforms, specific industries) is supported by the user's actual CV. No "5 years of React" if the user has 2; no "Kubernetes expert" if the user has only adjacency.
-- **how**: read the letter + the canonical CV (`state/profile/cv/`); cross-check each numerical/expertise claim
+- **how**: read the letter + the canonical CV (`<profile>/cv/`); cross-check each numerical/expertise claim
 - **auto_fix**: none, because fabricated claims are an integrity issue; regenerate with explicit instruction to stick to verifiable claims
 - **severity**: fail
 
 ### profile_editorial_rules
-- **what**: the letter honours durable profile-specific presentation, confidentiality, and terminology rules in `state/profile/resume-editorial-rules.md`.
+- **what**: the letter honours durable profile-specific presentation, confidentiality, and terminology rules in `<profile>/resume-editorial-rules.md`.
 - **how**: read the profile rule file and check the final letter for every explicit prohibition or required framing. This includes context-sensitive combinations, not only isolated banned words.
 - **auto_fix**: rewrite the violating sentence while preserving supported evidence and the role-specific hook.
 - **severity**: fail

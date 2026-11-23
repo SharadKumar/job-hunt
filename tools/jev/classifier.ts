@@ -1,6 +1,5 @@
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { repoPath } from "../repo-root.ts";
 import { sha256 } from "../lib/hash.ts";
 import {
   classificationContentHash,
@@ -12,6 +11,7 @@ import {
 import { loadJevPolicy, type JevPolicy } from "./policy.ts";
 import { evaluateWithJev, type JevEvaluationResult, type JevMode } from "./evaluate.ts";
 import { classificationQuestions, classificationQuestionSchemaHash } from "./questions.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type JevInput = { id?: string; title: string; description: string; location?: string };
 export type JevClassifyOptions = {
@@ -86,10 +86,10 @@ async function buildContext(): Promise<{
   resumes: { id: string; description: string }[];
   resumeHash: string;
 }> {
-  const profileRaw = await fs.readFile(repoPath("state/profile/profile.md"), "utf8");
-  const resumesRaw = await fs.readFile(repoPath("state/profile/resumes.yaml"), "utf8");
-  const cvRaw = await fs.readFile(repoPath("state/profile/cv-source.md"), "utf8").catch(() => "");
-  const taxonomyRaw = await fs.readFile(repoPath("state/profile/skills-taxonomy.yaml"), "utf8").catch(() => "");
+  const profileRaw = await fs.readFile(profilePath("profile.md"), "utf8");
+  const resumesRaw = await fs.readFile(profilePath("resumes.yaml"), "utf8");
+  const cvRaw = await fs.readFile(profilePath("cv-source.md"), "utf8").catch(() => "");
+  const taxonomyRaw = await fs.readFile(profilePath("skills-taxonomy.yaml"), "utf8").catch(() => "");
   const deliveredEvidence = compactDeliveredEvidence(cvRaw);
   const parsed = YAML.parse(resumesRaw) as { resumes?: Record<string, unknown>[] };
   const resumes = (parsed.resumes ?? []).filter((r) => r.active === true).map((r) => ({

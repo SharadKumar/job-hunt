@@ -23,11 +23,11 @@
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { fetch } from "undici";
-import { repoPath } from "./repo-root.ts";
+import { profilePath } from "./profile-context.ts";
 
 async function loadCvContext(): Promise<string> {
   try {
-    const src = (await fs.readFile(repoPath("state/profile/cv-source.md"), "utf8")).trim();
+    const src = (await fs.readFile(profilePath("cv-source.md"), "utf8")).trim();
     return src;
   } catch {
     return "(cv-source.md missing — run 'npm run markdownify:cv' first)";
@@ -67,13 +67,13 @@ async function loadUrlContent(urls: string[]): Promise<string> {
  */
 async function loadHarnessContext(): Promise<string> {
   const parts: string[] = [];
-  const profilePath = repoPath("state/profile/profile.md");
+  const profileMdPath = profilePath("profile.md");
   let profile: string | null = null;
   try {
-    profile = await fs.readFile(profilePath, "utf8");
+    profile = await fs.readFile(profileMdPath, "utf8");
   } catch (error: any) {
-    if (error?.code !== "ENOENT") throw new Error(`cannot read ${profilePath}: ${error?.message ?? error}`);
-    parts.push(`# NOTE\nprofile.md missing at ${profilePath} — no rate band, work arrangement or red flags are available. Run the setup skill first.`);
+    if (error?.code !== "ENOENT") throw new Error(`cannot read ${profileMdPath}: ${error?.message ?? error}`);
+    parts.push(`# NOTE\nprofile.md missing at ${profileMdPath} — no rate band, work arrangement or red flags are available. Run the setup skill first.`);
   }
   if (profile !== null) {
     const rateBand = profile.match(/Day rate[\s\S]*?(?=\n##|$)/i)?.[0]?.trim();
@@ -84,7 +84,7 @@ async function loadHarnessContext(): Promise<string> {
     if (redFlags) parts.push(`# User's red flags\n${redFlags}`);
   }
 
-  const channelsPath = repoPath("state/profile/channels.yaml");
+  const channelsPath = profilePath("channels.yaml");
   let channelsRaw: string | null = null;
   try {
     channelsRaw = await fs.readFile(channelsPath, "utf8");
@@ -113,7 +113,7 @@ async function cmdContext(urls: string[]): Promise<void> {
   const harness = await loadHarnessContext();
   const cv = await loadCvContext();
   const urlContent = await loadUrlContent(urls);
-  console.log(`${harness}\n\n# CV (state/profile/cv-source.md)\n${cv}\n\n${urlContent}`);
+  console.log(`${harness}\n\n# CV (state/profile/cv-source.md)\n${cv}\n\n${urlContent}`); // scan:label
 }
 
 async function cmdWriteResume(resumeJson: string): Promise<void> {
@@ -125,7 +125,7 @@ async function cmdWriteResume(resumeJson: string): Promise<void> {
   for (const f of required) {
     if (!(f in t)) { console.error(`missing required field: ${f}`); process.exit(2); }
   }
-  const original = await fs.readFile(repoPath("state/profile/resumes.yaml"), "utf8");
+  const original = await fs.readFile(profilePath("resumes.yaml"), "utf8");
   const existing = YAML.parse(original) ?? {};
   existing.resumes = existing.resumes ?? [];
   const idx = existing.resumes.findIndex((x: any) => x.id === t.id);
@@ -141,7 +141,7 @@ async function cmdWriteResume(resumeJson: string): Promise<void> {
     else break;
   }
   const header = headerLines.join("\n").trimEnd();
-  await fs.writeFile(repoPath("state/profile/resumes.yaml"), `${header}\n\n${yaml}`);
+  await fs.writeFile(profilePath("resumes.yaml"), `${header}\n\n${yaml}`);
   console.log(JSON.stringify({ id: t.id, wrote_resume: true }, null, 2));
 }
 

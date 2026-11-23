@@ -37,10 +37,10 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { repoPath } from "./repo-root.ts";
 import { buildSummary, type Escalation } from "./daily-summary.ts";
 import { loadLocalEnv } from "./jev/env.ts";
 import { loadLocale } from "./profile.ts";
+import { journalPath } from "./store/paths.ts";
 
 const DEFAULT_UI_URL = "http://localhost:7788";
 
@@ -193,7 +193,7 @@ function parseArgs(argv: string[]) {
 }
 
 function ledgerPath(): string {
-  return repoPath("state", "journal", "notify", "slack.json");
+  return journalPath("notify", "slack.json");
 }
 
 async function readLedger(): Promise<Ledger | null> {

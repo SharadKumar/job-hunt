@@ -7,6 +7,7 @@ import { get, load, type Opportunity } from "./pipeline.ts";
 import { getResume } from "./resumes.ts";
 import { resolveProfileContext } from "./profile-context.ts";
 import { repoPath } from "./repo-root.ts";
+import { archiveDir } from "./store/paths.ts";
 
 export function dailyIndex(rows: Opportunity[]) {
   const terminal = new Set(["submitted", "responded", "interview", "offered", "won", "withdrawn"]);
@@ -69,7 +70,7 @@ export async function letterContext(id: string, template = "classic", profileId?
     evidence_instruction: "Search this canonical source and read surrounding passages for every claim. No evidence is implied by the JD or resume angle.",
     rules: await Promise.all(files.map(([file, optional]) => source(file, optional))),
     template_example_path: path.join(templateDir, "example.md"),
-    archive_path: repoPath("state/pipeline/archive", id),
+    archive_path: archiveDir(id),
   };
 }
 

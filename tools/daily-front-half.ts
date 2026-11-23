@@ -11,6 +11,8 @@ import { blockingDegradation, readDegradation } from "./jev/degradation.ts";
 import { loadLocale } from "./profile.ts";
 import { boundedCommand } from "./lib/bounded-command.ts";
 import { writeAtomic } from "./lib/fs.ts";
+import { profilePath } from "./profile-context.ts";
+import { journalPath } from "./store/paths.ts";
 
 type Step = { name: string; ok: boolean; partial?: boolean; exit_code: number; duration_ms: number; result?: unknown; error?: string; timed_out?: boolean };
 
@@ -64,7 +66,7 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
   const steps: Step[] = [];
   const locale = await loadLocale();
   const localDay = new Date(started).toLocaleDateString("en-CA", { timeZone: locale.timezone });
-  const reportPath = repoPath(`state/journal/front-half/${localDay}.json`);
+  const reportPath = journalPath("front-half", `${localDay}.json`);
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
   let currentStep: string | null = null;
   let progress: unknown = null;
@@ -104,7 +106,7 @@ export async function runDailyFrontHalf(): Promise<{ ok: boolean; degraded: bool
     seekChallenge ||= seekVerificationRequired(steps.at(-1));
   }
 
-  const channels = YAML.parse(await fs.readFile(repoPath("state/profile/channels.yaml"), "utf8"))?.channels ?? {};
+  const channels = YAML.parse(await fs.readFile(profilePath("channels.yaml"), "utf8"))?.channels ?? {};
   for (const [id, config] of Object.entries(channels) as [string, { enabled?: boolean }][]) {
     if (!config?.enabled) continue;
     if (id === "seek" && seekChallenge) {

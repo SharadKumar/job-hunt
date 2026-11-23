@@ -8,8 +8,7 @@
 
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { resolveProfileContext } from "./profile-context.ts";
-import { repoPath } from "./repo-root.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 
 export type ProfileFrontmatter = {
   name: string;
@@ -23,7 +22,7 @@ export type ProfileFrontmatter = {
   github_url?: string;
 };
 
-const DEFAULT_PROFILE_PATH = repoPath("state/profile/profile.md");
+const DEFAULT_PROFILE_PATH = profilePath("profile.md");
 
 /** Timezone, BCP-47 language tag and currency for everything user-facing. */
 export type ResolvedLocale = { timezone: string; language: string; currency: string };

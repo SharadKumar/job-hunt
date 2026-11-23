@@ -84,7 +84,7 @@ const bump = (m: Record<string, number>, k: string) => { m[k] = (m[k] ?? 0) + 1;
 
 /** Document kinds (F5) and where each one's file lives, first match wins. */
 export function documentSources(): { kind: string; name: string; candidates: string[] }[] {
-  const p = resolveProfileContext();
+  const p = resolveProfileContext(null, { files: true });
   const inProfile = (f: string) => path.join(p.profileDir, f);
   const org = (f: string) => repoPath("state", "org", f);
   return [
@@ -103,6 +103,10 @@ export function documentSources(): { kind: string; name: string; candidates: str
     { kind: "POSITIONINGS", name: "Positionings", candidates: [p.resumesPath] },
     { kind: "KEYWORD_CLOUDS", name: "Keyword clouds", candidates: [org("keyword-clouds.yaml"), inProfile("keyword-clouds.yaml")] },
     { kind: "MARKET_CONFIRMATIONS", name: "Market confirmations", candidates: [p.marketConfirmationsPath] },
+    // Profile files with no kind of their own: kind OTHER, named by their file
+    // name, so a run materialises them back under the same name.
+    { kind: "OTHER", name: "jev-policy.yaml", candidates: [inProfile("jev-policy.yaml")] },
+    { kind: "OTHER", name: "skills-taxonomy.yaml", candidates: [inProfile("skills-taxonomy.yaml")] },
   ];
 }
 
@@ -110,10 +114,11 @@ async function planDocuments(plan: MigrationPlan, migratedAt: string): Promise<v
   for (const src of documentSources()) {
     const file = src.candidates.find((c) => existsSync(c));
     const body = file ? await readText(file) : null;
-    if (body == null) { bump(plan.skipped, "document: no file"); continue; }
-    const docId = recordId("document", src.kind);
+    if (body == null) { if (src.kind !== "OTHER") bump(plan.skipped, "document: no file"); continue; }
+    const key = src.kind === "OTHER" ? `OTHER:${src.name}` : src.kind;
+    const docId = recordId("document", key);
     plan.documents.push({ id: docId, record: { id: docId, name: src.name, kind: src.kind, currentRevision: 1, migratedAt } });
-    const revId = recordId("documentRevision", `${src.kind}:1`);
+    const revId = recordId("documentRevision", `${key}:1`);
     plan.documentRevisions.push({ id: revId, record: { id: revId, name: `${src.name} r1`, revision: 1, baseRevision: null, kind: src.kind, body, documentId: docId, migratedAt } });
   }
 }
@@ -223,7 +228,7 @@ export function keywordAnswer(status: unknown): { answer: string | null; status:
 }
 
 async function planQuestions(plan: MigrationPlan, inScope: Map<string, Opportunity>, positionings: Set<string>, migratedAt: string): Promise<void> {
-  const p = resolveProfileContext();
+  const p = resolveProfileContext(null, { files: true });
   const screening = await readYaml(path.join(p.profileDir, "screening-answers.yaml"));
   const seenQ = new Set<string>();
   for (const q of Array.isArray(screening?.unknown_questions) ? screening.unknown_questions : []) {
@@ -268,7 +273,7 @@ async function planQuestions(plan: MigrationPlan, inScope: Map<string, Opportuni
 const APPROVAL = new Set(["PENDING", "APPROVED", "STALE", "REJECTED"]);
 
 async function planPositionings(plan: MigrationPlan, migratedAt: string): Promise<Set<string>> {
-  const p = resolveProfileContext();
+  const p = resolveProfileContext(null, { files: true });
   const ids = new Set<string>();
   let resumes: any[] = [];
   try {

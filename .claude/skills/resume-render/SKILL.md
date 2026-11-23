@@ -3,6 +3,8 @@ name: resume-render
 description: Produce or preview the baseline CV for one resume positioning with full quality auditing. Use whenever the user says "render my CV", "make my CV for <resume>", "preview the <resume> CV", "show me what this looks like", "let me see the architect CV", "do a fresh render", or wants to compare templates ("how does minimalist render this?"). Also use when the /apply orchestration signals a resume baseline is missing or stale and a re-render is needed before drafting. The skill always routes through the resume-writer subagent which holds the quality contract; never call `npm run resume:render:raw` directly for a production artefact, that bypasses auditing. For batch baselines across ALL resumes, prefer /resume-review.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /resume-render: produce one resume positioning's baseline through resume-writer
 
 ## What this skill does
@@ -28,8 +30,8 @@ Resolve the repo root first (`references/harness/repo-root.md`).
 If `market_alignment.confirmation_needed` or `market_alignment.open_questions` already exist for the resume and the current CLI cannot show structured questions, stop before asking inline. Tell the user to rerun the judgement/review step in a mode exposing structured questions: Claude Code `AskUserQuestion` or Codex `request_user_input`. Default mode is for rendering and validation, not collecting judgement answers when structured tooling is unavailable.
 
 1. **Parse the user's request**. Extract:
-   - `resume-id` (required: match against `state/profile/resumes.yaml`; if ambiguous, ask).
-   - Optional `profile-id` if the user names a team member; use `state/profiles/<profile-id>/` paths for that render. Default remains `state/profile/`.
+   - `resume-id` (required: match against `<profile>/resumes.yaml`; if ambiguous, ask).
+   - Optional `profile-id` if the user names a team member; use the paths `HARNESS_PROFILE=<profile-id> npm run -s profile:path` prints for that render. Default remains `<profile>/`.
    - Optional `format-id` for team profiles. If omitted, use `state/org/team.yaml` → `default_resume_format`; Individual mode ignores org formats.
    - Template override (if user says "render with minimalist" etc., extract the template name).
    - Flavours wanted (default both `ats` + `presentation`).
@@ -66,7 +68,7 @@ If `market_alignment.confirmation_needed` or `market_alignment.open_questions` a
 2. **Invoke the resume-writer subagent** with `subagent_type: resume-writer`. Pass:
    - The resume id and any template override.
    - The format id for team/client profile renders when resolved.
-   - The expected output dir: default `state/profile/resumes/<resume-id>/`, or `state/profiles/<profile-id>/resumes/<resume-id>/` for team profiles.
+   - The expected output dir: `<profile>/resumes/<resume-id>/` (for a team profile, under the directory `HARNESS_PROFILE=<profile-id> npm run -s profile:path` prints).
    - The flavours + max-pages.
    - `--keyword-plan <profile-dir>/resumes/<resume-id>/keyword-plan.json` from step 1.5, described as a surfacing contract: every grounded / alias-grounded / confirmed term appears at least once, in the plan's `jd_form` spelling, and both forms where `render_both_forms` is set. It never authorises a fact the corpus lacks.
    - When a prior `*.composition.json` exists in the output dir, say so: the writer seeds from it (plus its `*.provenance.json` sidecar and `bench`) and edits, rather than recomposing.
@@ -138,7 +140,7 @@ If `market_alignment.confirmation_needed` or `market_alignment.open_questions` a
    - **Re-render with different template** → re-invoke this skill with the override.
    - **Edit before approving** → apply `references/capture-editorial-edits.md`:
      - Ask "What changed?" with structured options (bullet removed / experience demoted / phrasing changed / summary edited / multiple).
-     - Append the entry to `state/profile/resumes/<resume-id>/editorial-rules.md`.
+     - Append the entry to `<profile>/resumes/<resume-id>/editorial-rules.md`.
      - Re-invoke this skill; resume-writer will read the updated editorial-rules.md on its next composition.
      - On threshold crossing (same pattern twice in 7 days): surface promotion-to-global option per the procedure.
    - **Answer confirmation/open questions** → append/update the answer in `<profile-dir>/market-confirmations.yaml` with `status: confirmed`, `declined`, `not_applicable`, or `pending`. If confirmed, update the canonical source first (`<profile-dir>/cv-source.md` or `/refresh-cv` for the default profile), then re-invoke this skill. Never edit the rendered resume to add the newly confirmed fact directly.
@@ -168,9 +170,9 @@ Short structured response:
 
 ```
 Resume:    <id>  (template: <name>, format: <format-id|none>, mode: baseline)
-Artefacts: state/profile/resumes/<id>/
-  open state/profile/resumes/<id>/resume_<profile-slug>_<id>.docx
-  open state/profile/resumes/<id>/resume_<profile-slug>_<id>.pdf
+Artefacts: <profile>/resumes/<id>/
+  open <profile>/resumes/<id>/resume_<profile-slug>_<id>.docx
+  open <profile>/resumes/<id>/resume_<profile-slug>_<id>.pdf
 
 Checks:    structural pages=pass(2) ats=pass sections=pass density=pass artefacts=pass
            visual    dates_italicised=pass section_order=pass

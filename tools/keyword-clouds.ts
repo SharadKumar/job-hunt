@@ -15,7 +15,7 @@
 
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { repoPath } from "./repo-root.ts";
+import { orgDocumentPath } from "./store/paths.ts";
 import type { DomainLexiconTerm, MarketLens } from "./resumes.ts";
 
 /** A cloud researched longer ago than this is stale; refresh via /resume-strategy 3b. */
@@ -62,7 +62,7 @@ export type ResolvedCloud = {
   terms: CloudTerm[];
 };
 
-export const DEFAULT_KEYWORD_CLOUDS_PATH = repoPath("state/org/keyword-clouds.yaml");
+export const DEFAULT_KEYWORD_CLOUDS_PATH = orgDocumentPath("keyword-clouds.yaml");
 
 const CACHE = new Map<string, KeywordCloudsFile>();
 

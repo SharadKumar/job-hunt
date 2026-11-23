@@ -61,9 +61,9 @@ import YAML from "yaml";
 import type { BrowserContext, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
-import { repoPath } from "../repo-root.ts";
 import { openSeekContext } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
+import { profilePath } from "../profile-context.ts";
 
 export function isSeekHumanVerification(text: string): boolean {
   return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots|sorry, you have been blocked|attention required! \| cloudflare/i.test(text);
@@ -182,7 +182,7 @@ function parseSkillsYears(raw: any): SkillYears[] {
   return out;
 }
 
-export async function loadScreeningAnswers(file = repoPath("state/profile/screening-answers.yaml")): Promise<ScreeningAnswers> {
+export async function loadScreeningAnswers(file = profilePath("screening-answers.yaml")): Promise<ScreeningAnswers> {
   const raw = YAML.parse(await fs.readFile(file, "utf8"));
   const answers = Array.isArray(raw?.answers) ? raw.answers : [];
   const entries: ScreeningEntry[] = answers

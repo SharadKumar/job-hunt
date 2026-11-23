@@ -30,6 +30,7 @@ import { canonicaliseUrl } from "../url-canonical.ts";
 import { openSeekContext, seekPaceMs } from "./_browser.ts";
 import { isSeekHumanVerification, waitForSeekChallengeToClear } from "./seek-submit.ts";
 import type { DiscoveredOpportunity, HuntChannel, SearchConfig } from "./_interface.ts";
+import { profilePath } from "../profile-context.ts";
 
 /** Called after each keyword with that keyword's new cards, so a stop or
  * timeout keeps everything already found. */
@@ -615,7 +616,7 @@ export async function unsaveSeekJob(jobId: string): Promise<{ jobId: string; uns
 }
 
 async function loadConfig(): Promise<SearchConfig> {
-  const file = await fs.readFile("state/profile/channels.yaml", "utf8");
+  const file = await fs.readFile(profilePath("channels.yaml"), "utf8");
   const all = YAML.parse(file);
   return all.channels?.seek?.search ?? {};
 }

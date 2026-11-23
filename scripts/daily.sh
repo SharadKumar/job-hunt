@@ -2,7 +2,9 @@
 # scripts/daily.sh — wrapper used by launchd to fire the daily orchestrator.
 #
 # Picks the agent CLI via HARNESS_CLI (defaults to "claude" for existing installs).
-# Logs to state/journal/launchd/YYYY-MM-DD.log.
+# Logs to <journal>/launchd/YYYY-MM-DD.log, where <journal> is state/journal on
+# the SQLite store and the log folder state/logs/journal on the Twenty store
+# (the person reads run records in Twenty there).
 #
 # Three things launchd needs that a bare `claude -p` does not give us:
 #   * a watchdog — an agent CLI that wedges on a prompt would otherwise hold the
@@ -26,11 +28,33 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(bash "$(dirname "$0")/../.claude/hooks/repo-root.sh" "$(dirname "$0")")}"
 cd "$REPO_DIR"
 
+# The row store the tools use: HARNESS_STORE from the environment, then
+# .env.local, then .env (the order tools/jev/env.ts loads them), else sqlite.
+harness_store() {
+  local f v
+  if [ -n "${HARNESS_STORE:-}" ]; then printf '%s' "$HARNESS_STORE" | tr '[:upper:]' '[:lower:]'; return 0; fi
+  for f in "$REPO_DIR/.env.local" "$REPO_DIR/.env"; do
+    [ -f "$f" ] || continue
+    v=$(sed -n 's/^[[:space:]]*HARNESS_STORE=//p' "$f" | tail -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
+    if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+  done
+  printf 'sqlite'
+}
+
 DATE=$(date '+%Y-%m-%d')
 unset HARNESS_SEEK_VERIFICATION_REQUIRED
-LOG_DIR="$REPO_DIR/state/journal/launchd"
+STORE=$(harness_store)
+if [ "$STORE" = "twenty" ]; then
+  # Tools resolve the store synchronously from the environment.
+  export HARNESS_STORE=twenty
+  JOURNAL_DIR="$REPO_DIR/state/logs/journal"
+else
+  JOURNAL_DIR="$REPO_DIR/state/journal" # scan:file-mode
+fi
+JOURNAL_REL="${JOURNAL_DIR#"$REPO_DIR"/}"
+LOG_DIR="$JOURNAL_DIR/launchd"
 LOG_FILE="$LOG_DIR/$DATE.log"
-SUMMARY_DIR="$REPO_DIR/state/journal/summary"
+SUMMARY_DIR="$JOURNAL_DIR/summary"
 mkdir -p "$LOG_DIR"
 
 # Rotate before writing today's log, so a wedged run still leaves the disk sane.
@@ -48,7 +72,7 @@ esac
 
 TIMEOUT_SEC="${HARNESS_TIMEOUT_SEC:-$(( ${HARNESS_TIMEOUT_MIN:-150} * 60 ))}"
 KILL_GRACE_SEC="${HARNESS_KILL_GRACE_SEC:-30}"
-PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in state/journal/front-half/$DATE.json. Also read state/journal/priority/$DATE.json if present: include its confirmed sends and blockers in today's journal, and never retry an uncertain priority attempt. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
+PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in $JOURNAL_REL/front-half/$DATE.json. Also read $JOURNAL_REL/priority/$DATE.json if present: include its confirmed sends and blockers in today's journal, and never retry an uncertain priority attempt. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
 EXIT=0
 TIMED_OUT=0
 
@@ -72,19 +96,6 @@ notify_counts() {
       exit
     }
   ' "$file"
-}
-
-# The row store the tools use: HARNESS_STORE from the environment, then
-# .env.local, then .env (the order tools/jev/env.ts loads them), else sqlite.
-harness_store() {
-  local f v
-  if [ -n "${HARNESS_STORE:-}" ]; then printf '%s' "$HARNESS_STORE" | tr '[:upper:]' '[:lower:]'; return 0; fi
-  for f in "$REPO_DIR/.env.local" "$REPO_DIR/.env"; do
-    [ -f "$f" ] || continue
-    v=$(sed -n 's/^[[:space:]]*HARNESS_STORE=//p' "$f" | tail -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
-    if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
-  done
-  printf 'sqlite'
 }
 
 # `exec` so $! is the CLI itself, not a wrapper subshell the signals would stop at.
@@ -119,11 +130,26 @@ run_cli() {
   if node -e 'process.exit(require("./package.json").scripts?.["twenty:preflight"] ? 0 : 1)' 2>/dev/null; then
     npm run -s twenty:preflight || PREFLIGHT_EXIT=$?
   fi
+  # Twenty store: materialise the person's documents into this run's cache
+  # (state/cache/run-<id>/profile), which every tool and agent reads through
+  # the profile resolver. A failed materialise stops the run like a failed
+  # preflight.
+  if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ "$STORE" = "twenty" ]; then
+    MATERIALISED=$(npm run -s store:materialise) || PREFLIGHT_EXIT=3
+    RUN_ID=$(printf '%s' "$MATERIALISED" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{try{const j=JSON.parse(s.trim().split("\n").pop());process.stdout.write(j.ok&&j.runId?j.runId:"")}catch{}})')
+    if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ -n "$RUN_ID" ]; then
+      export HARNESS_RUN_ID="$RUN_ID"
+      echo "=== $(date -Iseconds) materialised documents for run $RUN_ID ==="
+    else
+      PREFLIGHT_EXIT=3
+      echo "=== $(date -Iseconds) document materialise failed: $MATERIALISED ==="
+    fi
+  fi
   if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
     echo "=== $(date -Iseconds) store preflight failed (exit $PREFLIGHT_EXIT); skipping all pipeline work and sends ==="
     EXIT=$PREFLIGHT_EXIT
   elif [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
-    REPORT="$REPO_DIR/state/journal/front-half/$DATE.json"
+    REPORT="$JOURNAL_DIR/front-half/$DATE.json"
     if node -e '
       const fs = require("node:fs");
       const [file, localDate] = process.argv.slice(1);
@@ -147,7 +173,7 @@ run_cli() {
     PRIORITY_STARTED=$(date -u +%s)
     npm run -s daily:priority || PRIORITY_EXIT=$?
     echo "=== $(date -Iseconds) priority pass exit $PRIORITY_EXIT ==="
-    PRIORITY_REPORT="$REPO_DIR/state/journal/priority/$DATE.json"
+    PRIORITY_REPORT="$JOURNAL_DIR/priority/$DATE.json"
     if [ -f "$PRIORITY_REPORT" ] && node -e '
       const report = require(process.argv[1]);
       if (new Date(report.started_at).getTime() < (Number(process.argv[2]) - 1) * 1000 ||
@@ -258,7 +284,7 @@ run_cli() {
   #   - SQLite store: notify-escalations.ts sends the full list on the day's
   #     first run, then only new escalations, and always on a failed run.
   NOTIFY_FALLBACK=1
-  if [ "$(harness_store)" = "twenty" ] && [ -f "$REPO_DIR/tools/twenty/escalations.ts" ]; then
+  if [ "$STORE" = "twenty" ] && [ -f "$REPO_DIR/tools/twenty/escalations.ts" ]; then
     if npx tsx tools/twenty/escalations.ts; then
       if npx tsx tools/twenty/deliver.ts --exit "$EXIT"; then
         NOTIFY_FALLBACK=0
@@ -277,6 +303,12 @@ run_cli() {
   fi
   if [ "$NOTIFY_FALLBACK" -eq 1 ] && [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
     npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
+  fi
+
+  # Save what the run changed in the document cache (machine documents as new
+  # revisions, the person's documents as proposals to confirm), then delete it.
+  if [ -n "${HARNESS_RUN_ID:-}" ]; then
+    npm run -s store:finish || echo "store finish failed (cache kept for the next clean-up)"
   fi
 
   echo "=== $(date -Iseconds) finished daily run (exit $EXIT) ==="

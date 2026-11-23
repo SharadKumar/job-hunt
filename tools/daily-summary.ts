@@ -42,15 +42,18 @@ import { loadLocalEnv, authReady, sheetsClient, ensureTabs, applyHeadersAndFilte
 import { loadLocale } from "./profile.ts";
 import { laneFor } from "./ui/rows-ext-api.ts";
 import { blockingDegradation, readDegradation } from "./jev/degradation.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveRoot, journalPath } from "./store/paths.ts";
+import { isTwentyStore } from "./store/documents.ts";
 
 // Resolved once at load: every date in the brief is a calendar day in this zone.
 const LOCALE = await loadLocale();
 const TZ = LOCALE.timezone;
-const SUMMARY_DIR = repoPath("state/journal/summary");
-const JOURNAL_DIR = repoPath("state/journal");
-const ARCHIVE_DIR = repoPath("state/pipeline/archive");
-const SCREENING_PATH = repoPath("state/profile/screening-answers.yaml");
-const POLICY_PATH = repoPath("state/profile/submission-policy.yaml");
+const SUMMARY_DIR = journalPath("summary");
+const JOURNAL_DIR = journalPath();
+const ARCHIVE_DIR = archiveRoot();
+const SCREENING_PATH = profilePath("screening-answers.yaml");
+const POLICY_PATH = profilePath("submission-policy.yaml");
 
 // ---------- types ----------
 
@@ -293,7 +296,7 @@ export async function manualEscalation(r: Opportunity, answeredTexts: Set<string
     if (answeredTexts.has(norm(q[1]))) return null;
     // Same problem as the screening-answers escalation below, so same kind and
     // wording: the two merge into one entry for this row.
-    return { ...base, kind: "screening", reason: `Unanswered screening question: "${short(q[1], 110)}"`, action: "Answer it in state/profile/screening-answers.yaml unknown_questions, then rerun autopilot:submit for this id" };
+    return { ...base, kind: "screening", reason: `Unanswered screening question: "${short(q[1], 110)}"`, action: isTwentyStore() ? "Answer it on the Screening answers document in Twenty (unknown_questions), then rerun autopilot:submit for this id" : "Answer it in state/profile/screening-answers.yaml unknown_questions, then rerun autopilot:submit for this id" } // scan:file-mode;
   }
   if (/letter-critic block/i.test(reason) || critic?.verdict === "block") {
     const fail = (critic?.findings ?? []).find((f) => f.severity === "fail");
@@ -429,11 +432,11 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   const runOwned = (row: Opportunity) => laneFor(row, lanePolicy).lane === "autopilot";
   const incident = blockingDegradation(await readDegradation());
   const frontHalf = await readJsonIfExists<{ channel_health?: { seek?: { verification_required?: boolean } } }>(
-    repoPath(`state/journal/front-half/${date}.json`));
+    journalPath("front-half", `${date}.json`));
   const priorityReport = await readJsonIfExists<{
     ok?: boolean; selected?: number; attempts?: { outcome?: string }[];
     telemetry?: { submitted?: number; time_to_first_send_ms?: number | null };
-  }>(repoPath(`state/journal/priority/${date}.json`));
+  }>(journalPath("priority", `${date}.json`));
   const priority = priorityReport ? {
     ok: priorityReport.ok === true,
     ready: priorityReport.selected ?? 0,
@@ -502,7 +505,7 @@ export async function buildSummary(date: string): Promise<Omit<DailySummary, "ma
   // person needs to act. Structured incidents above retain explicit actions.
   const operationalNotes = await journalProblems(date);
   const observations = journalObservations(await readIfExists(path.join(JOURNAL_DIR, `${date}.md`)) ?? "");
-  if (pol.killSwitch) esc.add({ kind: "kill_switch", reason: "Kill switch is ON; no submissions, attended or autopilot", action: "Set kill_switch: false in state/profile/submission-policy.yaml to resume" });
+  if (pol.killSwitch) esc.add({ kind: "kill_switch", reason: "Kill switch is ON; no submissions, attended or autopilot", action: isTwentyStore() ? "Set kill_switch: false on the Submission policy document in Twenty to resume" : "Set kill_switch: false in state/profile/submission-policy.yaml to resume" }); // scan:file-mode
   if (pol.maxPerDay != null && autopilotSends >= pol.maxPerDay) {
     esc.add({ kind: "cap", reason: `Autopilot cap used up (${autopilotSends} of ${pol.maxPerDay})`, action: "Raise autopilot.max_per_day or let the rest go tomorrow" });
   }
@@ -698,6 +701,13 @@ export async function run(opts: { date: string; notify: boolean; json: boolean; 
   await fs.mkdir(SUMMARY_DIR, { recursive: true });
   const outPath = path.join(SUMMARY_DIR, `${opts.date}.md`);
   await fs.writeFile(outPath, markdown);
+  // Twenty store: the summary file is only the run log; the person reads the
+  // run record, keyed like the migrated summaries so a re-run updates it.
+  if (isTwentyStore()) {
+    const [{ runFromSummary }, { upsertRun }] = await Promise.all([import("./twenty/migrate-plan.ts"), import("./store/runs.ts")]);
+    const { id: _id, migratedAt: _m, ...record } = runFromSummary(opts.date, markdown, "").record;
+    await upsertRun(`summary:${opts.date}`, record);
+  }
   const sheet: SheetOutcome = opts.sheet
     ? await pushSheet(opts.date, markdown)
     : { pushed: false, failed: false, status: "skipped", note: "Sheet push skipped (--no-sheet)" };

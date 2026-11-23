@@ -24,7 +24,7 @@ It runs on Claude Code (primary) or Codex CLI (best effort), on your own machine
 5. **Submit.** The autopilot lane sends one-click applications that pass every gate. Everything else waits for you.
 6. **Report.** Each run writes a summary and journal entry; escalations list exactly what needs you.
 
-Today your data lives in local files under `state/` (SQLite for the pipeline). A shared workspace with record pages, boards, buttons and notifications is being built; see [Status](#status).
+By default your data lives in local files under `state/` (SQLite for the pipeline). With `HARNESS_STORE=twenty` it lives in a self-hosted Twenty workspace instead: each run reads your documents from the workspace into a temporary cache and writes run records back. File mode stays the default until the cutover; see [Status](#status).
 
 ## Status
 
@@ -37,7 +37,8 @@ Today your data lives in local files under `state/` (SQLite for the pipeline). A
 | Local approval UI, optional Google Sheet tray, daily summary | Works today |
 | Interview prep, follow-up drafts, rate checks | Works today (skills) |
 | Pre-commit guard against committing personal data or secrets | Works today |
-| Workspace UI (boards, record pages, buttons, in-app PDF preview) with the data stored in a self-hosted Twenty workspace | Coming |
+| Twenty store mode (`HARNESS_STORE=twenty`): pipeline rows, your documents materialised per run, run records instead of journal files, changes to your documents raised as proposals | Opt-in preview; application packages are not yet uploaded to the workspace |
+| Workspace UI (boards, record pages, buttons, in-app PDF preview) as the only store, with local data files retired | Coming |
 | Agents propose, you confirm with one record; alerts delivered once through the workspace | Coming |
 | Engagement tracking after a win | Coming |
 | Contracting-only mail sync and recruiter email drafts in your mailbox | Coming |

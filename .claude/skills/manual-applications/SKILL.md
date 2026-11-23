@@ -3,6 +3,8 @@ name: manual-applications
 description: Walk applications that the harness couldn't auto-submit (recruiter email, unsupported portals, Easy-Apply variants without adapters) and help the user finalise them in their browser. Use when the user asks "what's in manual", "finish my manual queue", "any applications I need to send myself", or "walk me through the ones I have to submit by hand".
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /manual-applications: finish the applications the harness couldn't auto-submit
 
 Some channels (recruiter email, unsupported portals, Easy-Apply variations the adapter doesn't handle) end up in `manual_action_needed`. This walks them so the user can finish in their browser in seconds.
@@ -15,7 +17,7 @@ Resolve the repo root first (`references/harness/repo-root.md`).
 2. For each row:
    - Start a wall-clock timer and load `submission-policy.yaml → application_efficiency`.
    - Show: opportunity title, company, channel, URL, why it's manual, the path to the prepared CV (PDF), the path to the cover letter (.md), and (if recruiter email) the Gmail draft URL.
-   - Walk the user through: open URL, paste cover letter, attach CV, answer any screening questions (refer them to `state/profile/screening-answers.yaml`).
+   - Walk the user through: open URL, paste cover letter, attach CV, answer any screening questions (refer them to `<profile>/screening-answers.yaml`).
    - Aim to finish within `target_minutes_per_application`. For an external portal, stop at `external_portal_hard_stop_minutes`; leave the row in `manual_action_needed` with the exact blocker rather than spending the rest of the batch on one form.
    - Ask via `AskUserQuestion`: "Submitted / Skipped (not the right opportunity) / Hold (will do later)?"
    - If Submitted: capture the confirmation number/URL if the user has it, set status `→ submitted`, record `submittedAt`.
