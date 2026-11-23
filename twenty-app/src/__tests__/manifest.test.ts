@@ -298,13 +298,16 @@ describe('views, navigation and pages', () => {
   it('hosts the Today front component on a standalone page', async () => {
     const [layout] = await loadEntities<{
       type: string;
-      tabs: { widgets: { configuration: { frontComponentUniversalIdentifier?: string } }[] }[];
+      tabs: { widgets: { type?: string; configuration: { frontComponentUniversalIdentifier?: string } }[] }[];
     }>('page-layouts');
 
     expect(layout.config.type).toBe('STANDALONE_PAGE');
-    expect(layout.config.tabs[0].widgets[0].configuration.frontComponentUniversalIdentifier).toBe(
-      TODAY_IDS.frontComponent,
-    );
+    const widgets = layout.config.tabs[0].widgets;
+    expect(
+      widgets.filter((w) => w.configuration.frontComponentUniversalIdentifier === TODAY_IDS.frontComponent),
+    ).toHaveLength(1);
+    // The rest are native count tiles and charts.
+    expect(widgets.filter((w) => (w as { type?: string }).type === 'GRAPH')).toHaveLength(6);
     expect(readFileSync(path.join(SRC, 'front-components', 'today.front-component.tsx'), 'utf8')).toContain(
       'TODAY_IDS.frontComponent',
     );

@@ -344,6 +344,12 @@ export const TODAY_IDS = {
   tab: '502e0f15-459e-4ed7-9653-b0d9ea8fe67e',
   widget: '8da63fb7-02a2-40c7-ac40-c0b49adf07fe',
   navigationMenuItem: '32439d8b-da46-42bd-a71c-ca770b39980d',
+  needsYouTile: 'd9535b0d-fd5b-4fa0-90c9-addc8d55a724',
+  queueTile: 'e2d2aa59-eb6a-4cb9-ac9e-5cdda33eec30',
+  conversationTile: '50f2e3f4-9ba6-4cd5-8bcc-2cc8cde4e547',
+  sentTile: 'c1ba096a-f993-487f-9263-26a24b9a36f3',
+  pipelineChart: '9629e5d3-ba82-481b-adcb-efff91e9e8c6',
+  channelChart: '823a3b26-0025-4622-bd3c-739f0add43ac',
 } as const;
 
 export const NAVIGATION_IDS = {
