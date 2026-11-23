@@ -2,6 +2,10 @@
 
 All notable changes to this application are documented in this file.
 
+## 0.1.6
+
+- Give the Harness role the UPLOAD_FILE flag, so it can attach CVs, letters, screenshots and migrated archives to their records
+
 ## 0.1.5
 
 - Add the Grok tools `brief`, `opening_summary`, `request_full_text` and `propose` (logic functions with tool triggers): summaries with rates and links only; full job description text only after a DISCLOSURE proposal logs the request; proposals only for allowlisted types
