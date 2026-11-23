@@ -504,12 +504,19 @@ export async function migrate(opts: { from?: string; dryRun?: boolean; force?: b
 // CLI
 // ---------------------------------------------------------------------------
 
-function briefCounts(): { line: string; top: string | null } {
-  const s = store();
-  const counts = s.countsByStatus();
-  const n = (k: string) => counts[k] ?? 0;
-  const line = `${s.count()} pipeline | ${n("shortlisted")} queue | ${n("parked")} parked | ${n("awaiting_approval")} awaiting | ${n("manual_action_needed")} manual | ${n("submitted")} submitted`;
-  const tray = s.list({ status: "awaiting_approval" }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+/** Counts by status from the configured store (SQLite or Twenty). */
+async function statusCounts(): Promise<{ total: number; byStatus: Record<string, number>; all: Opportunity[] }> {
+  const all = await (await rowBackend()).list();
+  const byStatus: Record<string, number> = {};
+  for (const r of all) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return { total: all.length, byStatus, all };
+}
+
+async function briefCounts(): Promise<{ line: string; top: string | null }> {
+  const { total, byStatus, all } = await statusCounts();
+  const n = (k: string) => byStatus[k] ?? 0;
+  const line = `${total} pipeline | ${n("shortlisted")} queue | ${n("parked")} parked | ${n("awaiting_approval")} awaiting | ${n("manual_action_needed")} manual | ${n("submitted")} submitted`;
+  const tray = all.filter((r) => r.status === "awaiting_approval").sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
   return { line, top: tray ? `${tray.score} ${String(tray.title).slice(0, 40)} @ ${tray.company}` : null };
 }
 
@@ -556,14 +563,14 @@ async function main() {
     console.log(JSON.stringify(await dedup(), null, 2));
   } else if (cmd === "summary") {
     if (args.brief === "true") {
-      const { line, top } = briefCounts();
+      const { line, top } = await briefCounts();
       console.log(line);
       if (args.top === "true" && top) console.log(top);
       return;
     }
-    const s = store();
-    const total = s.count();
-    console.log(JSON.stringify({ total, byStatus: s.countsByStatus() }, null, 2));
+    // Through the configured store: on Twenty the rows are in the workspace.
+    const { total, byStatus } = await statusCounts();
+    console.log(JSON.stringify({ total, byStatus }, null, 2));
     // Refresh the human digest from the same read, but never let a summary run
     // against an empty or not-yet-migrated database overwrite a real digest.
     if (total > 0) await writeDigest();
