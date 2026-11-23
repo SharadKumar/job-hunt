@@ -8,6 +8,11 @@
  * bullet grouped by what the person has to do, and posts it to a Slack incoming
  * webhook with a link to the local UI.
  *
+ * With HARNESS_STORE=twenty the escalations live in Twenty instead
+ * (tools/twenty/escalations.ts) and tools/twenty/deliver.ts posts them, once
+ * each. This tool stays for the SQLite store and as the fallback when Twenty
+ * cannot be reached (scripts/daily.sh calls it then).
+ *
  * When it sends (scheduled runs fire several times a day):
  *   - the first notification of a local day lists every open escalation;
  *   - later runs that day send only when a new escalation appears, list the new
@@ -47,7 +52,7 @@ export function escalationKey(e: Escalation): string {
 
 type Group = { heading: string; kinds: Escalation["kind"][] };
 
-const GROUPS: Group[] = [
+export const GROUPS: Group[] = [
   { heading: "Blocking the harness", kinds: ["kill_switch", "cap", "channel", "gate", "submission_pending"] },
   { heading: "Answer a screening question", kinds: ["screening"] },
   { heading: "Approve, hold or reject", kinds: ["awaiting_approval"] },
@@ -55,7 +60,7 @@ const GROUPS: Group[] = [
 ];
 
 /** Slack mrkdwn treats &, < and > as control characters. */
-function slackEscape(s: string): string {
+export function slackEscape(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -102,6 +107,28 @@ function bullet(e: Escalation, uiUrl: string): string {
   return `• ${who}: ${reason}`;
 }
 
+/**
+ * Bullets under a heading per group of kinds, in GROUPS order. Each group
+ * starts with a blank line. Shared with the Twenty delivery (tools/twenty/deliver.ts).
+ */
+export function groupLines<T>(items: T[], kindOf: (t: T) => string, line: (t: T) => string): string[] {
+  const L: string[] = [];
+  for (const g of GROUPS) {
+    const inGroup = items.filter((t) => (g.kinds as string[]).includes(kindOf(t)));
+    if (!inGroup.length) continue;
+    L.push("", `*${g.heading}*`);
+    for (const t of inGroup) L.push(line(t));
+  }
+  // A kind added to Escalation later still reaches the person.
+  const grouped = new Set<string>(GROUPS.flatMap((g) => g.kinds));
+  const other = items.filter((t) => !grouped.has(kindOf(t)));
+  if (other.length) {
+    L.push("", "*Other*");
+    for (const t of other) L.push(line(t));
+  }
+  return L;
+}
+
 export type Message = { text: string; newKeys: string[]; keys: string[] };
 
 /**
@@ -132,23 +159,22 @@ export function compose(opts: {
   else L.push(`*Job hunt, ${timeLabel}: ${fresh.length ? `${count(fresh.length, "new item")} need you` : "run failed"}*`);
   if (failed) L.push("", `:warning: The run failed (exit ${exitCode}). Sent totals are unverified until you check the pipeline; never retry an uncertain send.`);
 
-  for (const g of GROUPS) {
-    const items = fresh.filter((e) => g.kinds.includes(e.kind));
-    if (!items.length) continue;
-    L.push("", `*${g.heading}*`);
-    for (const e of items) L.push(bullet(e, uiUrl));
-  }
-  // A kind added to Escalation later still reaches the person.
-  const grouped = new Set(GROUPS.flatMap((g) => g.kinds));
-  const other = fresh.filter((e) => !grouped.has(e.kind));
-  if (other.length) {
-    L.push("", "*Other*");
-    for (const e of other) L.push(bullet(e, uiUrl));
-  }
+  L.push(...groupLines(fresh, (e) => e.kind, (e) => bullet(e, uiUrl)));
 
   if (waiting) L.push("", `Plus ${waiting} still waiting from earlier today.`);
   L.push("", `<${uiUrl}/#/today|Open today in the harness>`);
   return { text: L.join("\n"), newKeys: fresh.map(escalationKey), keys };
+}
+
+/** POST one message to a Slack incoming webhook. Throws on a non-2xx reply. */
+export async function postSlack(webhook: string, text: string): Promise<void> {
+  const res = await fetch(webhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, unfurl_links: false, unfurl_media: false }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);
 }
 
 function parseArgs(argv: string[]) {
@@ -219,13 +245,7 @@ async function main(): Promise<number> {
     return 0;
   }
   try {
-    const res = await fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: msg.text, unfurl_links: false, unfurl_media: false }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);
+    await postSlack(webhook, msg.text);
   } catch (e: any) {
     console.log(JSON.stringify({ ok: false, sent: false, error: `Slack POST failed: ${e?.message ?? e}`, ...base }));
     return 1;

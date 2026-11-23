@@ -74,6 +74,19 @@ notify_counts() {
   ' "$file"
 }
 
+# The row store the tools use: HARNESS_STORE from the environment, then
+# .env.local, then .env (the order tools/jev/env.ts loads them), else sqlite.
+harness_store() {
+  local f v
+  if [ -n "${HARNESS_STORE:-}" ]; then printf '%s' "$HARNESS_STORE" | tr '[:upper:]' '[:lower:]'; return 0; fi
+  for f in "$REPO_DIR/.env.local" "$REPO_DIR/.env"; do
+    [ -f "$f" ] || continue
+    v=$(sed -n 's/^[[:space:]]*HARNESS_STORE=//p' "$f" | tail -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
+    if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+  done
+  printf 'sqlite'
+}
+
 # `exec` so $! is the CLI itself, not a wrapper subshell the signals would stop at.
 run_cli() {
   if [ "$CLI" = "claude" ]; then
@@ -235,10 +248,29 @@ run_cli() {
   fi
 
   # The escalation digest: grouped bullets with links, to Slack when
-  # SLACK_WEBHOOK_URL is set (.env). It sends the full list on the day's first
-  # run, then only new escalations, and always on a failed run. Tolerated like
-  # the POST above: the run's work is already done.
-  if [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
+  # SLACK_WEBHOOK_URL is set (.env). Tolerated like the POST above: the run's
+  # work is already done.
+  #   - Twenty store: escalations become records (a new P1 also reaches the
+  #     owner's Twenty inbox through the app workflow), deliver.ts posts each
+  #     undelivered one once, and follow-up Tasks are created. If Twenty can't
+  #     be reached for the records or the delivery, notify-escalations.ts is
+  #     the fallback alert.
+  #   - SQLite store: notify-escalations.ts sends the full list on the day's
+  #     first run, then only new escalations, and always on a failed run.
+  NOTIFY_FALLBACK=1
+  if [ "$(harness_store)" = "twenty" ] && [ -f "$REPO_DIR/tools/twenty/escalations.ts" ]; then
+    if npx tsx tools/twenty/escalations.ts; then
+      if npx tsx tools/twenty/deliver.ts --exit "$EXIT"; then
+        NOTIFY_FALLBACK=0
+      else
+        echo "twenty deliver failed (tolerated)"
+      fi
+    else
+      echo "twenty escalations failed (tolerated)"
+    fi
+    npx tsx tools/twenty/followups.ts || echo "twenty followups failed (tolerated)"
+  fi
+  if [ "$NOTIFY_FALLBACK" -eq 1 ] && [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
     npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
   fi
 
