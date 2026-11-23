@@ -1,11 +1,13 @@
 ---
 name: resume-strategy
-description: Review and adjust the profile's active resume positionings after onboarding. Use when the user wants to add, remove, rename, reprioritise, or reshape target resume strategies in state/profile/resumes.yaml, change search keywords, change target evidence hooks, alter cover-letter angles, or revisit whether the current market positionings still fit the CV and job market. Do not use for reviewing rendered resume artefacts; use resume-review for that.
+description: Review and adjust the profile's active resume positionings after onboarding. Use when the user wants to add, remove, rename, reprioritise, or reshape target resume strategies in <profile>/resumes.yaml, change search keywords, change target evidence hooks, alter cover-letter angles, or revisit whether the current market positionings still fit the CV and job market. Do not use for reviewing rendered resume artefacts; use resume-review for that.
 ---
+
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
 
 # /resume-strategy: adjust resume strategy
 
-This skill reviews `state/profile/resumes.yaml`, the strategy file that says which resume positionings the harness can credibly hunt and pitch.
+This skill reviews `<profile>/resumes.yaml`, the strategy file that says which resume positionings the harness can credibly hunt and pitch.
 
 It is distinct from:
 
@@ -23,13 +25,13 @@ It is distinct from:
 
 ## Inputs To Read
 
-- `state/profile/resumes.yaml`
+- `<profile>/resumes.yaml`
 - `state/org/resume-types.yaml` when present: central resume type pool; profile entries are assignments/overrides.
-- `state/profile/profile.md`
-- `state/profile/cv-source.md`
-- `state/profile/market-confirmations.yaml` when present: prior market-gap answers and suppressed questions
-- `state/pipeline/opportunities.md` and recent classified opportunities when reviewing market fit
-- `state/profile/resumes/<id>/editorial-rules.md` when a target has accumulated resume-edit feedback
+- `<profile>/profile.md`
+- `<profile>/cv-source.md`
+- `<profile>/market-confirmations.yaml` when present: prior market-gap answers and suppressed questions
+- `npm run pipeline -- summary` and recent classified opportunities when reviewing market fit
+- `<profile>/resumes/<id>/editorial-rules.md` when a target has accumulated resume-edit feedback
 - `references/market-lens-discovery.md` before creating or changing any `market_lens`
 
 ## Sequence
@@ -92,7 +94,7 @@ Use structured-question mode when the review needs user judgement. Claude Code s
    - **Qualify every term against `cv-source.md`.** Each term lands in exactly one tier: `corpus` (evidenced), `preppable` (familiarity only), `confirm` (plausible but unevidenced), `forbidden` (never claim).
    - **Hand the unmatched-but-important terms to the evidence interview** in 3c. A term the market wants and the corpus lacks is a question for the user, never a silent drop and never a fabricated claim.
    - Prerequisite: the local JD corpus is thin (most pipeline rows carry only a search-card teaser). In an attended session with Chrome available, first run `npm run seek:enrich -- --status any --min-score 60 --limit 30 --resume <resume-id>` so the top rows for this type carry full adverts. Skip this in headless runs.
-   - Run `npm run lexicon:mine -- --resume <resume-id> --json`. It mines the local JD corpus (pipeline descriptions of 500+ chars, `state/pipeline/archive/*/jd.md`, and every matching title) for 1-3 word terms ranked by document frequency and must-have frequency, and marks each as `present` or `absent` in `cv-source.md`. Each mined term carries a `suggested_cloud` (nearest cloud by token overlap) and the table output is grouped by cloud, so the candidates arrive already sorted into the clouds that would own them. Treat the suggestion as a prompt, not a decision. It also reports how many full JDs it had; when that count is under 10, treat the ranking as indicative and lean on the web pass below.
+   - Run `npm run lexicon:mine -- --resume <resume-id> --json`. It mines the local JD corpus (pipeline descriptions of 500+ chars, `<archive>/*/jd.md`, and every matching title) for 1-3 word terms ranked by document frequency and must-have frequency, and marks each as `present` or `absent` in `cv-source.md`. Each mined term carries a `suggested_cloud` (nearest cloud by token overlap) and the table output is grouped by cloud, so the candidates arrive already sorted into the clouds that would own them. Treat the suggestion as a prompt, not a decision. It also reports how many full JDs it had; when that count is under 10, treat the ranking as indicative and lean on the web pass below.
    - Present the candidates in grouped batches of at most 4 options: "accept these N corpus-backed terms", "review N preppable terms", "review N needs-confirm terms", "these N are forbidden unless sourced". The user can trim any group.
    - Run the `references/market-lens-discovery.md` web pass only for high-frequency terms with weak local evidence, and for terms the local corpus under-represents. Do not re-research terms the local corpus already settles.
    - Write the result into the owning cloud in `state/org/keyword-clouds.yaml`: bump that cloud's `refreshed_at` and `source_summary`, and add or amend `terms[]` (`term`, `aliases`, `category`, `tier: corpus | preppable | confirm | forbidden`, `why`, `evidence_patterns`, `jd_frequency`, `source`). A term belongs to exactly one cloud; if it is already in another cloud, amend it there instead of adding a second copy. A `forbidden` term needs a `why` saying what the block protects against; the cloud is the authority, and every type referencing it inherits the block, so it does not need mirroring into each type's `forbidden_claims`. If the positioning needs a cloud that does not exist yet, create the cloud (id, `kind`, `label`, `description`) and then reference it with a weight from the type. Then run `npm run resume-types:validate`.
@@ -122,7 +124,7 @@ Use structured-question mode when the review needs user judgement. Claude Code s
    - If multiple changes are independent, group them into one concise proposal.
    - For evidence-gap questions, ask only precise, source-updating questions with the four fixed answers (`references/harness/keyword-answers.md`). Example: "For Claude Code work, did you define reusable slash commands/subagents/hooks that governed delivery, or was use limited to ad-hoc coding assistance?"
 
-7. Apply approved edits to `state/profile/resumes.yaml` or `state/org/resume-types.yaml`, depending on whether the change is profile-specific or central.
+7. Apply approved edits to `<profile>/resumes.yaml` or `state/org/resume-types.yaml`, depending on whether the change is profile-specific or central.
    - When the user answers an evidence-gap question, record it in `market-confirmations.yaml`.
    - If the answer confirms a usable fact, update `cv-source.md` before expecting `resume-writer` to render it.
 

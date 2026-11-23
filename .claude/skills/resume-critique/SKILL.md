@@ -3,6 +3,8 @@ name: resume-critique
 description: Run the independent content review of a rendered CV before anyone is offered the chance to approve it. Use when the user says "critique my CV", "review the content of this resume", "is this CV actually good", "check for duplicate bullets", "did it contradict itself", or after any render where the deterministic gates passed but nobody has read the document as a human. Also invoked by /resume-render, /resume-review and /apply's tailored path, which must not offer approval until this skill has returned a critic pass. Argument is the resume-id, plus optional `--rounds N` (default 2) and `--profile <id>`.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /resume-critique: the read the gates cannot do
 
 ## What this skill does
@@ -15,13 +17,13 @@ Nothing this skill does lives only in the conversation. Every round lands in `<p
 
 ## Arguments
 
-- `<resume-id>` (required): must match `state/profile/resumes.yaml`, or the profile's `resumes.yaml` when `--profile` is given.
+- `<resume-id>` (required): must match `<profile>/resumes.yaml`, or the profile's `resumes.yaml` when `--profile` is given.
 - `--rounds N` (default 2): the maximum number of critic passes. Round 1 reviews, round 2 re-reviews after the edits land. More than 2 is almost always the wrong fix; a CV that cannot converge in two rounds has a composition problem, not a wording problem.
-- `--profile <id>`: team profiles resolve under `state/profiles/<id>/`; the default stays `state/profile/`.
+- `--profile <id>`: team profiles resolve with `HARNESS_PROFILE=<id> npm run -s profile:path` (file mode only); the default is `<profile>/`.
 
 ## Sequence
 
-Resolve the repo root first (`references/harness/repo-root.md`). `<profile-dir>` is `state/profile/` or `state/profiles/<profile-id>/`. `<dir>` is `<profile-dir>/resumes/<resume-id>/`. `<prefix>` is the path stem inside `<dir>` shared by `*.composition.json`, `*.provenance.json`, `*.audit.json` and the rendered `.md`.
+Resolve the repo root first (`references/harness/repo-root.md`). `<profile-dir>` is `<profile>/`, or for a team profile the path `HARNESS_PROFILE=<profile-id> npm run -s profile:path` prints. `<dir>` is `<profile-dir>/resumes/<resume-id>/`. `<prefix>` is the path stem inside `<dir>` shared by `*.composition.json`, `*.provenance.json`, `*.audit.json` and the rendered `.md`.
 
 ### 1. Confirm there is something to review
 
