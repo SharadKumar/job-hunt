@@ -355,6 +355,9 @@ export const NAVIGATION_IDS = {
   documents: '106cd00c-6107-4f13-ab18-32c3ba7163fc',
   runs: 'cf2ac548-20b7-4cc9-823a-75539b278d97',
   engagements: '4e35c6fc-2751-4ae9-b70e-8d515ece1a89',
+  companies: 'da5389f9-79e3-45be-af91-8d0ed28f6b0c',
+  people: 'e2e70e89-f346-4718-9ba6-03b1c1d00e96',
+  tasks: 'fe3174bc-21fa-4d52-a7bf-11b056167052',
 } as const;
 
 export const VIEW_IDS = {

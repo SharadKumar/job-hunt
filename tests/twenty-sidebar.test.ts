@@ -14,9 +14,11 @@ const items = [
   { id: "mine", type: "OBJECT", targetObjectMetadataId: "o2", position: 4, applicationId: "std", userWorkspaceId: "u1" },
   { id: "sec", type: "SECTION", name: "Job hunt", position: 0, applicationId: "app" },
 ];
-const plan = planSidebar(items, names, "app");
+const plan = planSidebar(items, names, "app", ["company", "person", "task", "note"]);
+// By default nothing standard is kept: the app section links company, person and task itself.
+assert.deepEqual(planSidebar(items, names, "app").remove.map((r) => r.id), ["wfr", "c", "op", "t", "wf"]);
 assert.deepEqual(plan.remove.map((r) => r.id), ["wfr", "op", "wf"], "children first; kept objects and a person's own items untouched");
 assert.deepEqual(plan.sectionToTop, { id: "sec", position: -1 });
-const clean = planSidebar([items[0], { ...items[6], position: -1 }], names, "app");
+const clean = planSidebar([items[0], { ...items[6], position: -1 }], names, "app", ["company", "person", "task", "note"]);
 assert.deepEqual(clean, { remove: [], sectionToTop: null }, "already clean");
 console.log("twenty-sidebar: ok");
