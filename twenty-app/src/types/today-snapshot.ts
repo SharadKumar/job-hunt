@@ -1,4 +1,4 @@
-type Row = { id: string; title: string; detail: string };
+type Row = { id: string; title: string; detail: string; tag?: string };
 
 // Everything the Today page shows, read in one pass as the viewer.
 export type TodaySnapshot = {
