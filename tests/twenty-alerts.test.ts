@@ -79,7 +79,9 @@ for (const f of DELIVERY_FIELDS) assert.ok(!(f in rec), `toRecord never sets ${f
   assert.equal(byId.get(escalationRecordId(dedupeKey(manual)))?.status, "OPEN");
   assert.equal(byId.get(escalationRecordId(dedupeKey(manual)))?.resolvedAt, null);
   assert.deepEqual(byId.get(escalationRecordId("cap:cap used up")), { status: "RESOLVED", resolvedAt: NOW });
-  for (const u of plan.update) for (const f of DELIVERY_FIELDS) assert.ok(!(f in u.fields), "sync never writes a delivery field (R36)");
+  const reopenedId = escalationRecordId(dedupeKey(manual));
+  for (const f of DELIVERY_FIELDS) assert.equal((byId.get(reopenedId) as any)?.[f], null, "a returning escalation is announced again");
+  for (const u of plan.update) if (u.id !== reopenedId) for (const f of DELIVERY_FIELDS) assert.ok(!(f in u.fields), "routine sync never writes a delivery field (R36)");
 }
 
 // Delivery composition.
