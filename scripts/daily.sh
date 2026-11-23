@@ -100,7 +100,16 @@ run_cli() {
 
   FRONT_EXIT=0
   PRIORITY_EXIT=0
-  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
+  # Fail closed on the Twenty store: no pipeline work and no sends when the
+  # workspace can't be read (plan E9). A no-op on the SQLite store.
+  PREFLIGHT_EXIT=0
+  if node -e 'process.exit(require("./package.json").scripts?.["twenty:preflight"] ? 0 : 1)' 2>/dev/null; then
+    npm run -s twenty:preflight || PREFLIGHT_EXIT=$?
+  fi
+  if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
+    echo "=== $(date -Iseconds) store preflight failed (exit $PREFLIGHT_EXIT); skipping all pipeline work and sends ==="
+    EXIT=$PREFLIGHT_EXIT
+  elif [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
     REPORT="$REPO_DIR/state/journal/front-half/$DATE.json"
     if node -e '
       const fs = require("node:fs");
@@ -142,7 +151,9 @@ run_cli() {
   # An explicit reuse request must never fall through to the agent when its
   # source report is missing or unhealthy. The ordinary run still lets the
   # back half recover already-valid packages after a fresh front-half error.
-  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ] && [ "$FRONT_EXIT" -ne 0 ]; then
+  if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
+    : # Store unreachable: the agent back half (drafts, sends) does not run either.
+  elif [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ] && [ "$FRONT_EXIT" -ne 0 ]; then
     EXIT="$FRONT_EXIT"
   else
 

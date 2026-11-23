@@ -56,6 +56,15 @@ function fakeCli(root: string, body: string): string {
   return bin;
 }
 
+/** A fake repo whose store preflight reports the store unreachable (exit 3). */
+function makeUnreachableStoreRepo(): string {
+  const root = makeFakeRepo();
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  pkg.scripts["twenty:preflight"] = "sh -c 'echo {\"ok\":false} ; exit 3'";
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify(pkg));
+  return root;
+}
+
 function today(): string {
   return spawnSync("date", ["+%Y-%m-%d"], { encoding: "utf8" }).stdout.trim();
 }
@@ -81,6 +90,19 @@ function runDaily(root: string, env: Record<string, string>): Run {
 }
 
 console.log("daily.sh wrapper");
+
+test("an unreachable Twenty store stops every pipeline step and the agent, failing closed", () => {
+  const root = makeUnreachableStoreRepo();
+  const bin = fakeCli(root, 'mkdir -p "$REPO_DIR/state" && echo ran > "$REPO_DIR/state/agent-marker"');
+  try {
+    const run = runDaily(root, { HARNESS_CLI_BIN: bin, HARNESS_TIMEOUT_SEC: "30" });
+    assert.equal(run.status, 3, run.log);
+    assert.match(run.log, /store preflight failed \(exit 3\)/);
+    for (const marker of ["priority-marker", "front-half-marker", "agent-marker"]) {
+      assert.equal(fs.existsSync(path.join(root, "state", marker)), false, `${marker} must not exist: nothing runs`);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test("Claude daily explicitly selects Sonnet instead of inheriting an expensive default", () => {
   const root = makeFakeRepo();
