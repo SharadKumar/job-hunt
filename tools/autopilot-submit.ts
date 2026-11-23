@@ -54,7 +54,8 @@ import { reencodeScreenshots } from "./archive-compact.ts";
 import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
 import { profilePath } from "./profile-context.ts";
-import { archiveDir as packageDir, journalPath } from "./store/paths.ts";
+import { archiveDir as packageDir, journalPath, resolveRepoRef } from "./store/paths.ts";
+import { isTwentyStore } from "./store/documents.ts";
 
 const exec = promisify(execFile);
 
@@ -132,7 +133,7 @@ async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): 
     // copy that used to sit in the package. submission-gate re-hashes it.
     const named = meta.resume?.ref ?? meta.resume?.docx;
     if (named) {
-      const abs = path.isAbsolute(named) ? named : repoPath(named);
+      const abs = resolveRepoRef(named);
       if (await exists(abs)) return { docx: abs, source: meta.resume?.ref ? "metadata.json baseline ref" : "metadata.json" };
       throw new Error(`metadata.json names a resume docx that does not exist: ${abs}`);
     }
@@ -146,7 +147,8 @@ async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): 
     if (m.approval_status !== "approved" || !m.content_hash || m.content_hash !== m.approved_hash) {
       throw new Error(`baseline ${resumeId} is not currently approved; refusing to derive a resume`);
     }
-    if (m.artefacts?.docx && (await exists(m.artefacts.docx))) return { docx: m.artefacts.docx, source: `baseline ${resumeId}` };
+    const docx = m.artefacts?.docx ? (isTwentyStore() ? resolveRepoRef(m.artefacts.docx) : m.artefacts.docx) : null;
+    if (docx && (await exists(docx))) return { docx, source: `baseline ${resumeId}` };
   }
   const files = (await fs.readdir(baselineDir)).filter((f) => f.endsWith(".docx"));
   if (files.length !== 1) throw new Error(`expected exactly one .docx under ${baselineDir}, found ${files.length}`);

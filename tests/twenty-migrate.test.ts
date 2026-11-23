@@ -155,6 +155,8 @@ function makeTree(root: string, tag: string, archived: { id: string; title: stri
   put(`${prof}/resumes/${resumeId}/Synthetic_Architect.pdf`, pdf("baseline"));
   put(`${prof}/resumes/${resumeId}/Synthetic_Architect.docx`, DOCX);
   put(`${prof}/resumes/${resumeId}/Synthetic_Architect-page-1.png`, PNG);
+  put(`${prof}/resumes/${resumeId}/editorial-rules.md`, "- synthetic positioning rule\n");
+  put(`${prof}/cv/meta.yaml`, "source_file: synthetic.docx\n");
   put(`${prof}/screening-answers.yaml`, [
     "answers: {}", "unknown_questions:",
     `  - opportunity_id: ${archived.id}`, `    question: "Do you hold a synthetic licence ${tag}?"`, "    answer: null",
@@ -198,7 +200,7 @@ function makeTree(root: string, tag: string, archived: { id: string; title: stri
   ].join("\n"));
 }
 
-const EXPECTED = { company: 1, positioning: 1, document: 15, documentRevision: 15, application: 1, screeningQuestion: 2, keywordQuestion: 2, run: 2, person: 2, note: 1, attachment: 8 };
+const EXPECTED = { company: 1, positioning: 1, document: 16, documentRevision: 16, application: 1, screeningQuestion: 2, keywordQuestion: 2, run: 2, person: 2, note: 1, attachment: 15 };
 
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "migrate-unit-"));
@@ -227,8 +229,10 @@ const EXPECTED = { company: 1, positioning: 1, document: 15, documentRevision: 1
   assert.equal(typeof app.letterSha, "string");
   assert.match(String(app.manualChecklist), /synthetic step/);
   assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetApplicationId").map((x) => x.name).sort(),
-    ["Synthetic_Architect.docx", "Synthetic_Tailored.docx", "Synthetic_Tailored.pdf", "cover-letter.md", "manual-checklist.md", "seek-x-success.png"]);
-  assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetPositioningId").map((x) => x.name).sort(), ["Synthetic_Architect.docx", "Synthetic_Architect.pdf"]);
+    ["Synthetic_Architect.docx", "Synthetic_Tailored.docx", "Synthetic_Tailored.pdf", "confirmation.txt", "cover-letter.md", "interview-brief.md", "jd.md", "letter-critic.json", "manual-checklist.md", "metadata.json", "seek-x-success.png"]);
+  assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetPositioningId").map((x) => x.name).sort(), ["Synthetic_Architect.docx", "Synthetic_Architect.pdf", "metadata.json"]);
+  assert.deepEqual(plan.attachments.filter((x) => x.targetField === "targetDocumentId").map((x) => x.name), ["meta.yaml"], "the profile's cv/ files attach to CV_SOURCE");
+  assert.ok(plan.documents.some((x) => x.record.kind === "OTHER" && /^resumes\/arch-[^/]+\/editorial-rules\.md$/.test(String(x.record.name))), "per-positioning rules are a document");
   assert.equal(plan.positionings[0].record.approvalStatus, "APPROVED");
   assert.equal(plan.positionings[0].record.criticVerdict, "PASS");
   assert.deepEqual(plan.positionings[0].record.rateMin, { amountMicros: 1_000_000_000, currencyCode: "AUD" });
@@ -305,9 +309,12 @@ const first = runMigrate(["--apply"]);
 const res = first.results;
 // Per-run unique ids: created exactly. Fixed ids (document kinds, run dates)
 // may already exist from an earlier test run on the same instance.
-for (const k of ["opening", "company", "positioning", "application", "screeningQuestion", "keywordQuestion", "person", "note", "attachment"]) {
+for (const k of ["opening", "company", "positioning", "application", "screeningQuestion", "keywordQuestion", "person", "note"]) {
   assert.equal(res[k].created, k === "opening" ? 2 : (EXPECTED as any)[k], `${k} created`);
 }
+// The CV source file's attachment hangs off the fixed CV_SOURCE document id.
+assert.equal(res.attachment.created + res.attachment.already_present, EXPECTED.attachment, "attachment planned");
+assert.ok(res.attachment.created >= EXPECTED.attachment - 1, "attachment created");
 for (const k of ["document", "documentRevision", "run"]) assert.equal(res[k].created + res[k].already_present, (EXPECTED as any)[k], `${k} planned`);
 
 // Spot-check what landed: the application links its opening; files are attached.
@@ -317,7 +324,7 @@ const appRec = (await get(`/rest/applications/${appId}`)).data.application;
 assert.equal(appRec.criticVerdict, "PASS");
 assert.ok(appRec.migratedAt);
 const atts = (await get(`/rest/attachments?filter=${encodeURIComponent(`targetApplicationId[eq]:${appId}`)}&limit=50`)).data.attachments;
-assert.equal(atts.length, 6);
+assert.equal(atts.length, 11);
 assert.ok(atts.every((a: any) => a.file?.[0]?.fileId));
 const opening = (await get(`/rest/openings/${(await import("../tools/store/twenty-backend.ts")).openingId(ids[0])}`)).data.opening;
 assert.ok(opening.migratedAt, "migrated openings carry migratedAt");

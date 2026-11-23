@@ -63,7 +63,6 @@ import { promisify } from "node:util";
 import YAML from "yaml";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { log as auditLog, query as auditQuery, checkDuplicate, distinctSubmittedEvents } from "./audit.ts";
-import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
 import { sha256 } from "./lib/hash.ts";
 import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
@@ -71,7 +70,7 @@ import { classificationFreshnessIssue, type ClassificationIdentity } from "./jev
 import { currentJevCacheIdentity } from "./jev/classifier.ts";
 import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
 import { profilePath } from "./profile-context.ts";
-import { archiveDir as packageDir } from "./store/paths.ts";
+import { archiveDir as packageDir, resolveRepoRef } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
@@ -229,7 +228,7 @@ export async function verifyBaselineRef(opts: { archiveDir: string; cvDocxPath?:
   const resume = meta?.resume;
   if (!resume || typeof resume.ref !== "string") return null;
   const ref: string = resume.ref;
-  const refPath = path.isAbsolute(ref) ? ref : repoPath(ref);
+  const refPath = resolveRepoRef(ref);
 
   let bytes: Buffer;
   try {

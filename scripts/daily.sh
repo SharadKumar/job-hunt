@@ -305,10 +305,17 @@ run_cli() {
     npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
   fi
 
-  # Save what the run changed in the document cache (machine documents as new
-  # revisions, the person's documents as proposals to confirm), then delete it.
+  # Save what the run changed in the cache (packages and baselines as
+  # attachments, machine documents as new revisions, the person's documents
+  # as proposals to confirm), then delete it. A failed finish keeps the cache
+  # for the next materialise to retry and fails the run.
   if [ -n "${HARNESS_RUN_ID:-}" ]; then
-    npm run -s store:finish || echo "store finish failed (cache kept for the next clean-up)"
+    FINISH_EXIT=0
+    npm run -s store:finish || FINISH_EXIT=$?
+    if [ "$FINISH_EXIT" -ne 0 ]; then
+      echo "store finish failed (exit $FINISH_EXIT): cache kept; the next materialise retries it"
+      if [ "$EXIT" -eq 0 ]; then EXIT="$FINISH_EXIT"; fi
+    fi
   fi
 
   echo "=== $(date -Iseconds) finished daily run (exit $EXIT) ==="

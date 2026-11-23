@@ -36,7 +36,7 @@ const R = await import("../tools/store/runs.ts");
 
 type Rec = Record<string, any>;
 function fakeTwenty() {
-  const db: Record<string, Rec[]> = { documents: [], documentRevisions: [], proposals: [], runs: [] };
+  const db: Record<string, Rec[]> = { documents: [], documentRevisions: [], proposals: [], runs: [], openings: [], positionings: [], attachments: [] };
   const calls: { method: string; path: string; body?: any }[] = [];
   let n = 0;
   const id = () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
@@ -153,7 +153,7 @@ process.env.HARNESS_STORE = "twenty";
   assert.equal(fs.readFileSync(ctx.profileMdPath, "utf8"), "# Profile r2\n");
   assert.equal(resolveProfileContext(null, { files: true }).profileDir, path.join(root, "state", "profile"), "the migration still reads the files");
   assert.equal(P.orgDocumentPath("keyword-clouds.yaml"), path.join(m.profileDir, "keyword-clouds.yaml"));
-  assert.equal(P.archiveDir("row-1"), path.join(root, "state", "cache", "archive", "row-1"));
+  assert.equal(P.archiveDir("row-1"), path.join(root, "state", "cache", "run-unit-1", "archive", "row-1"));
   assert.equal(P.pipelineFile("q.json"), path.join(root, "state", "cache", "pipeline", "q.json"));
   assert.equal(P.journalPath("summary"), path.join(root, "state", "logs", "journal", "summary"));
 
