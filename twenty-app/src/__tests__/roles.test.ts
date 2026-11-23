@@ -191,15 +191,24 @@ describe('role matrix', () => {
     );
   });
 
-  it('lets the app role read and create decisions, and nothing more', () => {
+  it('lets the app role read, create decisions and proposals, and nothing more', () => {
     const app = role(DEFAULT_ROLE_UNIVERSAL_IDENTIFIER);
     const records = app.recordsPermissions;
 
     expect(records?.canReadAllRecords).toBe(true);
     expect(records?.canCreateAllRecords).toBe(false);
     expect(records?.canUpdateAllRecords).toBe(false);
-    expect(records?.objects).toHaveLength(1);
-    expect(grant(app, OBJECT_IDS.decision)?.canCreateAllRecords).toBe(true);
-    expect(grant(app, OBJECT_IDS.decision)?.canUpdateAllRecords).toBe(false);
+    expect(records?.objects).toHaveLength(2);
+    for (const id of [OBJECT_IDS.decision, OBJECT_IDS.proposal]) {
+      expect(grant(app, id)?.canCreateAllRecords, id).toBe(true);
+      expect(grant(app, id)?.canUpdateAllRecords, id).toBe(false);
+    }
+  });
+
+  it('lets the Harness create engagements, and update none', () => {
+    const engagement = grant(role(ROLE_IDS.harness), OBJECT_IDS.engagement);
+
+    expect(engagement?.canCreateAllRecords).toBe(true);
+    expect(engagement?.canUpdateAllRecords).toBe(false);
   });
 });

@@ -165,6 +165,7 @@ export const FIELD_IDS = {
     summary: '74d50155-f133-489e-ad91-14a9792d5c9f',
     lettersSentUnattended: '07457ddb-1a3d-4563-9fbd-b2c326aa14be',
     migratedAt: '07e8ace2-49d2-4b1a-9c1d-56d9ad8b9ded',
+    grokDeliveredAt: 'ece0a731-89ac-48d8-b400-35bb75be2085',
   },
   escalation: {
     name: 'ba7b39d7-61bb-48e8-b300-b87f75de7ea4',
@@ -307,6 +308,14 @@ export const WORKFLOW_IDS = {
     filter: '619520fe-eb71-43ab-99ed-c1c5c77640da',
     send: '1d32095e-1f50-40e6-8342-5a6ef8aeeef0',
   },
+} as const;
+
+// Tools the Grok key reaches on /mcp?mode=direct (plan F15).
+export const GROK_TOOL_IDS = {
+  brief: 'a982cbcd-c62e-4369-9fe3-ee1d31bacd07',
+  openingSummary: 'e5f9abb6-e979-4366-bde4-f85fba728441',
+  requestFullText: 'ef70dcec-8c5d-4301-aca9-6a6f6486feae',
+  propose: 'd3cc156e-a21b-4ee2-89ff-a5ab978f7762',
 } as const;
 
 export const ROLE_IDS = {

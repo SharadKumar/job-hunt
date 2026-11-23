@@ -31,6 +31,8 @@ export default defineObject({
     numberField({ universalIdentifier: F.escalationCount, name: 'escalationCount', label: 'Escalations', icon: 'IconAlertTriangle' }),
     textField({ universalIdentifier: F.summary, name: 'summary', label: 'Summary', icon: 'IconFileText' }),
     textField({ universalIdentifier: F.lettersSentUnattended, name: 'lettersSentUnattended', label: 'Letters sent unattended', icon: 'IconMail' }),
+    // Routing only: when the Grok digest carried this failed run (plan F16).
+    dateTimeField({ universalIdentifier: F.grokDeliveredAt, name: 'grokDeliveredAt', label: 'Delivered to Grok', icon: 'IconBell' }),
     dateTimeField({ universalIdentifier: F.migratedAt, name: 'migratedAt', label: 'Migrated', icon: 'IconTransfer' }),
   ],
 });
