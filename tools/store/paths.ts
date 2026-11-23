@@ -5,9 +5,11 @@
  * was: state/pipeline/..., state/journal/..., state/org/....
  *
  * Twenty mode keeps no person-facing file on disk:
- *   - package work (letters, rendered CVs, screenshots) is built in
- *     state/cache/archive/<id>/, a render cache; the person-facing copy is the
- *     application record and its attachments in Twenty;
+ *   - package work (letters, rendered CVs, screenshots) is built in the run
+ *     cache, state/cache/run-<id>/archive/<opening>/; the person-facing copy
+ *     is the application record and its attachments in Twenty, downloaded at
+ *     materialise for openings in an active state and uploaded at finish
+ *     (tools/store/artefacts.ts);
  *   - pipeline side files (queues, candidate lists) are runtime state in
  *     state/cache/pipeline/;
  *   - journals and run reports are logs in state/logs/journal/; the person
@@ -18,13 +20,30 @@
 
 import path from "node:path";
 import { repoRoot } from "../repo-root.ts";
-import { currentProfileDir, isTwentyStore } from "./documents.ts";
+import { currentProfileDir, currentRunDir, isTwentyStore } from "./documents.ts";
 
 /** Root of the per-opportunity package folders. */
 export function archiveRoot(): string {
   return isTwentyStore()
-    ? path.join(repoRoot(), "state", "cache", "archive")
+    ? path.join(currentRunDir(), "archive")
     : path.join(repoRoot(), "state", "pipeline", "archive"); // scan:file-mode
+}
+
+/**
+ * A file named in package metadata (a baseline reference such as
+ * metadata.resume.ref), as an absolute path. File mode resolves it against
+ * the repo root, as always. Twenty mode maps a path inside any run cache, or
+ * a legacy profile path recorded before the migration, onto this run's cache,
+ * where the same file was materialised.
+ */
+export function resolveRepoRef(ref: string): string {
+  if (!isTwentyStore()) return path.isAbsolute(ref) ? ref : path.join(repoRoot(), ref);
+  const posix = ref.split(path.sep).join("/");
+  const inRun = posix.match(/(?:^|\/)state\/cache\/run-[A-Za-z0-9-]+\/(.+)$/);
+  if (inRun) return path.join(currentRunDir(), ...inRun[1].split("/"));
+  const legacy = posix.match(/(?:^|\/)state\/profiles?\/(?:[^/]+\/)?(resumes\/.+|cv\/.+)$/); // scan:label
+  if (legacy) return path.join(currentProfileDir(null), ...legacy[1].split("/"));
+  return path.isAbsolute(ref) ? ref : path.join(repoRoot(), ref);
 }
 
 /** One opportunity's package folder. */

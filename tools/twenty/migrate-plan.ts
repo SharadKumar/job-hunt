@@ -12,15 +12,17 @@
  *     confirmation.txt, manual-checklist.md, CV PDF and DOCX, screenshots);
  *     interview-brief.md and *debrief*.md become Notes on the opening;
  *   - documents: one per profile file kind, body = file text, revision 1;
+ *     per-positioning editorial rules as kind OTHER named
+ *     resumes/<id>/<file>; the profile's cv/ files attached to CV_SOURCE;
  *   - screening questions: screening-answers.yaml unknown_questions;
  *   - keyword questions: market-confirmations.yaml confirmations;
- *   - positionings: resumes.yaml, with the baseline PDF and DOCX attached;
+ *   - positionings: resumes.yaml, with the baseline artefacts attached;
  *   - runs: the latest 50 state/journal/summary/<date>.md files;
  *   - people (F18): contacts.jsonl and the audit log's contact fields,
  *     minimised to name, role title, company, email and LinkedIn URL.
  */
 
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, promises as fs, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import type { Opportunity } from "../pipeline.ts";
@@ -28,6 +30,7 @@ import { sha256 } from "../lib/hash.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
 import { openingId, uuid5 } from "../store/twenty-backend.ts";
+import { persistedFile, RESUME_RULE_FILES, safeName } from "../store/artefacts.ts";
 
 export const recordId = (object: string, sourceId: string) => uuid5(`${object}:${sourceId}`);
 export const companyId = (name: string) => uuid5(`company:${name.trim().toLowerCase()}`);
@@ -103,6 +106,7 @@ export function documentSources(): { kind: string; name: string; candidates: str
     { kind: "POSITIONINGS", name: "Positionings", candidates: [p.resumesPath] },
     { kind: "KEYWORD_CLOUDS", name: "Keyword clouds", candidates: [org("keyword-clouds.yaml"), inProfile("keyword-clouds.yaml")] },
     { kind: "MARKET_CONFIRMATIONS", name: "Market confirmations", candidates: [p.marketConfirmationsPath] },
+    { kind: "KEYWORD_REJECTS", name: "Keyword rejects", candidates: [inProfile("keyword-rejects.jsonl")] },
     // Profile files with no kind of their own: kind OTHER, named by their file
     // name, so a run materialises them back under the same name.
     { kind: "OTHER", name: "jev-policy.yaml", candidates: [inProfile("jev-policy.yaml")] },
@@ -114,7 +118,8 @@ async function planDocuments(plan: MigrationPlan, migratedAt: string): Promise<v
   for (const src of documentSources()) {
     const file = src.candidates.find((c) => existsSync(c));
     const body = file ? await readText(file) : null;
-    if (body == null) { if (src.kind !== "OTHER") bump(plan.skipped, "document: no file"); continue; }
+    // OTHER files and the keyword-rejects log are optional: absent is normal.
+    if (body == null) { if (src.kind !== "OTHER" && src.kind !== "KEYWORD_REJECTS") bump(plan.skipped, "document: no file"); continue; }
     const key = src.kind === "OTHER" ? `OTHER:${src.name}` : src.kind;
     const docId = recordId("document", key);
     plan.documents.push({ id: docId, record: { id: docId, name: src.name, kind: src.kind, currentRevision: 1, migratedAt } });
@@ -124,10 +129,6 @@ async function planDocuments(plan: MigrationPlan, migratedAt: string): Promise<v
 }
 
 // -------------------------------------------------------------- applications
-
-const CV_FILE = /\.(pdf|docx)$/i;
-const SCREENSHOT = /\.(png|jpe?g)$/i;
-const PAGE_RENDER = /-page-\d+\.png$/i;
 
 export function criticVerdict(v: unknown): "PASS" | "BLOCK" | "PENDING" {
   const s = String(v ?? "").toLowerCase();
@@ -160,30 +161,43 @@ export function applicationFields(meta: any, row: Opportunity, confirmation: str
   };
 }
 
+/**
+ * The application record of one package folder: the letter, its sha and
+ * critic verdict, the composition, the checklist and the metadata fields.
+ * Shared by the migration and the run store (tools/store/artefacts.ts).
+ */
+export async function applicationRecord(dir: string, row: Opportunity): Promise<Record<string, unknown>> {
+  const files = await listDir(dir);
+  const letter = await readText(path.join(dir, "cover-letter.md"));
+  const critic = await readJson(path.join(dir, "letter-critic.json"));
+  const meta = await readJson(path.join(dir, "metadata.json"));
+  const confirmation = await readText(path.join(dir, "confirmation.txt"));
+  const checklist = await readText(path.join(dir, "manual-checklist.md"));
+  const compositionFile = files.find((f) => f.endsWith(".composition.json"));
+  return {
+    name: `${row.title ?? row.id} at ${row.company ?? "?"}`.slice(0, 200),
+    letterMarkdown: letter,
+    letterSha: letter != null ? sha256(letter) : null,
+    criticVerdict: critic ? criticVerdict(critic.verdict) : "PENDING",
+    composition: compositionFile ? await readJson(path.join(dir, compositionFile)) : null,
+    manualChecklist: checklist,
+    ...applicationFields(meta, row, confirmation),
+  };
+}
+
 async function planApplications(plan: MigrationPlan, rows: Opportunity[], migratedAt: string): Promise<void> {
   const archive = repoPath("state", "pipeline", "archive");
   for (const row of rows) {
     const dir = path.join(archive, row.id);
     if (!existsSync(dir)) continue;
     const files = await listDir(dir);
-    const letter = await readText(path.join(dir, "cover-letter.md"));
-    const critic = await readJson(path.join(dir, "letter-critic.json"));
     const meta = await readJson(path.join(dir, "metadata.json"));
-    const confirmation = await readText(path.join(dir, "confirmation.txt"));
-    const checklist = await readText(path.join(dir, "manual-checklist.md"));
-    const compositionFile = files.find((f) => f.endsWith(".composition.json"));
     const id = recordId("application", row.id);
     plan.applications.push({
       id,
       record: {
         id,
-        name: `${row.title ?? row.id} at ${row.company ?? "?"}`.slice(0, 200),
-        letterMarkdown: letter,
-        letterSha: letter != null ? sha256(letter) : null,
-        criticVerdict: critic ? criticVerdict(critic.verdict) : "PENDING",
-        composition: compositionFile ? await readJson(path.join(dir, compositionFile)) : null,
-        manualChecklist: checklist,
-        ...applicationFields(meta, row, confirmation),
+        ...(await applicationRecord(dir, row)),
         openingId: openingId(row.id),
         migratedAt,
       },
@@ -191,8 +205,10 @@ async function planApplications(plan: MigrationPlan, rows: Opportunity[], migrat
 
     const attach = (file: string, name = path.basename(file)) =>
       plan.attachments.push({ id: recordId("attachment", `application:${row.id}:${name}`), name, path: file, targetField: "targetApplicationId", targetId: id });
+    // Every package file a run needs back (letter, critic verdict, metadata,
+    // CVs, screenshots, JD), so a materialised package passes the same gates.
     for (const f of files) {
-      if (CV_FILE.test(f) || (SCREENSHOT.test(f) && !PAGE_RENDER.test(f))) attach(path.join(dir, f));
+      if (persistedFile(f) && isRegularFile(path.join(dir, f))) attach(path.join(dir, f));
     }
     // A baseline package names the approved baseline instead of copying it.
     for (const ref of [obj(meta)?.resume?.ref, obj(meta)?.resume?.pdf_ref]) {
@@ -200,9 +216,6 @@ async function planApplications(plan: MigrationPlan, rows: Opportunity[], migrat
       const abs = path.isAbsolute(ref) ? ref : repoPath(ref);
       if (existsSync(abs) && !files.includes(path.basename(abs))) attach(abs);
     }
-    // No letter renderer exists in the harness, so the letter goes up as markdown.
-    if (letter != null) attach(path.join(dir, "cover-letter.md"));
-    if (checklist != null) attach(path.join(dir, "manual-checklist.md"));
 
     for (const f of files) {
       if (!/\.md$/i.test(f) || !/(interview-brief|debrief)/i.test(f)) continue;
@@ -304,17 +317,49 @@ async function planPositionings(plan: MigrationPlan, migratedAt: string): Promis
         migratedAt,
       },
     });
-    // The baseline: the artefact named in metadata (by basename, since recorded
-    // paths may point at another checkout), else any PDF and DOCX in the folder.
-    const files = await listDir(dir);
-    for (const ext of ["pdf", "docx"]) {
-      const named = meta?.artefacts?.[ext];
-      const base = typeof named === "string" ? path.basename(named) : files.find((f) => f.toLowerCase().endsWith(`.${ext}`));
-      if (!base || !files.includes(base)) continue;
-      plan.attachments.push({ id: recordId("attachment", `positioning:${r.id}:${base}`), name: base, path: path.join(dir, base), targetField: "targetPositioningId", targetId: id });
+    // The baseline: every artefact a run reads back (PDF, DOCX, composition,
+    // critic verdict, metadata with the approval), not the page renders.
+    // Per-positioning rule files become documents (planResumeRuleDocuments).
+    for (const f of await listDir(dir)) {
+      if (!persistedFile(f) || !isRegularFile(path.join(dir, f))) continue;
+      plan.attachments.push({ id: recordId("attachment", `positioning:${r.id}:${f}`), name: f, path: path.join(dir, f), targetField: "targetPositioningId", targetId: id });
     }
   }
   return ids;
+}
+
+/** Per-positioning editorial rules: documents of kind OTHER named by their profile path. */
+async function planResumeRuleDocuments(plan: MigrationPlan, migratedAt: string): Promise<void> {
+  const p = resolveProfileContext(null, { files: true });
+  for (const rid of await listDir(p.renderedResumesDir)) {
+    if (rid.startsWith("_") || rid.startsWith(".")) continue;
+    for (const file of RESUME_RULE_FILES) {
+      const body = await readText(path.join(p.renderedResumesDir, rid, file));
+      if (body == null) continue;
+      const name = `resumes/${rid}/${file}`;
+      const docId = recordId("document", `OTHER:${name}`);
+      plan.documents.push({ id: docId, record: { id: docId, name, kind: "OTHER", currentRevision: 1, migratedAt } });
+      const revId = recordId("documentRevision", `OTHER:${name}:1`);
+      plan.documentRevisions.push({ id: revId, record: { id: revId, name: `${name} r1`, revision: 1, baseRevision: null, kind: "OTHER", body, documentId: docId, migratedAt } });
+    }
+  }
+}
+
+/** The person's CV source files (profile cv/, top level): attachments on the CV_SOURCE document. */
+function planCvSourceFiles(plan: MigrationPlan): void {
+  const doc = plan.documents.find((d) => d.record.kind === "CV_SOURCE");
+  if (!doc) return;
+  const dir = path.join(resolveProfileContext(null, { files: true }).profileDir, "cv");
+  let names: string[] = [];
+  try { names = readdirSync(dir).sort(); } catch { return; }
+  for (const f of names) {
+    if (!safeName(f) || !isRegularFile(path.join(dir, f))) continue;
+    plan.attachments.push({ id: recordId("attachment", `document:CV_SOURCE:${f}`), name: f, path: path.join(dir, f), targetField: "targetDocumentId", targetId: doc.id });
+  }
+}
+
+function isRegularFile(p: string): boolean {
+  try { return statSync(p).isFile(); } catch { return false; }
 }
 
 // ----------------------------------------------------------------------- runs
@@ -432,6 +477,8 @@ export async function buildPlan(inScopeRows: Opportunity[], migratedAt: string):
   const byId = new Map(inScopeRows.map((r) => [r.id, r]));
   const positionings = await planPositionings(plan, migratedAt);
   await planDocuments(plan, migratedAt);
+  await planResumeRuleDocuments(plan, migratedAt);
+  planCvSourceFiles(plan);
   await planApplications(plan, inScopeRows, migratedAt);
   await planQuestions(plan, byId, positionings, migratedAt);
   await planRuns(plan, migratedAt);

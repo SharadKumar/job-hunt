@@ -19,6 +19,13 @@
  *                            the person confirms in Twenty
  *   finishRun()              save what changed in the cache, then delete it
  *
+ * The run cache also holds the application packages of active openings
+ * (archive/<id>/), the positioning baselines (profile/resumes/<id>/) and the
+ * CV source files (profile/cv/), downloaded from their Twenty attachments and
+ * uploaded again at finish when they changed (tools/store/artefacts.ts).
+ * A finish that fails leaves the cache and a finish-failed marker; the next
+ * materialise retries it first, and stale-cache clean-up never deletes it.
+ *
  * A process that needs the profile in Twenty mode and has no run yet
  * (HARNESS_RUN_ID unset) materialises one itself and finishes it on exit, so a
  * single tool run by hand behaves like a scheduled run. Every failure throws:
@@ -59,13 +66,14 @@ export const DOCUMENT_FILES: { kind: string; name: string; file: string }[] = [
   { kind: "POSITIONINGS", name: "Positionings", file: "resumes.yaml" },
   { kind: "KEYWORD_CLOUDS", name: "Keyword clouds", file: "keyword-clouds.yaml" },
   { kind: "MARKET_CONFIRMATIONS", name: "Market confirmations", file: "market-confirmations.yaml" },
+  { kind: "KEYWORD_REJECTS", name: "Keyword rejects", file: "keyword-rejects.jsonl" },
 ];
 
 /**
  * Kinds the harness writes itself. Every other kind is the person's: the
  * harness may only propose a change to it (plan Principle 3).
  */
-export const MACHINE_KINDS = new Set(["KEYWORD_CLOUDS", "MARKET_CONFIRMATIONS"]);
+export const MACHINE_KINDS = new Set(["KEYWORD_CLOUDS", "MARKET_CONFIRMATIONS", "KEYWORD_REJECTS"]);
 
 /** Documents of kind OTHER are materialised under their name, which must be a plain relative file path. */
 const OTHER_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*\.[A-Za-z0-9]+$/;
@@ -136,7 +144,8 @@ export function currentRunDir(): string {
     try {
       execFileSync(process.execPath, [...process.execArgv, script, "finish", "--run", ownedRun], { stdio: "ignore", env: process.env });
     } catch {
-      // The cache is transient; a failed finish leaves it for the next clean-up.
+      // A failed finish leaves the cache with a finish-failed marker; the next
+      // materialise retries it.
     }
   });
   return runCacheDir(runId);
@@ -158,13 +167,25 @@ export type DocumentsDeps = {
   /** REST caller; defaults to the configured workspace with the Harness key. */
   call?: (method: string, path: string, body?: unknown) => Promise<any>;
   root?: string;
+  /** Workspace URL and key; default from the environment (twentyConfig). */
+  config?: { url: string; key: string };
+  /** Fetch for REST and file bytes (tests pass a fake). */
+  fetchImpl?: typeof fetch;
 };
 
 async function caller(deps: DocumentsDeps): Promise<NonNullable<DocumentsDeps["call"]>> {
   if (deps.call) return deps.call;
   const { connect } = await import("../twenty/records.ts");
-  return connect();
+  return connect(deps.config, deps.fetchImpl);
 }
+
+/** What the attachment layer needs: the caller plus the origin files download from. */
+async function artefactDeps(deps: DocumentsDeps, call: NonNullable<DocumentsDeps["call"]>) {
+  return { call, fetchImpl: deps.fetchImpl, baseUrl: deps.config?.url, key: deps.config?.key };
+}
+
+/** Marker left in a run cache whose finish failed, so it is retried and never pruned. */
+export const FINISH_FAILED = "finish-failed.json";
 
 async function listAll(call: NonNullable<DocumentsDeps["call"]>, plural: string, filter?: string): Promise<Record<string, any>[]> {
   const f = filter ? `&filter=${encodeURIComponent(filter)}` : "";
@@ -219,6 +240,7 @@ export function pruneStaleRuns(root = repoRoot(), maxAgeMs = 24 * 3600 * 1000, n
   for (const e of entries) {
     if (!e.isDirectory() || !e.name.startsWith("run-")) continue;
     const p = path.join(base, e.name);
+    if (fs.existsSync(path.join(p, FINISH_FAILED))) continue;
     try {
       if (now - fs.statSync(p).mtimeMs > maxAgeMs) { fs.rmSync(p, { recursive: true, force: true }); removed.push(e.name); }
     } catch { /* gone already */ }
@@ -226,7 +248,37 @@ export function pruneStaleRuns(root = repoRoot(), maxAgeMs = 24 * 3600 * 1000, n
   return removed;
 }
 
-export type MaterialiseResult ={ runId: string; dir: string; profileDir: string; files: string[] };
+export type MaterialiseResult = {
+  runId: string;
+  dir: string;
+  profileDir: string;
+  files: string[];
+  artefacts?: import("./artefacts.ts").MaterialiseArtefactsResult;
+  retried?: { runId: string; ok: boolean; error?: string }[];
+};
+
+/**
+ * Finish every run cache an earlier finish left behind, so this run starts
+ * from what Twenty holds after those uploads. A retry that fails again keeps
+ * its cache and is reported; it does not stop this run.
+ */
+export async function retryFailedFinishes(opts: DocumentsDeps = {}): Promise<{ runId: string; ok: boolean; error?: string }[]> {
+  const base = path.join(opts.root ?? repoRoot(), "state", "cache");
+  const out: { runId: string; ok: boolean; error?: string }[] = [];
+  let entries: fs.Dirent[] = [];
+  try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (!e.isDirectory() || !e.name.startsWith("run-") || !fs.existsSync(path.join(base, e.name, FINISH_FAILED))) continue;
+    const runId = e.name.slice(4);
+    try {
+      await finishRun(runId, opts);
+      out.push({ runId, ok: true });
+    } catch (err: any) {
+      out.push({ runId, ok: false, error: String(err?.message ?? err).slice(0, 200) });
+    }
+  }
+  return out;
+}
 
 /**
  * Fetch the current revision of every document into a new run cache. Throws
@@ -239,6 +291,7 @@ export async function materialise(opts: DocumentsDeps & { runId?: string } = {})
   const dir = runCacheDir(runId, root);
   const profileDir = path.join(dir, "profile");
   pruneStaleRuns(root);
+  const retried = await retryFailedFinishes({ ...opts, root });
   try {
     const call = await caller(opts);
     const docs = await listAll(call, "documents");
@@ -254,8 +307,11 @@ export async function materialise(opts: DocumentsDeps & { runId?: string } = {})
       fs.writeFileSync(target, rev.body, { mode: 0o600 });
       manifest.files[file] = { kind: doc.kind, documentId: doc.id, revision: Number(rev.revision) || 0, sha256: sha256(rev.body) };
     }
+    const { materialiseArtefacts } = await import("./artefacts.ts");
+    const cvSource = docs.find((d) => d.kind === "CV_SOURCE");
+    const artefacts = await materialiseArtefacts(dir, { ...(await artefactDeps(opts, call)), cvSourceDocumentId: cvSource?.id ?? null });
     fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(manifest, null, 2), { mode: 0o600 });
-    return { runId, dir, profileDir, files: Object.keys(manifest.files).sort() };
+    return { runId, dir, profileDir, files: Object.keys(manifest.files).sort(), artefacts, ...(retried.length ? { retried } : {}) };
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
     throw e;
@@ -320,34 +376,75 @@ export async function saveDocument(
   return { action: "revision", kind, documentId, revision: next };
 }
 
-export type FinishResult = { runId: string; saved: SaveResult[]; removed: boolean };
+export type FinishResult = {
+  runId: string;
+  saved: SaveResult[];
+  artefacts: import("./artefacts.ts").PersistArtefactsResult | null;
+  removed: boolean;
+};
+
+/** Per-positioning rule files in the cache, as profile-relative paths. */
+function resumeRuleFiles(profileDir: string): string[] {
+  const out: string[] = [];
+  const base = path.join(profileDir, "resumes");
+  let ids: string[] = [];
+  try { ids = fs.readdirSync(base).sort(); } catch { return out; }
+  for (const id of ids) {
+    if (id.startsWith("_") || id.startsWith(".")) continue;
+    for (const f of ["editorial-rules.md", "cover-letter-editorial-rules.md"]) {
+      const rel = `resumes/${id}/${f}`;
+      if (fileForDocument({ kind: "OTHER", name: rel }) && fs.existsSync(path.join(base, id, f))) out.push(rel);
+    }
+  }
+  return out;
+}
 
 /**
- * End a run: every cached document whose body changed (or a new file that
- * maps to a document kind) is saved through saveDocument, then the cache is
- * deleted. A save failure is reported and the cache is kept for inspection.
+ * End a run: changed packages, baselines and CV source files are uploaded
+ * (tools/store/artefacts.ts), then every cached document whose body changed
+ * (or a new file that maps to a document kind) is saved through
+ * saveDocument, then the cache is deleted. Any failure throws, leaves the
+ * cache with a finish-failed marker for the retry, and the CLI exits non-zero.
+ * Progress is recorded as it goes, so a retry repeats only what failed.
  */
 export async function finishRun(runId: string, opts: DocumentsDeps & { keep?: boolean } = {}): Promise<FinishResult> {
   const dir = runCacheDir(runId, opts.root);
   const manifest = readManifest(dir);
   if (!manifest) {
     fs.rmSync(dir, { recursive: true, force: true });
-    return { runId, saved: [], removed: true };
+    return { runId, saved: [], artefacts: null, removed: true };
   }
   const profileDir = path.join(dir, "profile");
   const saved: SaveResult[] = [];
-  const candidates = new Set<string>(Object.keys(manifest.files));
-  for (const d of DOCUMENT_FILES) if (fs.existsSync(path.join(profileDir, d.file))) candidates.add(d.file);
-  for (const file of [...candidates].sort()) {
-    const target = path.join(profileDir, file);
-    if (!fs.existsSync(target)) continue;
-    const body = fs.readFileSync(target, "utf8");
-    if (manifest.files[file]?.sha256 === sha256(body)) continue;
-    const { kind, name } = documentForFile(file);
-    saved.push(await saveDocument(kind, body, { ...opts, name, reason: `changed during run ${runId}`, twenty: true }));
+  let artefacts: FinishResult["artefacts"] = null;
+  try {
+    const call = await caller(opts);
+    const { persistArtefacts } = await import("./artefacts.ts");
+    artefacts = await persistArtefacts(dir, await artefactDeps(opts, call));
+    const candidates = new Set<string>(Object.keys(manifest.files));
+    for (const d of DOCUMENT_FILES) if (fs.existsSync(path.join(profileDir, d.file))) candidates.add(d.file);
+    for (const rel of resumeRuleFiles(profileDir)) candidates.add(rel);
+    for (const file of [...candidates].sort()) {
+      const target = path.join(profileDir, file);
+      if (!fs.existsSync(target)) continue;
+      const body = fs.readFileSync(target, "utf8");
+      if (manifest.files[file]?.sha256 === sha256(body)) continue;
+      const { kind, name } = documentForFile(file);
+      const r = await saveDocument(kind, body, { ...opts, call, name, reason: `changed during run ${runId}`, twenty: true });
+      saved.push(r);
+      // Recorded at once, so a retry after a later failure does not propose it twice.
+      const documentId = "documentId" in r && r.documentId ? r.documentId : manifest.files[file]?.documentId ?? "";
+      const revision = "revision" in r ? r.revision : manifest.files[file]?.revision ?? 0;
+      manifest.files[file] = { kind, documentId, revision, sha256: sha256(body) };
+      fs.writeFileSync(path.join(dir, MANIFEST), JSON.stringify(manifest, null, 2), { mode: 0o600 });
+    }
+  } catch (e: any) {
+    fs.writeFileSync(path.join(dir, FINISH_FAILED), JSON.stringify({ at: new Date().toISOString(), error: String(e?.message ?? e).slice(0, 500) }), { mode: 0o600 });
+    throw e;
   }
   if (!opts.keep) fs.rmSync(dir, { recursive: true, force: true });
-  return { runId, saved, removed: !opts.keep };
+  else fs.rmSync(path.join(dir, FINISH_FAILED), { force: true });
+  return { runId, saved, artefacts, removed: !opts.keep };
 }
 
 // ------------------------------------------------------------------- CLI
@@ -359,7 +456,7 @@ async function cli(argv: string[]): Promise<number> {
   if (cmd === "materialise") {
     if (!isTwentyStore()) { out({ ok: true, store: "sqlite", skipped: "file mode reads the profile directory directly", profileDir: fileProfileDir(process.env.HARNESS_PROFILE) }); return 0; }
     const r = await materialise();
-    out({ ok: true, store: "twenty", runId: r.runId, dir: r.dir, files: r.files.length });
+    out({ ok: true, store: "twenty", runId: r.runId, dir: r.dir, files: r.files.length, artefacts: r.artefacts, ...(r.retried ? { retried: r.retried } : {}) });
     return 0;
   }
   if (cmd === "path") {
