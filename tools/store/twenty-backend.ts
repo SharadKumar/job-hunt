@@ -76,6 +76,9 @@ export function toOpening(row: Opportunity): Record<string, unknown> {
     submittedAt: row.submittedAt ?? null,
     harnessData: rest,
   };
+  // Set once by the one-time migration and kept in harnessData for life, so
+  // later writes never clear it and workflows keep skipping the record.
+  if ((row as any).migratedAt) out.migratedAt = (row as any).migratedAt;
   if (description !== undefined) out.jd = { markdown: description ?? "", blocknote: null };
   return out;
 }

@@ -76,6 +76,8 @@
     "twenty:escalations": "tsx tools/twenty/escalations.ts",
     "twenty:deliver": "tsx tools/twenty/deliver.ts",
     "twenty:followups": "tsx tools/twenty/followups.ts",
+    "twenty:migrate": "tsx tools/twenty/migrate.ts",
+    "twenty:scan-file-access": "tsx tools/twenty/scan-file-access.ts",
     "typecheck": "tsc --noEmit",
     "login:linkedin": "tsx scripts/login-channel.ts linkedin",
     "login:seek": "tsx scripts/login-channel.ts seek",
