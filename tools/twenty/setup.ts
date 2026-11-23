@@ -230,7 +230,7 @@ export function diffWorkspace(manifest: Manifest, snap: Snapshot, now = new Date
     const demoIds = new Set((demo.workflows ?? []).map((w) => w.id));
     for (const w of snap.workflows) {
       if (demoIds.has(w.id)) continue;
-      if (!(w.name in wanted)) add("drift", "workflows", `workflow "${w.name}" is not defined by the app`);
+      if (!(w.name in wanted)) add("drift", "workflows", `workflow "${w.name}" is not in the manifest (hash ${w.hash ?? "none"})`);
       else if (wanted[w.name] && w.hash !== wanted[w.name]) add("drift", "workflows", `workflow "${w.name}" definition changed (hash ${w.hash?.slice(0, 12) ?? "none"})`);
     }
     for (const name of Object.keys(wanted)) {

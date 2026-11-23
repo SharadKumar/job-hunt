@@ -72,7 +72,11 @@ forbiddenApiKeyRoles: [Admin, Member, Owner]
 # Workflows the app defines: name -> sha256 of the published definition
 # (trigger and steps, outputSchema and position removed, keys sorted).
 # Any live workflow not listed here is drift.
-workflows: {}
+# The app defines this workflow. A null hash checks only that it exists; pin the
+# hash in the private copy after the first apply (`--check` prints it) so any
+# edit made in the workspace shows up as drift.
+workflows:
+  notify-new-escalation: null
 
 # Demo content Twenty creates with a new workspace (prefillCreatedWorkspaceRecords
 # in twenty-server workspace.service.ts, 2.60). A record matches only on exact
