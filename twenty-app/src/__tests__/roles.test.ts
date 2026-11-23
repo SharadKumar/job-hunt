@@ -1,3 +1,4 @@
+import { SystemPermissionFlag } from 'twenty-sdk/define';
 import { STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS } from 'twenty-sdk/define';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -82,11 +83,13 @@ describe('role matrix', () => {
     }
   });
 
-  it('gives no role settings, tools or permission flags', () => {
+  it('gives no role settings or tools, and only the Owner the AI flag', () => {
     for (const r of roles) {
       expect(r.canUpdateAllSettings, r.label).not.toBe(true);
       expect(r.canAccessAllTools, r.label).not.toBe(true);
-      expect(r.permissionFlagUniversalIdentifiers ?? [], r.label).toEqual([]);
+      // Only the Owner holds a flag, and only AI (AI chat, decided in R25).
+      const expected = r.label === 'Owner' ? [SystemPermissionFlag.AI] : [];
+      expect(r.permissionFlagUniversalIdentifiers ?? [], r.label).toEqual(expected);
     }
   });
 
@@ -158,13 +161,14 @@ describe('role matrix', () => {
       expect(entry, objectId).toBeDefined();
       expect([...(entry?.uneditableFields ?? [])].sort()).toEqual([...fieldIds].sort());
       if (objectId !== OBJECT_IDS.decision) {
-        expect(entry?.canCreateAllRecords).toBe(false);
+        // Proposals are the one harness-owned object AI chat may create (R25).
+        expect(entry?.canCreateAllRecords).toBe(objectId === OBJECT_IDS.proposal);
         expect(entry?.canUpdateAllRecords).toBe(false);
       }
     }
   });
 
-  it('lets the Owner create only decisions, engagements, notes, tasks and people', () => {
+  it('lets the Owner create only decisions, proposals, engagements, notes, tasks and people', () => {
     const owner = role(ROLE_IDS.owner);
     const S = STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS;
     const creatable = (owner.recordsPermissions?.objects ?? [])
@@ -176,6 +180,7 @@ describe('role matrix', () => {
       [
         OBJECT_IDS.decision,
         OBJECT_IDS.engagement,
+        OBJECT_IDS.proposal,
         S.note.universalIdentifier,
         S.noteTarget.universalIdentifier,
         S.task.universalIdentifier,
