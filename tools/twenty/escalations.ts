@@ -100,7 +100,10 @@ export function planSync(current: Escalation[], existing: Record<string, any>[],
     const { id: _id, ...fields } = rec;
     if (ex.status === "RESOLVED") {
       plan.reopen.push(id);
-      plan.update.push({ id, fields: { ...fields, status: "OPEN", resolvedAt: null } });
+      // A cleared escalation that comes back is new to the person (plan F13):
+      // reopening is the one write that clears the delivery stamps, so it is
+      // announced again. Routine refreshes never touch them (R36).
+      plan.update.push({ id, fields: { ...fields, status: "OPEN", resolvedAt: null, deliveredAt: null, grokDeliveredAt: null } });
       continue;
     }
     const changed = Object.fromEntries(CONTENT_FIELDS.filter((f) => (ex[f] ?? null) !== (rec[f] ?? null)).map((f) => [f, rec[f]]));
