@@ -1,50 +1,36 @@
-# My Twenty App
+# Job hunt (Twenty app)
 
-Describe your app in one or two sentences.
+The Twenty app for the job-hunt harness. It defines the workspace the harness
+uses as its store and the person uses to confirm what agents propose.
 
-## Features
+## What it defines
 
-List the top things your app does, for example:
+- Objects: opening, application, proposal, decision, document and document
+  revision, screening and keyword questions, positioning, run, escalation,
+  email draft, engagement, control and verification. Company gains a `kind`.
+- Roles: Owner (the person), Harness and Grok (API keys), No access, and an
+  app role that lets buttons read and create decisions.
+- Views and a Job hunt sidebar section, with a Today page.
+- Buttons on openings, proposals and positionings, plus global switches for
+  autopilot. Each button writes exactly one create-only decision; the harness
+  applies it. No button sends anything.
 
-- Feature one
-- Feature two
-- Feature three
+## Develop
 
-## Getting started
+Setup instructions live in [SETUP.md](SETUP.md). The app has its own
+`yarn.lock` and is not part of the root npm workspace.
 
-Setup instructions live in [SETUP.md](SETUP.md).
+```bash
+yarn install
+yarn test:unit                         # unit tests, no server needed
+npx tsc --noEmit -p tsconfig.spec.json # typecheck
+twenty app apply --remote <test-remote> # apply to a test workspace
+```
 
-## Publishing
-
-The `Publish` workflow (`.github/workflows/publish.yml`) publishes to npm with
-provenance using
-[npm trusted publishing](https://docs.npmjs.com/trusted-publishers).
-
-### One-time setup
-
-On npmjs.com, register this repository as a trusted publisher for the package.
-Select `publish.yml` as the workflow.
-
-### Release a version
-
-1. Bump the version in `package.json`.
-2. Push the matching version tag, or run `Publish` manually from the Actions
-   tab:
-
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-Publishing with provenance is also how you prove ownership when claiming your
-app in a Twenty marketplace.
-
-## Changelog
-
-Notable changes are documented in [CHANGELOG.md](CHANGELOG.md).
+Universal identifiers in `src/constants/universal-identifiers.ts` are stable:
+never regenerate or edit an existing value.
 
 ## Learn more
 
 - [Twenty Apps documentation](https://docs.twenty.com/developers/extend/apps/getting-started/quick-start)
 - [Twenty CLI reference](https://docs.twenty.com/developers/extend/apps/operations/cli)
-- [Discord](https://discord.gg/cx5n4Jzs57)
