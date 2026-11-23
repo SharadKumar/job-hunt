@@ -65,6 +65,15 @@ export const HARNESS_OWNED_FIELD_IDS: Record<string, string[]> = {
     HARNESS_OBJECT_KEYS.map((key) => [OBJECT_IDS[key], writableFieldIds(key)]),
   ),
   [OBJECT_IDS.decision]: [...DECISION_CONSUME_FIELD_IDS],
+  // Proposals are written by agents (the harness, AI chat, Grok tools). The
+  // fields an agent fills stay writable; who proposed it, its status and its
+  // outcome belong to the harness, so a proposal can't confirm itself.
+  [OBJECT_IDS.proposal]: [
+    FIELD_IDS.proposal.proposer,
+    FIELD_IDS.proposal.status,
+    FIELD_IDS.proposal.outcome,
+    FIELD_IDS.proposal.migratedAt,
+  ],
   [STANDARD_OBJECT_UNIVERSAL_IDENTIFIERS.company.universalIdentifier]: [
     FIELD_IDS.company.kind,
   ],
