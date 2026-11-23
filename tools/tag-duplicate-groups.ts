@@ -71,7 +71,11 @@ const TAGGED_FIELDS = [
 ] as const;
 
 async function main(): Promise<void> {
-  const groups = JSON.parse(await fs.readFile(GROUPS_PATH, "utf8")) as DuplicateGroup[];
+  // The curated list is optional: no file means no curated groups. A file
+  // that exists but can't be read or parsed still fails the step.
+  let text = "[]";
+  try { text = await fs.readFile(GROUPS_PATH, "utf8"); } catch (e: any) { if (e?.code !== "ENOENT") throw e; }
+  const groups = JSON.parse(text) as DuplicateGroup[];
   const before = await load();
   const result = tagDuplicateGroups(before, groups);
 
