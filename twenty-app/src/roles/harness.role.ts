@@ -59,7 +59,10 @@ export default defineRole({
         { read: true, update: true },
         DECISION_PERSON_FIELD_IDS,
       ),
-      objectGrant(OBJECT_IDS.engagement, { read: true }),
+      // Engagements belong to the person. The harness may create one only to
+      // carry out the person's verified Start engagement decision (plan F17);
+      // it never updates one afterwards.
+      objectGrant(OBJECT_IDS.engagement, { read: true, create: true }),
       ...HARNESS_STANDARD.map((id) =>
         objectGrant(id, { read: true, create: true, update: true }),
       ),
