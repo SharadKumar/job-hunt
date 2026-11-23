@@ -10,8 +10,9 @@
  * Each verdict is printed as one JSON line (the run log keeps the stamp).
  *
  * Confirm and decline set the proposal's status for the executor queue
- * (proposals.ts). Baseline and engagement decisions stay unconsumed until
- * their executors exist, so nothing the person confirmed is dropped.
+ * (proposals.ts). Start engagement creates the engagement record (F17).
+ * Baseline decisions stay unconsumed until their executor exists, so nothing
+ * the person confirmed is dropped.
  *
  * Needs HARNESS_STORE=twenty, TWENTY_API_URL, TWENTY_API_KEY (Harness role)
  * and TWENTY_OWNER_MEMBER_ID (state/twenty/keys.env).
@@ -21,7 +22,7 @@ import { twentyBackend, twentyClient } from "../store/twenty-backend.ts";
 import { useRowBackend } from "../store/index.ts";
 import * as pipeline from "../pipeline.ts";
 import { verifyConfirmation } from "./provenance.ts";
-import { planDecision, type DecisionRecord } from "./plan.ts";
+import { engagementRecord, planDecision, type DecisionRecord } from "./plan.ts";
 
 type Verdict = { id: string; type?: string | null; result: "APPLIED" | "REFUSED" | "DEFERRED"; reason: string; stamp?: unknown };
 
@@ -82,6 +83,18 @@ export async function runIntake(opts: { url: string; key: string; ownerMemberId:
           if (action.confirm && action.value) patch.payload = { ...(pr.payload ?? {}), confirmedValue: action.value };
           await call("PATCH", `/rest/proposals/${d.proposalId}`, patch);
           await consume("APPLIED", action.confirm ? "proposal confirmed for the executor" : "proposal declined");
+          break;
+        }
+        case "engagement": {
+          // planDecision already checked the row is won. One engagement per
+          // opening: a re-run after a crash finds the earlier one and reuses it.
+          const opening = (await call("GET", `/rest/openings/${d.openingId}?depth=1`)).data?.opening;
+          if (!opening) { await consume("REFUSED", "the opening no longer exists"); break; }
+          const existing = (await call("GET", `/rest/engagements?filter=${encodeURIComponent(`openingId[eq]:${d.openingId}`)}&limit=1`)).data?.engagements ?? [];
+          if (existing.length) { await consume("APPLIED", `engagement ${existing[0].id} already exists`); break; }
+          const created = await call("POST", "/rest/engagements", engagementRecord(opening));
+          const engagementId = created.data?.createEngagement?.id;
+          await consume("APPLIED", engagementId ? `engagement ${engagementId} created` : "engagement created");
           break;
         }
         default:

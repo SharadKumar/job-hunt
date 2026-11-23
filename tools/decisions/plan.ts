@@ -49,6 +49,23 @@ const NEEDS_OPENING = new Set([
   "REQUEST_REDRAFT", "EDIT_LETTER", "START_ENGAGEMENT", ...Object.keys(OUTCOME),
 ]);
 
+/**
+ * The engagement record a verified START_ENGAGEMENT creates (plan F17): named
+ * after the role and employer, linked to the opening and to the employer as
+ * the client, ACTIVE. Dates and the agreed rate are the person's to fill in;
+ * the advert's rate range is not the contract rate, so it is not copied.
+ */
+export function engagementRecord(opening: { id: string; title?: string | null; employerId?: string | null; employer?: { name?: string | null } | null }): Record<string, unknown> {
+  const title = (opening.title ?? "").trim() || "Engagement";
+  const employer = (opening.employer?.name ?? "").trim();
+  return {
+    name: employer ? `${title} at ${employer}` : title,
+    status: "ACTIVE",
+    openingId: opening.id,
+    ...(opening.employerId ? { clientId: opening.employerId } : {}),
+  };
+}
+
 export function planDecision(d: DecisionRecord, row: Opportunity | null, currentLetterSha?: string | null): DecisionAction {
   const type = d.decisionType ?? "";
   // Halts fail safe: no staleness check, no target needed.

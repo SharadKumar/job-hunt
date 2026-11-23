@@ -2,7 +2,7 @@
 /** decision-plan.test.ts — each button's decision maps to one harness action. */
 
 import assert from "node:assert/strict";
-import { planDecision } from "../tools/decisions/plan.ts";
+import { engagementRecord, planDecision } from "../tools/decisions/plan.ts";
 
 const row = (status: string): any => ({ id: "seek-1", status, history: [] });
 const d = (decisionType: string, extra: Record<string, unknown> = {}): any => ({ id: "d1", decisionType, statusSeen: null, ...extra });
@@ -21,5 +21,11 @@ assert.equal(planDecision(d("CONFIRM", { proposalId: "p1" }), null).kind, "propo
 assert.equal(planDecision(d("START_ENGAGEMENT"), row("offered")).kind, "refuse");
 assert.equal(planDecision(d("START_ENGAGEMENT"), row("won")).kind, "engagement");
 assert.equal(planDecision(d("RETRY_NOW"), row("approved")).kind, "refuse", "no retry action exists");
+
+// Start engagement (F17): the record is named for the role and employer and linked to both.
+assert.deepEqual(engagementRecord({ id: "o1", title: "Platform lead", employerId: "c1", employer: { name: "Acme Pty Ltd" } }),
+  { name: "Platform lead at Acme Pty Ltd", status: "ACTIVE", openingId: "o1", clientId: "c1" });
+assert.deepEqual(engagementRecord({ id: "o2", title: "  ", employerId: null }), { name: "Engagement", status: "ACTIVE", openingId: "o2" });
+assert.ok(!("rate" in engagementRecord({ id: "o3", title: "x" })), "the advert rate is not the contract rate");
 
 console.log("decision-plan: ok");
