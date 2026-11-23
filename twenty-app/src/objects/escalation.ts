@@ -34,6 +34,9 @@ export default defineObject({
     selectField({ universalIdentifier: F.status, name: 'status', label: 'Status', icon: 'IconProgress', options: ESCALATION_STATUS_OPTIONS, defaultValue: 'OPEN' }),
     dateTimeField({ universalIdentifier: F.deliveredAt, name: 'deliveredAt', label: 'Delivered', icon: 'IconBell' }),
     dateTimeField({ universalIdentifier: F.grokDeliveredAt, name: 'grokDeliveredAt', label: 'Delivered to Grok', icon: 'IconBell' }),
+    dateTimeField({ universalIdentifier: F.resolvedAt, name: 'resolvedAt', label: 'Resolved', icon: 'IconCircleCheck' }),
+    // Routing only: the member whose inbox a P1 reaches. The harness sets it.
+    textField({ universalIdentifier: F.notifyMemberId, name: 'notifyMemberId', label: 'Notify member', icon: 'IconUser' }),
     dateTimeField({ universalIdentifier: F.migratedAt, name: 'migratedAt', label: 'Migrated', icon: 'IconTransfer' }),
     manyToOneField({ universalIdentifier: F.opening, name: 'opening', label: 'Opening', icon: 'IconBriefcase', targetObject: OBJECT_IDS.opening, targetField: FIELD_IDS.opening.escalations }),
   ],
