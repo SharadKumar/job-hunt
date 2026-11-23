@@ -70,4 +70,20 @@ assert.deepEqual(r.paths[0], { path: "tools/a.ts", hits: 2, patterns: { pipeline
 assert.ok(EXCLUDED.has("tools/twenty/migrate.ts"));
 fs.rmSync(root, { recursive: true, force: true });
 
+// Git-ignored paths (eval workspaces and other generated output) are skipped.
+{
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "scan-file-access-git-"));
+  const add = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true }); fs.writeFileSync(path.join(repo, rel), text); };
+  add(".gitignore", ".claude/skills/*-workspace/\n");
+  add(".claude/skills/x/SKILL.md", `Read state/journal/ first.\n`);
+  add(".claude/skills/x-workspace/out/run.md", `Read state/profile/x.md and state/journal/y.md\n`);
+  const { execFileSync } = await import("node:child_process");
+  execFileSync("git", ["init", "-q", repo]);
+  const g: any = await scan(repo);
+  assert.equal(g.files_scanned, 1);
+  assert.equal(g.total_hits, 1);
+  assert.equal(g.git_ignored_skipped, 1);
+  fs.rmSync(repo, { recursive: true, force: true });
+}
+
 console.log("twenty-scan-file-access: ok");
