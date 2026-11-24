@@ -73,12 +73,12 @@ for (const f of DELIVERY_FIELDS) assert.ok(!(f in rec), `toRecord never sets ${f
   assert.equal(plan.unchanged, 1, "an unchanged OPEN record is not rewritten");
   assert.deepEqual(plan.reopen, [escalationRecordId(dedupeKey(manual))]);
   assert.deepEqual(plan.dismissed, [escalationRecordId(dedupeKey(channel))]);
-  assert.deepEqual(plan.resolve, [escalationRecordId("cap:cap used up")], "only this tool's live records resolve; migrated and hand-made ones stay");
+  assert.deepEqual(plan.resolve, [escalationRecordId("cap:cap used up"), escalationRecordId("cap:migrated one")], "this tool's records resolve, migrated ones included; hand-made ones stay");
   const byId = new Map(plan.update.map((u) => [u.id, u.fields]));
   assert.deepEqual(byId.get(escalationRecordId(dedupeKey(screening))), { reason: screening.reason });
   assert.equal(byId.get(escalationRecordId(dedupeKey(manual)))?.status, "OPEN");
   assert.equal(byId.get(escalationRecordId(dedupeKey(manual)))?.resolvedAt, null);
-  assert.deepEqual(byId.get(escalationRecordId("cap:cap used up")), { status: "RESOLVED", resolvedAt: NOW });
+  assert.deepEqual(byId.get(escalationRecordId("cap:cap used up")), { status: "RESOLVED", resolvedAt: NOW, reason: "no longer needs you: the daily run no longer raises it" });
   const reopenedId = escalationRecordId(dedupeKey(manual));
   for (const f of DELIVERY_FIELDS) assert.equal((byId.get(reopenedId) as any)?.[f], null, "a returning escalation is announced again");
   for (const u of plan.update) if (u.id !== reopenedId) for (const f of DELIVERY_FIELDS) assert.ok(!(f in u.fields), "routine sync never writes a delivery field (R36)");
