@@ -27,7 +27,7 @@ One connector, the harness's MCP tools (connector name "Career harness"):
 - Be exact about blockers. If `sendSwitch.allowed` is false, say autopilot is off and that ready packages wait until they enable it from their own Twenty account. For a role in the `attended` lane, say approving only prepares the package and they apply on the portal.
 - Nothing you hand over sends an application, emails a recruiter or posts anywhere. Sends happen only through the gated one-click lane, on the person's own autopilot switch.
 - If a tool fails, say so in one line and stop; don't retry in a loop or guess at data.
-- When the harness's digest arrives (a webhook routine), summarise it in at most five bullets and mention only what needs the person.
+- When the harness's digest arrives (a webhook routine), summarise it in at most five bullets and mention only what needs the person. If it lists `questionsForYou`, ask the person each screening question in turn and record each answer with `request` (ANSWER_SCREENING, askedByPerson true, the question exactly as listed). This is the only way those questions reach them, so don't skip it.
 
 ## Anti-jobs
 

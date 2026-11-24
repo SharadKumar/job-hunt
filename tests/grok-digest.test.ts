@@ -147,4 +147,36 @@ try {
 } finally {
   server.close();
 }
+
+// Screening questions for the person: open ones only, each asked once, choices kept.
+{
+  const G = await import("../tools/twenty/grok-digest.ts");
+  const yaml = [
+    "unknown_questions:",
+    "  - opportunity_id: seek-1",
+    "    company: \"Example Pty Ltd\"",
+    "    title: \"Architect\"",
+    "    question: \"Do you hold a licence?\"",
+    "    context: \"Yes | No\"",
+    "    answer: null",
+    "  - opportunity_id: seek-2",
+    "    question: \"Do you hold a licence?\"",
+    "    answer: null",
+    "  - opportunity_id: seek-3",
+    "    question: \"Answered already?\"",
+    "    answer: \"Yes\"",
+    "  - opportunity_id: seek-4",
+    "    question: \"Middle name\"",
+    "    answer: null",
+  ].join("\n");
+  const qs = G.questionsToAsk(yaml);
+  assert.deepEqual(qs.map((q) => q.question), ["Do you hold a licence?", "Middle name"], "one entry per open question");
+  assert.deepEqual(qs[0].choices, ["Yes", "No"]);
+  assert.equal(qs[0].role, "Architect at Example Pty Ltd");
+  assert.deepEqual(G.questionsToAsk(yaml, { [qs[0].key]: "2026-01-01T00:00:00Z" }).map((q) => q.question), ["Middle name"], "asked once only");
+  const only = G.composeDigest([], [], new Map(), { publicUrl: "https://crm.example.com", now: new Date("2026-01-01T00:00:00Z"), questions: qs });
+  assert.ok(only, "questions alone make a digest");
+  assert.equal(only!.body.questionsForYou.length, 2);
+  assert.deepEqual(only!.questionKeys, qs.map((q) => q.key));
+}
 console.log("grok-digest: ok");

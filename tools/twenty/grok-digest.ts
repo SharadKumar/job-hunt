@@ -29,7 +29,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import YAML from "yaml";
 import { repoPath } from "../repo-root.ts";
+import { normaliseQuestion } from "../channels/seek-submit.ts";
 import { connect, getByIds, listAll, recordUrl, type TwentyCall } from "./records.ts";
 
 export const ESCALATION_FILTER = "and(status[eq]:OPEN,grokDeliveredAt[is]:NULL,migratedAt[is]:NULL)";
@@ -39,7 +41,8 @@ export const MIN_GAP_MS = 15 * 60 * 1000;
 export const MAX_PER_DAY = 6;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type Ledger = { posts: string[] };
+/** Posts in the last day, and the screening questions already put to the person (normalised text → when). */
+export type Ledger = { posts: string[]; asked?: Record<string, string> };
 
 /** Pure: may a post go out now? Counts the last 24 hours and the last post. */
 export function capCheck(ledger: Ledger, now: Date): { ok: true } | { ok: false; reason: string; nextAt: string } {
@@ -58,7 +61,7 @@ export function capCheck(ledger: Ledger, now: Date): { ok: true } | { ok: false;
 /** Pure: the ledger after a post at `now`, keeping only the last 24 hours. */
 export function recordPost(ledger: Ledger, now: Date): Ledger {
   const t = now.getTime();
-  return { posts: [...ledger.posts.filter((p) => Date.parse(p) > t - DAY_MS), now.toISOString()] };
+  return { ...ledger, posts: [...ledger.posts.filter((p) => Date.parse(p) > t - DAY_MS), now.toISOString()] };
 }
 
 const clip = (v: unknown, max = 300): string | null => {
@@ -98,18 +101,48 @@ export type Digest = {
   at: string;
   escalations: Record<string, unknown>[];
   failedRuns: Record<string, unknown>[];
+  /**
+   * Screening questions nothing else could answer, for the bot to ask the
+   * person. Their answer comes back through the request tool (ANSWER_SCREENING,
+   * askedByPerson true, question exactly as listed).
+   */
+  questionsForYou: { question: string; choices: string[] | null; role: string | null }[];
   link: string;
 };
 
+export type OpenQuestion = { question: string; choices: string[] | null; role: string | null; key: string };
+
+/** Open questions from the screening answers text, minus those already asked. */
+export function questionsToAsk(screeningYaml: string, asked: Record<string, string> = {}, max = 8): OpenQuestion[] {
+  const out: OpenQuestion[] = [];
+  const seen = new Set<string>();
+  let raw: any;
+  try { raw = YAML.parse(screeningYaml); } catch { return out; }
+  for (const u of Array.isArray(raw?.unknown_questions) ? raw.unknown_questions : []) {
+    if (typeof u?.question !== "string" || (u.answer != null && String(u.answer).trim() !== "")) continue;
+    const key = normaliseQuestion(u.question);
+    if (!key || seen.has(key) || asked[key]) continue;
+    seen.add(key);
+    const context = typeof u.context === "string" ? u.context : "";
+    const choices = context.includes(" | ") ? context.split(" | ").map((s: string) => s.trim()).filter(Boolean) : null;
+    const role = [u.title, u.company].filter(Boolean).join(" at ") || null;
+    out.push({ question: u.question.trim(), choices, role, key });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 /** Pure: the JSON body for one post. Drops delivered or migrated records again, so it is safe on any input. */
-export function composeDigest(escalations: Record<string, any>[], runs: Record<string, any>[], openings: Map<string, Record<string, any>>, opts: { publicUrl: string; now: Date }): { body: Digest; escalationIds: string[]; runIds: string[] } | null {
+export function composeDigest(escalations: Record<string, any>[], runs: Record<string, any>[], openings: Map<string, Record<string, any>>, opts: { publicUrl: string; now: Date; questions?: OpenQuestion[] }): { body: Digest; escalationIds: string[]; runIds: string[]; questionKeys: string[] } | null {
   const esc = escalations.filter((r) => r.status === "OPEN" && !r.grokDeliveredAt && !r.migratedAt);
   const failed = runs.filter((r) => typeof r.exitCode === "number" && r.exitCode !== 0 && !r.grokDeliveredAt && !r.migratedAt);
-  if (!esc.length && !failed.length) return null;
+  const questions = opts.questions ?? [];
+  if (!esc.length && !failed.length && !questions.length) return null;
   const base = opts.publicUrl.replace(/\/+$/, "");
   return {
     escalationIds: esc.map((r) => r.id),
     runIds: failed.map((r) => r.id),
+    questionKeys: questions.map((q) => q.key),
     body: {
       kind: "job-hunt-digest",
       at: opts.now.toISOString(),
@@ -133,6 +166,7 @@ export function composeDigest(escalations: Record<string, any>[], runs: Record<s
         summary: clip(r.summary),
         link: recordUrl(base, "run", r.id),
       })),
+      questionsForYou: questions.map((q) => ({ question: q.question, choices: q.choices, role: q.role })),
       link: `${base}/objects/escalations`,
     },
   };
@@ -141,7 +175,8 @@ export function composeDigest(escalations: Record<string, any>[], runs: Record<s
 export async function readLedger(file: string): Promise<Ledger> {
   try {
     const j = JSON.parse(await fs.readFile(file, "utf8"));
-    return { posts: Array.isArray(j?.posts) ? j.posts.filter((p: unknown) => typeof p === "string") : [] };
+    const asked = j?.asked && typeof j.asked === "object" ? Object.fromEntries(Object.entries(j.asked).filter(([, v]) => typeof v === "string")) as Record<string, string> : {};
+    return { posts: Array.isArray(j?.posts) ? j.posts.filter((p: unknown) => typeof p === "string") : [], asked };
   } catch {
     return { posts: [] };
   }
@@ -174,9 +209,13 @@ export async function grokDigest(call: TwentyCall, opts: { webhook: string; bear
   const runs = await listAll(call, "runs", RUN_FILTER);
   const openingIds = [...new Set(escalations.map((r) => r.openingId).filter(Boolean))] as string[];
   const openings = openingIds.length ? await getByIds(call, "openings", openingIds) : new Map();
-  const digest = composeDigest(escalations, runs, openings, { publicUrl: opts.publicUrl, now });
+  // The screening questions nothing else answered, each put to the person once.
+  const { documentBody } = await import("../decisions/requests.ts");
+  const screening = await documentBody(call as any, "SCREENING_ANSWERS").catch(() => null);
+  const questions = screening ? questionsToAsk(screening.body, ledger.asked) : [];
+  const digest = composeDigest(escalations, runs, openings, { publicUrl: opts.publicUrl, now, questions });
   if (!digest) return { ok: true, posted: 0, escalations: 0, failedRuns: 0 };
-  const counts = { escalations: digest.escalationIds.length, failedRuns: digest.runIds.length };
+  const counts = { escalations: digest.escalationIds.length, failedRuns: digest.runIds.length, questions: digest.questionKeys.length };
   if (opts.dryRun) return { ok: true, posted: 0, dryRun: true, ...counts, body: digest.body };
   try {
     await postDigest(opts.webhook, opts.bearer, digest.body, opts.fetchImpl);
@@ -184,7 +223,9 @@ export async function grokDigest(call: TwentyCall, opts: { webhook: string; bear
     return { ok: false, posted: 0, ...counts, error: `Grok POST failed: ${e?.message ?? e}` };
   }
   // The post went out: count it before marking, so a marking failure never frees a slot.
-  await writeLedger(opts.ledgerFile, recordPost(ledger, now));
+  const after = recordPost(ledger, now);
+  after.asked = { ...(ledger.asked ?? {}), ...Object.fromEntries(digest.questionKeys.map((k) => [k, now.toISOString()])) };
+  await writeLedger(opts.ledgerFile, after);
   const at = now.toISOString();
   for (const id of digest.escalationIds) await call("PATCH", `/rest/escalations/${id}`, { grokDeliveredAt: at });
   for (const id of digest.runIds) await call("PATCH", `/rest/runs/${id}`, { grokDeliveredAt: at });
