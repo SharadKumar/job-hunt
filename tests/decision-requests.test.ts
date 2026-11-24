@@ -15,6 +15,8 @@ const grok = { id: "a", proposer: "GROK", createdBy: { source: "APPLICATION", wo
 const chat = { id: "b", proposer: "AI_CHAT", createdBy: { source: "AGENT", workspaceMemberId: OWNER } };
 assert.equal(R.requestOrigin(grok, OWNER), "GROK");
 assert.equal(R.requestOrigin(chat, OWNER), "AI_CHAT");
+assert.equal(R.requestOrigin({ id: "g2", proposer: "GROK", createdBy: { source: "MANUAL", workspaceMemberId: "installer" } }, OWNER), "GROK", "the request tool runs as the app installer on 2.60");
+assert.equal(R.requestOrigin({ id: "g3", proposer: "GROK", createdBy: { source: "AGENT", workspaceMemberId: "someone-else" } }, OWNER), null, "another member's agent claiming Grok is not");
 assert.equal(R.requestOrigin({ ...chat, createdBy: { source: "AGENT", workspaceMemberId: "someone-else" } }, OWNER), null, "another member's chat is not the owner's request");
 assert.equal(R.requestOrigin({ id: "c", proposer: "GROK", createdBy: { source: "API", workspaceMemberId: null } }, OWNER), null, "an API key claiming to be Grok is not a request");
 assert.equal(R.requestOrigin({ id: "d", proposer: "HARNESS", createdBy: { source: "APPLICATION" } }, OWNER), null);
