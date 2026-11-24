@@ -123,13 +123,39 @@ export async function twentyConfig(): Promise<Config> {
   return { url, key };
 }
 
+/**
+ * Whether repeating a request after a dropped connection or a gateway error is
+ * safe: reads, updates and deletes are, and so is a create that carries its
+ * own record ids (a repeat finds the record already there). A create without
+ * ids is not retried, because the first attempt may have landed.
+ */
+export function safeToRepeat(method: string, body: unknown): boolean {
+  if (method !== "POST") return true;
+  const hasId = (x: unknown) => Boolean(x && typeof x === "object" && typeof (x as any).id === "string");
+  return Array.isArray(body) ? body.length > 0 && body.every(hasId) : hasId(body);
+}
+
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
+
 export function twentyClient(cfg: Config, fetchImpl: typeof fetch = fetch) {
   async function call(method: string, path: string, body?: unknown, attempt = 0): Promise<any> {
-    const res = await fetchImpl(`${cfg.url}${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const again = async (why: unknown) => {
+      if (attempt >= 4 || !safeToRepeat(method, body)) throw why;
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      return call(method, path, body, attempt + 1);
+    };
+    let res: Response;
+    try {
+      res = await fetchImpl(`${cfg.url}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (e) {
+      // A dropped connection (ECONNRESET, a socket timeout) on the way to Twenty.
+      return again(e);
+    }
+    if (RETRYABLE_STATUS.has(res.status)) return again(new Error(`Twenty ${method} ${path.split("?")[0]} ${res.status}`));
     if (res.status === 429 && attempt < 5) {
       await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
       return call(method, path, body, attempt + 1);
