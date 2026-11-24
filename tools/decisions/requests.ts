@@ -8,7 +8,7 @@
  * is a proposal row with status REQUESTED; Twenty's own stamp, not a field the
  * caller sets, says who asked:
  *
- *   createdBy APPLICATION, proposer GROK        → the Career bot's request tool
+ *   proposer GROK, createdBy APPLICATION or MANUAL → the Career bot's request tool
  *   createdBy AGENT, the owner's member id       → the owner's AI chat
  *   anything else (API key, workflow, a member)  → not a request: it waits for
  *                                                  the person's tap (PROPOSED)
@@ -60,7 +60,11 @@ export const PER_PASS = 20;
 export function requestOrigin(rec: RequestRecord, ownerMemberId: string): "GROK" | "AI_CHAT" | null {
   const c = rec.createdBy;
   if (!c) return null;
-  if (c.source === "APPLICATION" && rec.proposer === "GROK") return "GROK";
+  // The Career bot's request tool is an app logic function. On Twenty 2.60 it
+  // writes under the member who installed the app, so its records carry a
+  // MANUAL stamp (measured 25 Nov 2026), or APPLICATION on other versions.
+  // The harness's API key (API) and agents (AGENT) can never pass as Grok.
+  if (rec.proposer === "GROK" && (c.source === "APPLICATION" || c.source === "MANUAL")) return "GROK";
   if (c.source === "AGENT" && ownerMemberId && c.workspaceMemberId === ownerMemberId) return "AI_CHAT";
   return null;
 }
