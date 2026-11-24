@@ -12,8 +12,9 @@ import {
 //   - every summary is built from an allowlist of fields, so a field added
 //     to a query later still can't leak;
 //   - input is validated and length-capped, and Grok text is stored as data;
-//   - the only writes are proposals. No tool creates or edits a decision,
-//     an opening or anything else.
+//   - the only writes are proposal rows (the person's requests and Grok's
+//     suggestions). No tool creates or edits a decision, an opening or
+//     anything else; the harness checks and carries out requests.
 
 // A GraphQL call: returns `data`, throws on any error.
 export type Gql = (
@@ -140,26 +141,115 @@ export const summariseRun = (rec: Record<string, any>) => ({
   summary: clip(rec.summary),
 });
 
-const BRIEF_QUERY = `query GrokBrief($esc: EscalationFilterInput, $prop: ProposalFilterInput, $queue: OpeningFilterInput) {
+const BRIEF_QUERY = `query GrokBrief($esc: EscalationFilterInput, $prop: ProposalFilterInput, $done: ProposalFilterInput, $queue: OpeningFilterInput, $docs: DocumentFilterInput) {
   escalations(filter: $esc, first: ${GROK_LIMITS.listSize}, orderBy: [{ createdAt: DescNullsLast }]) { edges { node { ${ESCALATION_FIELDS} } } }
   proposals(filter: $prop, first: ${GROK_LIMITS.listSize}, orderBy: [{ createdAt: DescNullsLast }]) { edges { node { ${PROPOSAL_FIELDS} } } }
+  done: proposals(filter: $done, first: 10, orderBy: [{ updatedAt: DescNullsLast }]) { edges { node { id summary proposalType status outcome updatedAt } } }
   openings(filter: $queue, first: ${GROK_LIMITS.listSize}, orderBy: [{ score: DescNullsLast }]) { edges { node { ${OPENING_FIELDS} } } }
   runs(first: 1, orderBy: [{ startedAt: DescNullsLast }]) { edges { node { ${RUN_FIELDS} } } }
+  controls(first: 1, orderBy: [{ derivedAt: DescNullsLast }]) { edges { node { name autopilotEnabled haltOpen derivedAt } } }
+  documents(filter: $docs) { edges { node { id kind currentRevision } } }
 }`;
+
+const REVISIONS_QUERY = `query GrokRevisions($f: DocumentRevisionFilterInput) {
+  documentRevisions(filter: $f, first: 10) { edges { node { documentId revision body } } }
+}`;
+
+// Channels one-click autopilot may send on, from the submission policy's
+// autopilot block (for example "channels: [seek]"). Everything else is the
+// attended lane: approving it only prepares, and the person applies.
+export const autopilotChannels = (policy: string): string[] => {
+  const block = policy.match(/^autopilot:\s*\n((?:[ \t]+.*\n?)*)/m)?.[1] ?? '';
+  const list = block.match(/^[ \t]+channels:\s*\[([^\]]*)\]/m)?.[1];
+
+  return list === undefined ? [] : list.split(',').map((c) => c.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+};
+
+// Open questions in the screening answers' unknown_questions block, with the
+// exact text the request tool needs to answer them.
+export const openScreeningQuestions = (body: string) => {
+  const out: { question: string; company: string | null; title: string | null }[] = [];
+  const block = body.match(/^unknown_questions:\s*\n((?:(?:[ \t]+.*|\s*)\n?)*)/m)?.[1] ?? '';
+
+  for (const entry of block.split(/\n(?=[ \t]*-\s)/)) {
+    const field = (name: string) => {
+      const raw = entry.match(new RegExp(`(?:^|\\n)[ \\t-]*${name}:\\s*(.*)`))?.[1]?.trim();
+      if (raw === undefined || raw === '' || raw === 'null' || raw === '~') return null;
+      try {
+        return String(JSON.parse(raw));
+      } catch {
+        return raw.replace(/^['"]|['"]$/g, '');
+      }
+    };
+    const question = field('question');
+    if (question && field('answer') === null && out.length < GROK_LIMITS.listSize) {
+      out.push({ question: clip(question, 500) ?? question, company: clip(field('company')), title: clip(field('title')) });
+    }
+  }
+
+  return out;
+};
 
 export const brief = async (gql: Gql): Promise<ToolResult> => {
   const data = await gql(BRIEF_QUERY, {
     esc: { status: { eq: 'OPEN' } },
     prop: { status: { eq: 'PROPOSED' } },
+    done: { proposer: { in: ['GROK', 'AI_CHAT'] }, status: { in: ['DONE', 'FAILED', 'CONFIRMED', 'REQUESTED'] } },
     queue: { status: { in: [...GROK_QUEUE_STATUSES] } },
+    docs: { kind: { in: ['SUBMISSION_POLICY', 'SCREENING_ANSWERS'] } },
   });
   const [lastRun] = nodes(data.runs).map(summariseRun);
+  const control = nodes(data.controls)[0];
+
+  // The two documents' current revisions, read for their structure only.
+  const docs = nodes(data.documents);
+  const revisions = docs.length
+    ? nodes((await gql(REVISIONS_QUERY, { f: { documentId: { in: docs.map((d) => d.id) } } })).documentRevisions)
+    : [];
+  const current = (kind: string): string => {
+    const doc = docs.find((d) => d.kind === kind);
+    const rev = revisions.find((r) => doc && r.documentId === doc.id && Number(r.revision) === Number(doc.currentRevision));
+
+    return typeof rev?.body === 'string' ? rev.body : '';
+  };
+  const autopilot = autopilotChannels(current('SUBMISSION_POLICY'));
+  const sendsAllowed = Boolean(control?.autopilotEnabled) && !control?.haltOpen;
+
+  const queue = nodes(data.openings).map((rec) => {
+    const lane = autopilot.includes(String(rec.channel ?? '').toLowerCase()) ? 'autopilot' : 'attended';
+
+    return {
+      ...summariseOpening(rec),
+      lane,
+      nextStep:
+        lane === 'attended'
+          ? 'attended lane: approving only prepares the package; the person applies on the portal'
+          : sendsAllowed
+            ? 'autopilot sends it once its checks pass'
+            : 'ready for autopilot, which is off',
+    };
+  });
+
+  const notes: string[] = [];
+  if (!control) notes.push('The send switch has not been recorded yet; treat autopilot as off.');
+  else if (!sendsAllowed) notes.push(`Autopilot is not sending: ${clip(control.name) ?? 'off'}. The person turns it on with Enable autopilot from their own Twenty account.`);
+  if (autopilot.length) notes.push(`One-click autopilot channels: ${autopilot.join(', ')}. Every other channel is attended.`);
 
   return {
     ok: true,
+    sendSwitch: control ? { allowed: sendsAllowed, reason: clip(control.name), checkedAt: clip(control.derivedAt, 40) } : null,
+    notes,
     escalations: nodes(data.escalations).map(summariseEscalation),
+    openScreeningQuestions: openScreeningQuestions(current('SCREENING_ANSWERS')),
     proposalsAwaitingYou: nodes(data.proposals).map(summariseProposal),
-    queue: nodes(data.openings).map(summariseOpening),
+    doneForYou: nodes(data.done).map((rec) => ({
+      id: String(rec.id),
+      type: clip(rec.proposalType, 40),
+      summary: clip(rec.summary),
+      status: rec.status === 'CONFIRMED' ? 'QUEUED' : clip(rec.status, 20),
+      outcome: clip(rec.outcome),
+    })),
+    queue,
     lastRun: lastRun ?? null,
   };
 };
@@ -262,11 +352,17 @@ const OPEN_GROK_PROPOSALS = `query GrokOpenProposals($f: ProposalFilterInput) { 
 export const isGrokProposalType = (value: unknown): value is (typeof GROK_PROPOSAL_TYPES)[number] =>
   typeof value === 'string' && (GROK_PROPOSAL_TYPES as readonly string[]).includes(value);
 
-// A PROPOSED proposal for the person to confirm or decline with a button.
-export const propose = async (gql: Gql, payload: unknown): Promise<ToolResult> => {
+// The person's request, made through Grok. It runs without a second
+// confirmation: the harness checks it (answer wording, never-named rules,
+// the matching question) and records the outcome. Reserved kinds (package
+// approvals, document edits, outcomes) still wait for the person's button.
+// When Grok suggests something the person did not ask for, it is a proposal
+// for them to confirm instead.
+export const request = async (gql: Gql, payload: unknown): Promise<ToolResult> => {
   const input = args(payload);
   const type = input.type;
   const text = typeof input.brief === 'string' ? clean(input.brief) : '';
+  const askedByPerson = input.askedByPerson === true;
 
   if (type === 'DISCLOSURE' || !isGrokProposalType(type)) {
     return { ok: false, error: `type must be one of ${GROK_PROPOSAL_TYPES.join(', ')}` };
@@ -276,6 +372,19 @@ export const propose = async (gql: Gql, payload: unknown): Promise<ToolResult> =
   }
   if (text.length > GROK_LIMITS.brief) {
     return { ok: false, error: `brief must be at most ${GROK_LIMITS.brief} characters` };
+  }
+
+  const structured: Record<string, string> = {};
+  for (const key of ['question', 'answer', 'term'] as const) {
+    const value = input[key];
+    if (value === undefined || value === null || value === '') continue;
+    if (typeof value !== 'string' || clean(value).length > GROK_LIMITS.reason) {
+      return { ok: false, error: `${key} must be text of at most ${GROK_LIMITS.reason} characters` };
+    }
+    structured[key] = clean(value);
+  }
+  if (type === 'ANSWER_SCREENING' && (!structured.question || !structured.answer)) {
+    return { ok: false, error: 'ANSWER_SCREENING needs question (the exact text from openScreeningQuestions in brief) and answer (the final wording the employer sees)' };
   }
 
   let openingId: string | null = null;
@@ -291,22 +400,31 @@ export const propose = async (gql: Gql, payload: unknown): Promise<ToolResult> =
   }
 
   const open = await gql(OPEN_GROK_PROPOSALS, {
-    f: { proposer: { eq: 'GROK' }, status: { eq: 'PROPOSED' } },
+    f: { proposer: { eq: 'GROK' }, status: { in: ['PROPOSED', 'REQUESTED'] } },
   });
 
   if ((open.proposals?.totalCount ?? 0) >= GROK_LIMITS.openProposals) {
-    return { ok: false, error: 'too many Grok proposals are waiting for the person; try again after they are handled' };
+    return { ok: false, error: 'too many Grok items are open; try again after they are handled' };
   }
 
+  const status = askedByPerson ? 'REQUESTED' : 'PROPOSED';
   const created = await gql(CREATE_PROPOSAL, {
     data: {
       summary: text,
       proposalType: type,
       proposer: 'GROK',
-      status: 'PROPOSED',
+      status,
+      payload: { ...structured, askedByPerson },
       ...(openingId ? { openingId } : {}),
     },
   });
 
-  return { ok: true, proposalId: created.createProposal?.id ?? null, status: 'PROPOSED' };
+  return {
+    ok: true,
+    proposalId: created.createProposal?.id ?? null,
+    status,
+    next: askedByPerson
+      ? 'The harness carries it out within five minutes, or in the next daily run for agent work; check doneForYou in brief for the outcome. Package approvals and document edits still need the person to tap Confirm.'
+      : 'This is a suggestion: the person confirms or declines it in Twenty.',
+  };
 };

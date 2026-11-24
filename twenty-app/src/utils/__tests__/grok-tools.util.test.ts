@@ -10,7 +10,9 @@ import {
   CV_NOT_AVAILABLE,
   type Gql,
   openingSummary,
-  propose,
+  autopilotChannels,
+  openScreeningQuestions,
+  request,
   rateText,
   requestFullText,
   summariseOpening,
@@ -202,7 +204,7 @@ describe('request_full_text', () => {
   });
 });
 
-describe('propose', () => {
+describe('request', () => {
   const env = (open = 0) =>
     fakeGql([
       { match: /GrokOpeningExists/, reply: () => ({ opening: { id: OPENING_ID } }) },
@@ -210,41 +212,89 @@ describe('propose', () => {
       { match: /createProposal/, reply: () => ({ createProposal: { id: 'p-new' } }) },
     ]);
 
-  it('creates a PROPOSED Grok proposal for an allowlisted type', async () => {
+  it("records the person's request as REQUESTED, with its structured fields", async () => {
     const { gql, calls } = env();
-    const out = await propose(gql, { type: 'RESEARCH_COMPANY', openingId: OPENING_ID, brief: 'Look into the employer' });
-
-    expect(out).toEqual({ ok: true, proposalId: 'p-new', status: 'PROPOSED' });
-    expect(calls.find((c) => /createProposal/.test(c.query))?.variables?.data).toEqual({
-      summary: 'Look into the employer',
-      proposalType: 'RESEARCH_COMPANY',
-      proposer: 'GROK',
-      status: 'PROPOSED',
-      openingId: OPENING_ID,
+    const out = await request(gql, {
+      type: 'ANSWER_SCREENING',
+      askedByPerson: true,
+      question: 'Are you available to start soon?',
+      answer: 'Yes, within two weeks.',
+      brief: 'Answer the availability question',
     });
+
+    expect(out).toMatchObject({ ok: true, proposalId: 'p-new', status: 'REQUESTED' });
+    expect(calls.find((c) => /createProposal/.test(c.query))?.variables?.data).toEqual({
+      summary: 'Answer the availability question',
+      proposalType: 'ANSWER_SCREENING',
+      proposer: 'GROK',
+      status: 'REQUESTED',
+      payload: { question: 'Are you available to start soon?', answer: 'Yes, within two weeks.', askedByPerson: true },
+    });
+  });
+
+  it("keeps Grok's own suggestions as PROPOSED for the person", async () => {
+    const { gql, calls } = env();
+
+    expect(await request(gql, { type: 'RESEARCH_COMPANY', askedByPerson: false, openingId: OPENING_ID, brief: 'Look into the employer' })).toMatchObject({ status: 'PROPOSED' });
+    expect(calls.find((c) => /createProposal/.test(c.query))?.variables?.data).toMatchObject({ status: 'PROPOSED', openingId: OPENING_ID });
+  });
+
+  it('needs the exact question and the final answer for screening answers', async () => {
+    const { gql, calls } = env();
+
+    expect(await request(gql, { type: 'ANSWER_SCREENING', askedByPerson: true, brief: 'b', answer: 'Yes' })).toMatchObject({ ok: false });
+    expect(calls).toHaveLength(0);
   });
 
   it('rejects DISCLOSURE, unknown types and decision types without writing', async () => {
     for (const type of ['DISCLOSURE', 'OTHER', 'ENABLE_AUTOPILOT', 'APPROVE', 'HALT_SENDS', '', 42]) {
       const { gql, calls } = env();
 
-      expect(await propose(gql, { type, brief: 'b' }), String(type)).toMatchObject({ ok: false });
+      expect(await request(gql, { type, askedByPerson: true, brief: 'b' }), String(type)).toMatchObject({ ok: false });
       expect(calls).toHaveLength(0);
     }
   });
 
-  it('refuses when too many Grok proposals are open', async () => {
+  it('refuses when too many Grok items are open', async () => {
     const { gql, calls } = env(20);
 
-    expect(await propose(gql, { type: 'REDRAFT_LETTER', brief: 'b' })).toMatchObject({ ok: false });
+    expect(await request(gql, { type: 'REDRAFT_LETTER', askedByPerson: true, brief: 'b' })).toMatchObject({ ok: false });
     expect(calls.some((c) => /createProposal/.test(c.query))).toBe(false);
   });
 
   it('strips control characters and caps the brief', async () => {
     const { gql, calls } = env();
 
-    await propose(gql, { type: 'REDRAFT_LETTER', brief: 'Shorter\u0000 please' });
+    await request(gql, { type: 'REDRAFT_LETTER', askedByPerson: true, brief: 'Shorter\u0000 please' });
     expect(calls[calls.length - 1]?.variables?.data).toMatchObject({ summary: 'Shorter please' });
-    expect(await propose(gql, { type: 'REDRAFT_LETTER', brief: 'b'.repeat(2001) })).toMatchObject({ ok: false });
+    expect(await request(gql, { type: 'REDRAFT_LETTER', askedByPerson: true, brief: 'b'.repeat(2001) })).toMatchObject({ ok: false });
+  });
+});
+
+describe('brief helpers', () => {
+  it('reads the autopilot channels from the policy', () => {
+    expect(autopilotChannels('kill_switch: false\nautopilot:\n  enabled: true\n  channels: [seek]   # note\n  max_per_day: 30\n')).toEqual(['seek']);
+    expect(autopilotChannels('autopilot:\n  channels: [seek, linkedin_jobs]\n')).toEqual(['seek', 'linkedin_jobs']);
+    expect(autopilotChannels('nothing here')).toEqual([]);
+  });
+
+  it('lists only unanswered screening questions, with their exact text', () => {
+    const body = [
+      'answers: []',
+      'unknown_questions:',
+      '  - opportunity_id: seek-1',
+      '    company: "Example Pty Ltd"',
+      '    title: "Architect"',
+      '    question: "How many years have you led teams?"',
+      '    answer: null',
+      '  - opportunity_id: seek-2',
+      '    question: "Do you hold a licence?"',
+      '    answer: "Yes."',
+      '',
+    ].join('\n');
+
+    expect(openScreeningQuestions(body)).toEqual([
+      { question: 'How many years have you led teams?', company: 'Example Pty Ltd', title: 'Architect' },
+    ]);
   });
 });
