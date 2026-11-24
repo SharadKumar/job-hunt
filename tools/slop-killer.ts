@@ -26,7 +26,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { repoPath } from "./repo-root.ts";
 
-type Verdict = "pass" | "warn" | "fail";
+export type Verdict = "pass" | "warn" | "fail";
 
 type Hit = {
   phrase: string;
@@ -36,7 +36,7 @@ type Hit = {
   fatal?: boolean;
 };
 
-type Result = {
+export type Result = {
   slop_score: number;
   verdict: Verdict;
   hits: Hit[];
@@ -51,7 +51,7 @@ const FORCED_FAIL = [
   "feel free to reach out at your convenience",
 ];
 
-async function loadBanlist(banlistPath: string, optional = false): Promise<{ phrases: { phrase: string; category: string; weight: number }[] }> {
+export async function loadBanlist(banlistPath: string, optional = false): Promise<{ phrases: { phrase: string; category: string; weight: number }[] }> {
   const md = await fs.readFile(banlistPath, "utf8").catch((e: any) => {
     if (optional && e?.code === "ENOENT") return "";
     throw e;
@@ -96,7 +96,7 @@ function phraseRegex(phrase: string): RegExp {
   return new RegExp(`\\b${tokens.join("\\W+")}\\b`, "gi");
 }
 
-function check(text: string, banlist: { phrases: { phrase: string; category: string; weight: number }[] }): Result {
+export function check(text: string, banlist: { phrases: { phrase: string; category: string; weight: number }[] }): Result {
   const hits: Hit[] = [];
 
   for (const f of FORCED_FAIL) {
@@ -148,6 +148,15 @@ function check(text: string, banlist: { phrases: { phrase: string; category: str
   return { slop_score, verdict, hits, unique_phrases: new Set(hits.map((h) => h.phrase)).size, word_count: words };
 }
 
+/** The default banlists (framework plus the org's own), as the CLI loads them. */
+export async function checkSlop(text: string): Promise<Result> {
+  const banlists = await Promise.all([
+    loadBanlist(repoPath("references/voice/slop-banlist.md")),
+    loadBanlist(repoPath("state/org/slop-banlist.md"), true),
+  ]);
+  return check(text, { phrases: banlists.flatMap((b) => b.phrases) });
+}
+
 async function main() {
   const args = process.argv.slice(2);
   let filePath = "";
@@ -176,7 +185,9 @@ async function main() {
   process.exit(result.verdict === "pass" ? 0 : result.verdict === "warn" ? 1 : 2);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(3);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(3);
+  });
+}
