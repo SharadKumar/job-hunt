@@ -116,7 +116,10 @@ export async function syncControl(url: string, key: string, ownerMemberId: strin
   const { readSendSwitch } = await import("./send-switch.ts");
   const state = await readSendSwitch({ url, key, ownerMemberId, fetchImpl });
   const { call } = twentyClient({ url, key }, fetchImpl);
-  const fields = { name: state.reason.slice(0, 250), autopilotEnabled: state.allowed, haltOpen: state.reason === "sends halted", derivedAt: new Date().toISOString() };
+  // The owner's name lets a button warn when someone else is signed in.
+  const member = (await call("GET", `/rest/workspaceMembers/${ownerMemberId}`).catch(() => null))?.data?.workspaceMember;
+  const ownerName = member?.name ? `${member.name.firstName ?? ""} ${member.name.lastName ?? ""}`.trim() : null;
+  const fields = { name: state.reason.slice(0, 250), autopilotEnabled: state.allowed, haltOpen: state.reason === "sends halted", derivedAt: new Date().toISOString(), ownerMemberId, ownerName };
   const existing = (await call("GET", "/rest/controls?limit=1")).data?.controls?.[0];
   if (existing) await call("PATCH", `/rest/controls/${existing.id}`, fields);
   else await call("POST", "/rest/controls", fields);

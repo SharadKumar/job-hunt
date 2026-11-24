@@ -1,6 +1,6 @@
 {
   "name": "twenty-app",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "license": "MIT",
   "engines": {
     "node": "^24.5.0 || ^26.5.1",

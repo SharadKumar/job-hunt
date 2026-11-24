@@ -18,7 +18,7 @@ import { useTheme } from 'twenty-ui/theme';
 
 import { BUTTONS, type ButtonKey } from 'src/constants/buttons';
 import { DECISION_TYPE_OPTIONS } from 'src/constants/select-options';
-import { createDecision } from 'src/front-components/utils/create-decision.util';
+import { createDecision, recordedMessage } from 'src/front-components/utils/create-decision.util';
 import { loadDecisionContext } from 'src/front-components/utils/load-decision-context.util';
 import { type DecisionContext } from 'src/types/decision-context';
 import { type DecisionFormValues } from 'src/types/decision-form-values';
@@ -95,11 +95,8 @@ export const DecisionForm = ({ buttonKey }: { buttonKey: ButtonKey }) => {
     setSaving(true);
 
     try {
-      await createDecision(built.decision);
-      await enqueueSnackbar({
-        message: `${spec.label}: recorded. The harness applies it on its next pass.`,
-        variant: 'success',
-      });
+      const recorded = await createDecision(built.decision);
+      await enqueueSnackbar(recordedMessage(spec.label, String(built.decision.decisionType ?? ''), recorded));
       await closeSidePanel();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : String(error));

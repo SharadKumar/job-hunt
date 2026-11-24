@@ -4,7 +4,7 @@ import {
 } from 'twenty-sdk/front-component';
 
 import { BUTTONS, type ButtonKey } from 'src/constants/buttons';
-import { createDecision } from 'src/front-components/utils/create-decision.util';
+import { createDecision, recordedMessage } from 'src/front-components/utils/create-decision.util';
 import { loadDecisionContext } from 'src/front-components/utils/load-decision-context.util';
 
 // The whole flow of a headless button: read what is on screen, confirm in a
@@ -38,7 +38,7 @@ export const runHeadlessDecision = async (
       }
     }
 
-    await createDecision({
+    const recorded = await createDecision({
       decisionType: spec.decisionTypes[0],
       statusSeen: context.statusSeen,
       letterShaSeen: context.letterShaSeen,
@@ -48,10 +48,7 @@ export const runHeadlessDecision = async (
       positioningId: context.positioningId,
     });
 
-    await enqueueSnackbar({
-      message: `${spec.label}: recorded. The harness applies it on its next pass.`,
-      variant: 'success',
-    });
+    await enqueueSnackbar(recordedMessage(spec.label, spec.decisionTypes[0], recorded));
   } catch (error) {
     await enqueueSnackbar({
       message: `${spec.label} was not recorded`,

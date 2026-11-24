@@ -23,6 +23,9 @@ export default defineObject({
   labelIdentifierFieldMetadataUniversalIdentifier: F.name,
   fields: [
     textField({ universalIdentifier: F.name, name: 'name', label: 'Name', icon: 'IconAbc' }),
+    // Whose own confirmation counts, so a button can warn when someone else is signed in.
+    textField({ universalIdentifier: F.ownerMemberId, name: 'ownerMemberId', label: 'Owner member', icon: 'IconUser' }),
+    textField({ universalIdentifier: F.ownerName, name: 'ownerName', label: 'Owner', icon: 'IconUser' }),
     booleanField({ universalIdentifier: F.autopilotEnabled, name: 'autopilotEnabled', label: 'Autopilot enabled', icon: 'IconPlane' }),
     textField({ universalIdentifier: F.enabledByDecisionId, name: 'enabledByDecisionId', label: 'Enabled by decision', icon: 'IconCheckbox' }),
     dateTimeField({ universalIdentifier: F.enabledAt, name: 'enabledAt', label: 'Enabled', icon: 'IconClock' }),
