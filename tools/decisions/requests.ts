@@ -133,7 +133,7 @@ export function answerUnknownQuestion(body: string, question: string, answer: st
   return { body: lines.join("\n"), answered };
 }
 
-async function documentBody(call: Call, kind: string): Promise<{ docId: string; revision: number; body: string } | null> {
+export async function documentBody(call: Call, kind: string): Promise<{ docId: string; revision: number; body: string } | null> {
   const docs = (await call("GET", `/rest/documents?filter=${encodeURIComponent(`kind[eq]:${kind}`)}&limit=1`)).data?.documents ?? [];
   const doc = docs[0];
   if (!doc) return null;
@@ -142,7 +142,7 @@ async function documentBody(call: Call, kind: string): Promise<{ docId: string; 
   return revs[0] ? { docId: doc.id, revision: rev, body: String(revs[0].body ?? "") } : null;
 }
 
-async function saveRevision(call: Call, kind: string, cur: { docId: string; revision: number }, body: string, name: string): Promise<number> {
+export async function saveRevision(call: Call, kind: string, cur: { docId: string; revision: number }, body: string, name: string): Promise<number> {
   const next = cur.revision + 1;
   await call("POST", "/rest/documentRevisions", { name: `${name} r${next}`, revision: next, baseRevision: cur.revision, kind, body, documentId: cur.docId });
   await call("PATCH", `/rest/documents/${cur.docId}`, { currentRevision: next });

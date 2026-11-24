@@ -144,8 +144,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const { runRequests } = await import("./requests.ts");
     const requests = await runRequests({ url, key, ownerMemberId: owner });
     for (const r of requests) console.log(JSON.stringify({ request: r }));
+    // Screening questions nothing else answers go to the person on Slack, and
+    // their replies come back as answers (skipped without SLACK_BOT_TOKEN).
+    let slack: unknown = { skipped: "SLACK_BOT_TOKEN not set" };
+    if (process.env.SLACK_BOT_TOKEN) {
+      const { runSlackQuestions } = await import("../slack-questions.ts");
+      slack = await runSlackQuestions({ url, key, ownerMemberId: owner, token: process.env.SLACK_BOT_TOKEN }).catch((e) => ({ error: String(e?.message ?? e) }));
+    }
     // Keep the control record (what Today and Grok show) in step with the switch.
     const control = await syncControl(url, key, owner).catch((e) => ({ error: String(e?.message ?? e) }));
-    console.log(JSON.stringify({ ok: true, applied: verdicts.filter((v) => v.result === "APPLIED").length, refused: verdicts.filter((v) => v.result === "REFUSED").length, deferred: verdicts.filter((v) => v.result === "DEFERRED").length, requests: requests.length, control }));
+    console.log(JSON.stringify({ ok: true, applied: verdicts.filter((v) => v.result === "APPLIED").length, refused: verdicts.filter((v) => v.result === "REFUSED").length, deferred: verdicts.filter((v) => v.result === "DEFERRED").length, requests: requests.length, slack, control }));
   })().catch((e) => { console.log(JSON.stringify({ ok: false, error: String(e?.message ?? e) })); process.exit(1); });
 }
