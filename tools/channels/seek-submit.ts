@@ -41,8 +41,11 @@
  *   security clearance       → /no, ability to obtain|able to obtain|eligible/i
  *   privacy-policy consent   → /yes|agree/i, or tick the checkbox
  *
- * Any question with no confident answer stops the run BEFORE Continue and is
- * returned as `newScreeningQuestion` so the user can add it to the YAML.
+ * A question still unmatched after that is offered to tools/screening-derive.ts,
+ * which may answer years-of-experience or employment-status questions from
+ * the CV source and records them as derived. Any question with no confident
+ * answer stops the run BEFORE Continue and is returned as
+ * `newScreeningQuestion` so the user can add it to the YAML.
  *
  * Safety: this module performs an irreversible external action. It must only
  * be invoked from an attended /apply or /submit-approved flow via
@@ -61,9 +64,9 @@ import YAML from "yaml";
 import type { BrowserContext, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
-import { repoPath } from "../repo-root.ts";
 import { openSeekContext } from "./_browser.ts";
 import { fuzzyScreeningMatch } from "../jev/screening.ts";
+import { profilePath } from "../profile-context.ts";
 
 export function isSeekHumanVerification(text: string): boolean {
   return /confirm you are human|verify you are human|help us keep SEEK secure|performing security verification|security service to protect against malicious bots|sorry, you have been blocked|attention required! \| cloudflare/i.test(text);
@@ -182,7 +185,7 @@ function parseSkillsYears(raw: any): SkillYears[] {
   return out;
 }
 
-export async function loadScreeningAnswers(file = repoPath("state/profile/screening-answers.yaml")): Promise<ScreeningAnswers> {
+export async function loadScreeningAnswers(file = profilePath("screening-answers.yaml")): Promise<ScreeningAnswers> {
   const raw = YAML.parse(await fs.readFile(file, "utf8"));
   const answers = Array.isArray(raw?.answers) ? raw.answers : [];
   const entries: ScreeningEntry[] = answers
@@ -201,7 +204,13 @@ export async function loadScreeningAnswers(file = repoPath("state/profile/screen
   for (const u of unknowns) {
     if (!u || typeof u.question !== "string" || u.answer == null || String(u.answer).trim() === "") continue;
     const exact = "^" + normaliseQuestion(u.question).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$";
-    entries.push({ id: `unknown:${u.opportunity_id ?? "any"}`, patterns: [exact], answer: String(u.answer), select: Array.isArray(u.select) ? u.select.map(String) : undefined });
+    // A derived answer (tools/screening-derive.ts) is an exact option label or
+    // a number: select that exact label so it never falls through to a
+    // default. Built from the answer, so a person's later change is followed.
+    const select = Array.isArray(u.select) ? u.select.map(String)
+      : u.derived === true && typeof u.answer === "string" ? ["^" + u.answer.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"]
+      : undefined;
+    entries.push({ id: `unknown:${u.opportunity_id ?? "any"}`, patterns: [exact], answer: String(u.answer), select });
   }
   return { entries, skillsYears: parseSkillsYears(raw) };
 }
@@ -337,6 +346,12 @@ export function decideQuestion(
     return { kind: "unmatched" };
   }
 
+  // A banked answer that is exactly one of the option labels ("3 to 5 years")
+  // is that option. Generic defaults below must not contradict it.
+  const exactAnswer = entry?.answer?.trim().toLowerCase();
+  const exactHit = exactAnswer ? options.find((o) => o.label.trim().toLowerCase() === exactAnswer) : undefined;
+  if (exactHit) return { kind: "option", option: exactHit };
+
   // An explicit banked binary answer is authoritative. Do not ask a model
   // to rematch it or let generic question heuristics contradict it. Longer
   // qualified answers need explicit select patterns, not inferred consent.
@@ -399,13 +414,30 @@ export function decideQuestion(
   return { kind: "unmatched" };
 }
 
-/** Deterministic bank matching first, Jev only for an otherwise unknown paraphrase. */
-export async function decideQuestionWithJev(question: PageQuestion, answers: ScreeningEntry[] | ScreeningAnswers): Promise<QuestionDecision> {
+/**
+ * Deterministic bank matching first, Jev only for an otherwise unknown
+ * paraphrase. When an opportunity is given, a question still unmatched after
+ * that is offered to the evidence resolver (tools/screening-derive.ts), which
+ * answers years-of-experience and employment-status questions from the CV
+ * source and the profile's fixed framing, records the answer as derived, or
+ * returns nothing so the question escalates as before.
+ */
+export async function decideQuestionWithJev(
+  question: PageQuestion,
+  answers: ScreeningEntry[] | ScreeningAnswers,
+  opts: { opportunity?: { id: string; company?: string; title?: string; channel?: string; url?: string } } = {},
+): Promise<QuestionDecision> {
   const deterministic = decideQuestion(question, answers);
   if (deterministic.kind !== "unmatched") return deterministic;
   const entries = Array.isArray(answers) ? answers : answers.entries;
   const matched = await fuzzyScreeningMatch(question.label, entries);
-  return matched ? decideQuestion(question, answers, matched) : deterministic;
+  if (matched) {
+    const decision = decideQuestion(question, answers, matched);
+    if (decision.kind !== "unmatched") return decision;
+  }
+  if (!opts.opportunity) return deterministic;
+  const { resolveFromEvidence } = await import("../screening-derive.ts");
+  return (await resolveFromEvidence(opts.opportunity, question)) ?? deterministic;
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +694,7 @@ export async function submitSeek(opportunity: Opportunity, pkg: SubmitPackage, o
           const questions = await discoverQuestions(page);
           console.error(`[seek-submit] ${opportunity.id}: ${questions.length} employer question(s)`);
           for (const q of questions) {
-            const decision = await decideQuestionWithJev(q, answers);
+            const decision = await decideQuestionWithJev(q, answers, { opportunity });
             if (decision.kind === "unmatched") {
               const context = q.options.filter((o) => !isPlaceholderOption(o.label)).map((o) => o.label).join(" | ");
               await screenshot(page, shotDir, `${opportunity.id}-error.png`);

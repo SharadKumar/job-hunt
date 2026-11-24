@@ -74,6 +74,7 @@ import { applyComposition } from "./resume-keywords.ts";
 import { cloudsStatus, type CloudsStatus } from "./resume-context.ts";
 import { loadKeywordClouds } from "../keyword-clouds.ts";
 import type { KeywordPlan } from "./keyword-lexicon.ts";
+import { archiveDir } from "../store/paths.ts";
 
 export type AuditArgs = {
   contentJson: string;
@@ -356,7 +357,7 @@ export async function runAuditOnce(args: AuditArgs) {
     templateName = args.template;
   }
   const flavours: Flavour[] = args.flavours ?? ["ats", "presentation"];
-  const outDir = args.outDir ?? `state/pipeline/archive/resume-audit-${Date.now()}`;
+  const outDir = args.outDir ?? archiveDir(`resume-audit-${Date.now()}`);
   await fs.mkdir(outDir, { recursive: true });
   const prefix = args.filenamePrefix
     || (args.resume ? await resumeArtefactPrefix(args.resume, { profileId: args.profile }) : "sample");

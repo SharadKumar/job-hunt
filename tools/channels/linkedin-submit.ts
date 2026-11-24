@@ -55,7 +55,6 @@ import path from "node:path";
 import type { BrowserContext, Locator, Page } from "playwright";
 import type { SubmitPackage, SubmitResult } from "./_interface.ts";
 import { load as loadPipeline, type Opportunity } from "../pipeline.ts";
-import { repoPath } from "../repo-root.ts";
 import { openChromeContext } from "./_browser.ts";
 import {
   coverLetterToPlainText,
@@ -67,6 +66,7 @@ import {
   type QuestionDecision,
   type ScreeningAnswers,
 } from "./seek-submit.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type SubmitLinkedInOptions = {
   dryRun?: boolean;
@@ -117,7 +117,7 @@ async function screenshot(page: Page, dir: string | undefined, name: string): Pr
 
 async function loadProfilePhone(): Promise<string | undefined> {
   try {
-    const md = await fs.readFile(repoPath("state/profile/profile.md"), "utf8");
+    const md = await fs.readFile(profilePath("profile.md"), "utf8");
     const m = md.match(/^phone:\s*"?([^"\n]+)"?/m);
     return m?.[1].trim();
   } catch {
@@ -435,7 +435,7 @@ async function modalErrors(page: Page): Promise<string[]> {
 }
 
 /** Answer every control on the current step; returns the first unanswerable question, if any. */
-async function answerStep(page: Page, answers: ScreeningAnswers, phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
+async function answerStep(page: Page, answers: ScreeningAnswers, phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void, opportunity?: Opportunity): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
   const questions = await discoverModalQuestions(page);
   let coverLetterDelivered = false;
   for (const q of questions) {
@@ -465,7 +465,7 @@ async function answerStep(page: Page, answers: ScreeningAnswers, phone: string |
     // Already answered (remembered from an earlier application): leave alone.
     if (q.value && q.kind !== "checkbox") continue;
 
-    const decision = await decideQuestionWithJev(q, answers);
+    const decision = await decideQuestionWithJev(q, answers, { opportunity });
     if (decision.kind === "unmatched") {
       // A numeric field the profile answers in words is still answerable when the words carry a number.
       return { unmatched: q, coverLetterDelivered };
@@ -610,7 +610,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
       }
 
       // Form controls on this step (screening questions, phone, cover letter).
-      const answered = await answerStep(page, answers, phone, coverLetter, timeout, log);
+      const answered = await answerStep(page, answers, phone, coverLetter, timeout, log, opportunity);
       coverLetterDelivered = coverLetterDelivered || answered.coverLetterDelivered;
       if (answered.unmatched) {
         const q = answered.unmatched;

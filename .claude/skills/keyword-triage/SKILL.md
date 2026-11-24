@@ -3,6 +3,8 @@ name: keyword-triage
 description: Clear the pending keyword ledger down to the few questions a human should actually answer. ALWAYS use this before asking the person anything about keywords, market confirmations, pending terms or the ledger, and whenever they say there are too many keyword questions, the queue is huge, "why is it asking me about this", or a pending term is obviously not a skill. /daily invokes it after the keyword plans are queued; /review-drafts and /resume-review invoke it before their drain step. Also use when a term looks like a recruiter name, JD boilerplate, a date, a clearance, an employer, or a cut-off word.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /keyword-triage: answer the keyword queue before the person has to
 
 ## Why
@@ -38,7 +40,7 @@ Every reject lands as `status: not_applicable`, `origin: triage`, `notes: "triag
 TMPDIR=/tmp npm run -s resume:keyword-confirm -- pending --group-by term --format json --limit 300
 ```
 
-Then read, once: `state/profile/cv-source.md`, `state/profile/skills-taxonomy.yaml`, and the clouds in `state/org/keyword-clouds.yaml` that the busiest resumes reference. Everything from here is a judgement about evidence, which is why it is an agent and not the tool.
+Then read, once: `<profile>/cv-source.md`, `<profile>/skills-taxonomy.yaml`, and the clouds in `state/org/keyword-clouds.yaml` that the busiest resumes reference. Everything from here is a judgement about evidence, which is why it is an agent and not the tool.
 
 ## Step 3: decide each residual term
 
@@ -67,7 +69,7 @@ Surfaced terms are asked by the calling skill, through `AskUserQuestion`, at mos
 - counts: pending in, rejected by rule, confirmed from the corpus, familiarity, na, surfaced;
 - the surfaced list, one line of reasoning each;
 - any reject you think the rules got wrong, by term and rule;
-- append a **"Keyword triage"** block with the same content to `state/journal/<today>.md`.
+- append a **"Keyword triage"** block with the same content to today's journal (`npm run -s journal -- append --from <file>`).
 
 Then invoke `state-syncer` if any other state changed in this session.
 

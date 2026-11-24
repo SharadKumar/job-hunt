@@ -17,10 +17,10 @@
  *   echo '{...}' | tsx tools/score.ts --stdin
  */
 
-import { repoPath } from "./repo-root.ts";
 import { readYaml } from "./lib/fs.ts";
 import { promises as fs } from "node:fs";
 import { extractMechanicalClassification, isExplicitFixedTermEmployment, type ClassificationV2 } from "./classification.ts";
+import { profilePath } from "./profile-context.ts";
 
 export type Role = {
   id: string;
@@ -93,13 +93,13 @@ type Weights = {
 const SENIORITY_MULT: Record<string, number> = { expert: 1.0, practitioner: 0.7, familiar: 0.4 };
 
 /** The canonical skill → synonyms → seniority taxonomy (shared with resume-keywords.ts). */
-export async function loadTaxonomy(filePath = repoPath("state/profile/skills-taxonomy.yaml")): Promise<SkillTaxonomy> {
+export async function loadTaxonomy(filePath = profilePath("skills-taxonomy.yaml")): Promise<SkillTaxonomy> {
   const parsed = await readYaml<SkillTaxonomy | null>(filePath).catch((e: any) => { if (e?.code === "ENOENT") return null; throw e; });
   return parsed?.categories ? parsed : { categories: {} };
 }
 
 async function loadProfile(): Promise<{ targetRoles: string[]; targetRateMin?: number; targetRateMax?: number; preferRemote: boolean; redFlagOnsite5Days: boolean; homeCity?: string }> {
-  const md = await fs.readFile("state/profile/profile.md", "utf8");
+  const md = await fs.readFile(profilePath("profile.md"), "utf8");
   // Coarse extraction; the user's profile.md uses markdown sections we grep for
   const targetRoles: string[] = [];
   const rolesMatch = md.match(/Resume role families[^\n]*\n((?:.*\n)+?)(?:\n##|$)/);
@@ -276,8 +276,8 @@ export function computeFitVerdict(input: {
 }
 
 export async function scoreRole(role: Role, providedClassification?: ClassificationV2): Promise<ScoreResult & { classification: ClassificationV2 }> {
-  const weights = await readYaml<Weights>(repoPath("state/profile/scoring-weights.yaml"));
-  const taxonomy = await readYaml<SkillTaxonomy>(repoPath("state/profile/skills-taxonomy.yaml"));
+  const weights = await readYaml<Weights>(profilePath("scoring-weights.yaml"));
+  const taxonomy = await readYaml<SkillTaxonomy>(profilePath("skills-taxonomy.yaml"));
   const profile = await loadProfile();
 
   if (!providedClassification) {
@@ -431,6 +431,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
       : (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
   let ineligible_reason: string | undefined;
+  const interstateUnknown = isInterstate && (!locFlex || locFlex === "unknown");
   if (fixedTermEmployee) {
     ineligible_reason = "fixed-term employee engagement, not independent contracting";
     reasons.push(`ineligible: ${ineligible_reason}`);
@@ -468,6 +469,22 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     if (score < floor) {
       score = floor;
       reasons.push(`reasoning floor: blocker-free ${classification.matched_resume_id} contract at ${relevance}/100 relevance → ${floor}`);
+    }
+  }
+
+  // Sydney and remote roles rank ahead of interstate roles whose flexibility
+  // is unknown. Unknown flexibility stays non-blocking, so the penalty never
+  // pushes a shortlist-grade role out of the queue: it stops at the shortlist
+  // floor. Applied after the reasoning floor, which otherwise lifts a local
+  // and an interstate role to the same score.
+  if (interstateUnknown && !red_flag_blocker && !ineligible_reason) {
+    const penalty = weights.thresholds?.interstate_unknown_flexibility_penalty ?? 10;
+    const shortlistMin = weights.thresholds?.shortlist_min_score ?? 55;
+    const floor = score >= shortlistMin ? shortlistMin : 0;
+    const lowered = Math.max(floor, score - penalty);
+    if (penalty > 0 && lowered < score) {
+      reasons.push(`location: interstate (${role.location}) with unknown flexibility ranks below Sydney and remote roles (-${score - lowered})`);
+      score = lowered;
     }
   }
 

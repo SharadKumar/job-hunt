@@ -3,6 +3,8 @@ name: follow-up
 description: Surface submitted applications that haven't moved in N days (default 7) and draft polite nudges. Use when the user asks "any follow-ups due", "chase up old applications", "what hasn't responded", "clean up stale apps", or "send a nudge for X". Drafts only, never auto-sends; recruiter emails go to Gmail drafts and LinkedIn DMs stay in the tray. Arg: `[--days=N]`.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /follow-up: clear stale applications
 
 Submitted roles that haven't moved in N days are silent dead-ends most of the time, but occasionally a polite nudge revives one.
@@ -17,7 +19,7 @@ Resolve the repo root first (`references/harness/repo-root.md`).
    - Ask via `AskUserQuestion`: "Draft a follow-up email to the recruiter / Draft a LinkedIn DM to the HM / Mark as cold (no reply) / Skip for now?"
    - For draft options: invoke `cover-letter-writer` in follow-up mode (it owns nudge-message authoring per its contract: a 3-line message in the user's voice, referencing the original application date). It routes through slop-killer + voice-check before returning.
    - For "cold": set status `→ rejected` with reason "no response after N days".
-3. Drafts land in Gmail drafts (recruiter email) or in `state/pipeline/outreach/<opportunity-id>/follow-up-dm.md` (LinkedIn).
+3. Drafts land in Gmail drafts (recruiter email) or in `<pipeline>/outreach/<opportunity-id>/follow-up-dm.md` (LinkedIn).
 4. `state-syncer` mirrors.
 
 ## When to ask

@@ -3,6 +3,8 @@ name: setup
 description: Guided first-run setup on a new machine, from a fresh clone to autopilot. Use when the user says "set me up", "get this running", "new machine", "configure the harness", "connect my Google Sheet", "log in to SEEK / LinkedIn", "turn on autopilot", or when `npm run setup:check` reports a blocked stage, or when session start finds no profile. Checks the machine, scaffolds the profile, asks the questions the profile needs, ingests the CV, hands off to /onboarding and /resume-review, logs the channels in, connects the Sheet, installs the daily schedule, and switches autopilot on. Works the same under Claude Code and Codex.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /setup: from clone to autopilot
 
 You are walking a person through their first run. They may know nothing about this repo. Be brief, ask in batches with the structured question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex; fall back to a numbered plain-text list only if neither exists), and never guess at machine state: `npm run setup:check` is the source of truth for what is done and what is next.
@@ -25,15 +27,15 @@ For each failing check, show the `fix` command and ask the person to run it them
 
 ## Stage 1: profile
 
-1. `npm run setup:scaffold` (idempotent; copies `templates/profile/*` into `state/profile/`, never overwrites).
+1. `npm run setup:scaffold` (idempotent; copies `templates/profile/*` into `<profile>/`, never overwrites).
 2. Ask, in two batches of at most four questions each, for the facts `profile.md` needs. Batch A: full name, email, phone, city and country. Batch B: citizenship / work rights, current security clearance (none is a fine answer), target day rate (or salary) and floor, work arrangement (remote / hybrid with a days-onsite cap / onsite). Then one more batch: role families they want (2 to 3, in priority order), engagement type (contract / permanent / both), industries to avoid, LinkedIn URL.
-3. Write the answers into `state/profile/profile.md`: frontmatter fields and the prose sections. Every live `TODO` must go: fill it from the answers, derive it where the answers imply it (a remote-first person's "Location priority" is "remote first, then <city>"), or write `none` / `not applicable` where the person said skip. Commented-out example lines may keep their TODOs. The check counts live TODOs and blocks on any.
-4. Voice samples: ask them to paste 3 to 5 emails or posts they wrote (at least 200 words total) into `state/profile/voice-samples.md` between the fences, or paste them into the chat and you place them. Explain in one sentence why (the letters are written in their voice, checked against these).
+3. Write the answers into `<profile>/profile.md`: frontmatter fields and the prose sections. Every live `TODO` must go: fill it from the answers, derive it where the answers imply it (a remote-first person's "Location priority" is "remote first, then <city>"), or write `none` / `not applicable` where the person said skip. Commented-out example lines may keep their TODOs. The check counts live TODOs and blocks on any.
+4. Voice samples: ask them to paste 3 to 5 emails or posts they wrote (at least 200 words total) into `<profile>/voice-samples.md` between the fences, or paste them into the chat and you place them. Explain in one sentence why (the letters are written in their voice, checked against these).
 5. Re-run the check. `profile_todos` and `voice_samples` must pass before moving on.
 
 ## Stage 2: CV
 
-Ask for the path to their master CV `.docx`. Run `npm run markdownify:cv -- --source "<path>"`. Open `state/profile/cv-source.md`, show them the role headers the parser found, and ask whether any role is missing or mangled. Fix by editing the markdown (not the .docx). This file is the only evidence every CV and letter may draw on; say so once.
+Ask for the path to their master CV `.docx`. Run `npm run markdownify:cv -- --source "<path>"`. Open `<profile>/cv-source.md`, show them the role headers the parser found, and ask whether any role is missing or mangled. Fix by editing the markdown (not the .docx). This file is the only evidence every CV and letter may draw on; say so once.
 
 ## Stage 3: positionings
 
@@ -45,7 +47,7 @@ Invoke the `resume-review` skill. It renders every active positioning through `r
 
 ## Stage 5: channels
 
-1. Ask which channels to enable: SEEK (Australia), LinkedIn Jobs, LinkedIn hiring posts, HN Who is Hiring. Set `enabled: true` in `state/profile/channels.yaml` for the chosen ones; set the `location` / `geo` fields from the profile.
+1. Ask which channels to enable: SEEK (Australia), LinkedIn Jobs, LinkedIn hiring posts, HN Who is Hiring. Set `enabled: true` in `<profile>/channels.yaml` for the chosen ones; set the `location` / `geo` fields from the profile.
 2. For SEEK and LinkedIn, the login is theirs to do: tell them to run `! npm run login:seek` and `! npm run login:linkedin`. Each opens a browser; they log in once; the session persists under `state/channels/`. Wait for them to say it is done, then re-run the check.
 3. Ask whether they use SEEK's "save job" feature and explain the rule in one line: a saved job is an order to apply, regardless of score (`references/harness/saved-jobs-rule.md`).
 
@@ -75,7 +77,7 @@ Explain the two lanes in three sentences: one-click channels (SEEK Quick Apply, 
 
 When `ready_for_autopilot: true`, print the closing brief:
 
-- what runs at 07:00 and where the journal lands (`state/journal/YYYY-MM-DD.md`, "Sent unattended" / "Parked by autopilot")
+- what runs at 07:00 and where the journal lands (`<journal>/YYYY-MM-DD.md` in file mode, the run records in Twenty on the Twenty store; "Sent unattended" / "Parked by autopilot")
 - how to stop everything (`kill_switch: true`)
 - the three commands they will use most: `/pipeline`, `/review-drafts`, `/manual-applications`
 - that `state/` is git-ignored and never leaves the machine
@@ -89,7 +91,7 @@ Stage 9 only reports: whether `~/Library/LaunchAgents/com.job-hunt-harness.ui.pl
 Tell them in one line what the UI is: the local approval surface, same decisions as the Sheet Tray, no credentials needed. Then offer two commands:
 
 - run it when they want it: `npm run ui -- --open`
-- keep it running across reboots: `bash scripts/install-ui-launchd.sh` (logs to `state/journal/launchd/ui.log`, remove with `--uninstall`)
+- keep it running across reboots: `bash scripts/install-ui-launchd.sh` (logs to `<journal>/launchd/ui.log`, remove with `--uninstall`)
 
 If they want it on their phone, say the two conditions in one sentence: reach the machine over Tailscale or the LAN, and start it with `--host <that address>` plus a long random `HARNESS_UI_TOKEN` (the plist has the line commented out, ready to fill). Never put a token in the journal.
 

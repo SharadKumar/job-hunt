@@ -1,27 +1,118 @@
 # Job-Hunt Career Harness
 
-A fork-friendly harness that runs a contractor's job hunt as a controlled loop: it scans chosen channels, classifies and scores roles against your positionings, composes CVs and cover letters in your voice under deterministic quality gates, submits one-click applications on the channels you put on autopilot, and hands everything else to you as a prepared package. Cross-CLI: works with **Claude Code** (primary) or **Codex CLI** (best-effort).
+An agent harness that helps a contractor or freelancer find and win work. It searches the job channels you choose, qualifies each role against your positionings, prepares CVs and cover letters in your own voice, applies on the one-click channels you allow, and hands everything else to you as a ready package. You stay in control: the agents prepare and propose, and nothing outside the one-click lane is sent without you.
 
-**Unattended sends happen only on the one-click autopilot channels (SEEK Quick Apply, LinkedIn Easy Apply), only when the machine gates pass, and only while `autopilot.enabled` is on and the kill switch is off. Everything else (external ATS portals, recruiter and hiring-manager messages, LinkedIn comments and DMs) stops at a draft or a prepared manual package and needs you present.**
+It runs on Claude Code (primary) or Codex CLI (best effort), on your own machine.
 
-New here? Jump to [Getting started](#getting-started-new-person) or [Developer onboarding](#developer-onboarding).
+## What you get
 
-## What this is
+| Area | What the harness does |
+|---|---|
+| Find | Scans job boards, recruiter sites and hiring posts on a schedule, removes duplicates across channels, and closes adverts once they expire. |
+| Qualify | Classifies each role (contract or permanent, seniority, rate, location, red flags) and scores it against your positionings, with the reasons shown. A role you save on SEEK is treated as an order to apply. |
+| Pursue | Composes an ATS-safe CV for the best-fitting positioning and a cover letter in your voice. Independent critics check every CV and letter, and deterministic gates check slop, voice, page fill and that no claim goes beyond your CV source. |
+| Apply | Submits one-click applications (for example SEEK Quick Apply) when every gate passes and autopilot is on. External portals and recruiter messages become prepared packages and drafts for you. |
+| Track | Keeps every role, status change and submission in a pipeline with an audit trail, plus a daily summary of what was sent and what needs you. |
+| Stay in control | A kill switch, daily caps and an autopilot switch you set. Agents never send recruiter email, comments or DMs; those stay drafts. |
 
-- **Hunts** roles across Seek, LinkedIn (Jobs + hiring Posts), AU IT recruiters (Hays, Talenza, Paxus, Robert Half, Peoplebank), HN Who-is-hiring, Wellfound, and direct-to-company.
-- **Scores** each role transparently against your profile (skills, seniority, rate, remote, red flags) — weights live in `state/profile/scoring-weights.yaml`, you tune them.
-- **Drafts** an ATS-safe CV variant tailored to the role + a cover letter in your voice. Closed-loop fit-to-pages (default ≤ 3) and ATS lint gate the output.
-- **Submits** on autopilot where a one-click adapter exists (SEEK Quick Apply, LinkedIn Easy Apply) once an independent letter-critic pass and the submission gate agree. A job you save on SEEK is an order to apply, regardless of score.
-- **Queues** everything else in a Google Sheet `Tray` tab and the manual queue. You tick `approve` / `reject` / `edit` / `hold` per row on your phone; attended `/apply`, `/submit-approved` or `/manual-applications` finishes them with you present.
-- **Tracks** the pipeline in `state/pipeline/pipeline.db`, mirrored to the Sheet.
-- **Surfaces** a short brief whenever you open the project locally.
+## How it works
+
+1. **Hunt.** Channel adapters collect new roles into the pipeline.
+2. **Classify and score.** Deterministic rules plus a bounded model decision layer (Jev) qualify each role; scoring weights are yours to tune.
+3. **Draft.** Writer subagents compose the CV and letter from your CV source only; critics and gates review them.
+4. **Decide.** You approve, hold or reject prepared packages in the local UI (or an optional Google Sheet on your phone). Answers to new screening questions and keyword questions come to you the same way.
+5. **Submit.** The autopilot lane sends one-click applications that pass every gate. Everything else waits for you.
+6. **Report.** Each run writes a summary and journal entry; escalations list exactly what needs you.
+
+By default your data lives in local files under `state/` (SQLite for the pipeline). With `HARNESS_STORE=twenty` it lives in a self-hosted Twenty workspace instead: each run reads your documents from the workspace into a temporary cache and writes run records back. File mode stays the default until the cutover; see [Status](#status).
+
+## Status
+
+| Capability | Status |
+|---|---|
+| Channel hunting, dedup, expiry | Works today |
+| Classification (Jev) and scoring | Works today |
+| CV and cover-letter composition with critics and gates | Works today |
+| One-click autopilot submissions (SEEK Quick Apply; LinkedIn Easy Apply adapter exists) | Works today |
+| Local approval UI, optional Google Sheet tray, daily summary | Works today |
+| Interview prep, follow-up drafts, rate checks | Works today (skills) |
+| Pre-commit guard against committing personal data or secrets | Works today |
+| Twenty store mode (`HARNESS_STORE=twenty`): pipeline rows, your documents materialised per run, run records instead of journal files, changes to your documents raised as proposals | Opt-in preview; application packages are not yet uploaded to the workspace |
+| Workspace UI (boards, record pages, buttons, in-app PDF preview) as the only store, with local data files retired | Coming |
+| Agents propose, you confirm with one record; alerts delivered once through the workspace | Coming |
+| Engagement tracking after a win | Coming |
+| Contracting-only mail sync and recruiter email drafts in your mailbox | Coming |
+| An external assistant (Grok) working through summaries and proposals | Coming |
+
+## Get started
+
+You need macOS or Linux, Node 20 or later, Git, Claude Code or Codex CLI, your master CV as a `.docx`, and an account on at least one job channel (for example SEEK).
+
+1. **Clone and install.**
+
+   ```bash
+   git clone <your fork's URL> job-hunt && cd job-hunt
+   npm install                                  # also installs the pre-commit guard
+   npx playwright install chromium              # renders CVs and drives the channels
+   brew install poppler                         # counts PDF pages (apt install poppler-utils on Linux)
+   ```
+
+2. **Add your credentials.** Copy `.env.example` to `.env` and set `HARNESS_CLI` (`claude` or `codex`); the Google variables are only for the optional Sheet. Put the Jev model key in the ignored `.env.local` as `AI_GATEWAY_API_KEY`. Jev is the classification layer; the key is a Vercel AI Gateway API key, created in the Vercel dashboard under AI Gateway. Claude Code or Codex uses its own sign-in.
+
+   ```bash
+   cp .env.example .env
+   echo 'AI_GATEWAY_API_KEY=<your key>' >> .env.local
+   ```
+
+3. **Create your profile.** Open the agent in the repo and run the setup skill. It scaffolds `state/profile/` from `templates/profile/` (the templates show the expected shape of each file) and asks you for the facts it needs.
+
+   ```bash
+   claude            # or: codex
+   > /setup
+   ```
+
+   Your inputs, all kept under `state/profile/`:
+
+   | File | What goes in it |
+   |---|---|
+   | `profile.md` | Who you are, target roles, day rate, work arrangement, citizenship and clearance, red flags |
+   | `cv-source.md` | Your master CV, converted from your `.docx` with `npm run markdownify:cv -- --source <path>`. It is the only evidence any CV or letter may use |
+   | `voice-samples.md` | Three to five emails or posts you wrote, so letters sound like you |
+   | `resumes.yaml` | Your positionings (for example "solution architect", "delivery manager"), proposed by `/onboarding` from your CV |
+   | `channels.yaml` | Which job channels to search, and with what queries |
+   | `screening-answers.yaml` | Answers to common application questions |
+   | `submission-policy.yaml` | Kill switch, autopilot channels and daily caps |
+
+   Everything under `state/` is ignored by git (apart from two example files in `state/org/`), and the pre-commit guard blocks it as well, so personal data never enters the repository.
+
+4. **Confirm your positionings and approve your baseline CVs.** `/setup` hands off to `/onboarding`, which proposes positionings from your CV for you to confirm, then to `/resume-review`, which renders each positioning's CV, runs the critic, and asks you to approve it.
+
+5. **Sign in to your channels once.** `npm run login:seek` (and `npm run login:linkedin` if enabled) opens a browser for you to sign in. The harness never signs in for you.
+
+6. **First run.** Run `/hunt` to search, then `/daily` for a full pass. Review what it prepared with `npm run ui` (local UI at `http://127.0.0.1:7788`) or `/review-drafts`.
+
+7. **Schedule it.** `HARNESS_CLI=claude bash scripts/install-launchd.sh` (macOS) runs the daily pass every two hours on weekdays from 07:00 to 17:00; the script defaults to Codex if `HARNESS_CLI` is unset. On Linux, add a cron line that runs `scripts/daily.sh`.
+
+8. **Turn autopilot on when you're ready.** We recommend at least one attended `/apply` first. `/setup` then asks whether to switch autopilot on and writes `autopilot.enabled` and the channels into `state/profile/submission-policy.yaml`; `kill_switch: true` in the same file stops every send.
+
+After the first run you get a daily summary of what was sent, what needs you and how the queue moved, in `state/journal/summary/`. `npm run setup:check` tells you which setup stage is still open; [Setup stages in detail](#setup-stages-in-detail) lists them.
+
+## For agents
+
+If you are an AI agent working in this repository:
+
+- Read `AGENTS.md` first; it is the contract. Then read `state/profile/profile.md` for the person you work for.
+- Workflows are skills in `.claude/skills/<name>/SKILL.md` (`/daily`, `/hunt`, `/apply`, `/review-drafts`, `/resume-render` and more). Follow the skill body.
+- Use the npm scripts and `tools/`; every tool prints one JSON object. Read pipeline rows with `npm run pipeline -- get <id>` or `list`, never from exported files.
+- Never send, contact or confirm on the person's behalf outside the one-click autopilot lane, and never treat a tool failure as a pass.
+- Never write personal details into framework files, and never commit anything under `state/`.
 
 ## Non-goals
 
-- No unattended sends outside the one-click autopilot adapters. A Sheet `approve` on any non-autopilot channel authorises preparation only; external ATS portals and every other channel need you present for that exact package.
-- No auto-sent recruiter email. Drafts only, saved in the opportunity's archive for you to send from your own client.
-- No LinkedIn auto-comment / auto-DM. Drafts only; you send from your client.
-- No two-way Sheet sync beyond the `Action` + `Edits` columns. The Sheet is otherwise a read-only mirror, and optional: `sheet.enabled: false` retires it in favour of the local UI.
+- No unattended sends outside the one-click autopilot adapters. Approving a package on any other channel authorises preparation only; external portals need you present.
+- No auto-sent recruiter email. Drafts only, saved for you to send from your own client.
+- No LinkedIn auto-comment or auto-DM. Drafts only.
+- No two-way Sheet sync beyond the Tray's `Action` and `Edits` columns. The Sheet is optional; `sheet.enabled: false` retires it in favour of the local UI.
 
 ## Architecture
 
@@ -93,7 +184,7 @@ Profile  →  picks several  →  Resumes
 | `state/profile/` | Identity, voice rules, slop banlist, resume list, screening answers, scoring weights, channel preferences, canonical CV content. | Per-user (you) |
 | `state/pipeline/`, `state/audit/`, `state/journal/`, `state/market/`, `state/channels/` | Runtime state: opportunities, audit log, daily digests, market intel, browser session cookies. | Per-user (auto-written) |
 
-Fork the repo + drop your own `state/profile/` content + opt-in your channels + approve your baselines = working harness. See [Getting started](#getting-started-new-person) for the exact sequence and [Privacy boundary](#privacy-boundary-and-open-sourcing) for what must never leave your machine.
+Fork the repo + drop your own `state/profile/` content + opt-in your channels + approve your baselines = working harness. See [Get started](#get-started) for the exact sequence and [Privacy boundary](#privacy-boundary-and-open-sourcing) for what must never leave your machine.
 
 ### Repository layout
 
@@ -311,7 +402,7 @@ Default outputs are `state/profile/profile-report.html`, `state/profiles/<person
 - Full multi-user / team workflow UI. v1 has optional org resume-type and voice guardrails, path support for `state/profiles/<person-id>`, validation/list/matrix CLIs, and no database or permissions model.
 - Direct provider billing. The harness assumes your CLI (Claude Code, Codex) is already authenticated; it doesn't ask for API keys.
 
-## Getting started (new person)
+## Setup stages in detail
 
 The fastest path is to let the agent do it. After the three commands below, open Claude Code (or Codex) in the repo and type `/setup`. It runs `npm run setup:check`, sees what is missing, and walks you through each stage with short question batches, re-checking as it goes, until autopilot is on. Budget an afternoon; most of it is your own profile content and one CV review, not tooling.
 

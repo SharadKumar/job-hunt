@@ -52,12 +52,15 @@ import { get as getOpportunity, load as loadPipeline, setStatus, type Opportunit
 import path from "node:path";
 import { readYamlIfExists } from "./lib/fs.ts";
 import { repoPath } from "./repo-root.ts";
-import { resolveProfileContext } from "./profile-context.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 import { canPromoteFromClassification } from "./classification.ts";
+import { pipelineFile } from "./store/paths.ts";
 
 export const TABS = ["Pipeline", "Tray", "Followups", "Contacts", "Market", "Summary"];
-const APPROVAL_QUEUE_PATH = repoPath("state/pipeline/approval-queue.json");
-const SCORING_WEIGHTS_PATH = repoPath("state/profile/scoring-weights.yaml");
+const APPROVAL_QUEUE_PATH = pipelineFile("approval-queue.json");
+// Resolved on use: resolving the profile at import would materialise it from
+// the store, so importing this module could fail when the store is down.
+const scoringWeightsPath = () => profilePath("scoring-weights.yaml");
 const REASON_MAX = 160;
 
 export const TRAY_HEADER = [
@@ -235,11 +238,14 @@ export const SHEET_DISABLED = "sheet.enabled=false";
  * Is the Google Sheet mirror switched on for this profile?
  *
  * `sheet.enabled: false` in submission-policy.yaml retires the Sheet in favour
- * of the local UI. A missing block, a missing file or an unreadable one all
+ * of the local UI, and the Twenty store retires it outright. A missing block, a missing file or an unreadable one all
  * mean enabled: the Sheet is the older surface, so the flag only ever turns it
  * off deliberately, never by accident.
  */
 export async function sheetEnabled(profileId?: string | null): Promise<boolean> {
+  // The Twenty store retires the Sheet (plan F7): Twenty is the approval
+  // surface, and a Tray pull would apply approvals outside its verified decisions.
+  if ((process.env.HARNESS_STORE ?? "").toLowerCase() === "twenty") return false;
   const policyPath = path.join(resolveProfileContext(profileId).profileDir, "submission-policy.yaml");
   const policy = await readYamlIfExists<any>(policyPath, {}).catch(() => ({}));
   return policy?.sheet?.enabled !== false;
@@ -416,7 +422,7 @@ export async function runPush(deps: SyncDeps): Promise<SyncReport> {
   await ensureTabs(sheets, spreadsheetId);
 
   const all = await loadPipeline();
-  const scoringWeights = (await readYamlIfExists<any>(SCORING_WEIGHTS_PATH, {})) ?? {};
+  const scoringWeights = (await readYamlIfExists<any>(scoringWeightsPath(), {})) ?? {};
   const pipelineSheetMinScore = scoringWeights.thresholds?.pipeline_sheet_min_score ?? 0;
 
   // Keep the operational view useful without requiring a manual Sheet sort:

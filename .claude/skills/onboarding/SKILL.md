@@ -1,11 +1,13 @@
 ---
 name: onboarding
-description: One-time career intake for a new profile. Reads the person's CV plus any supplementary URLs, proposes 3-6 credible resume positionings, confirms them with the user, and writes state/profile/resumes.yaml. Use for first setup after a fork or when resumes.yaml has no active entries. For later strategy changes, use resume-strategy instead.
+description: One-time career intake for a new profile. Reads the person's CV plus any supplementary URLs, proposes 3-6 credible resume positionings, confirms them with the user, and writes <profile>/resumes.yaml. Use for first setup after a fork or when resumes.yaml has no active entries. For later strategy changes, use resume-strategy instead.
 ---
+
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
 
 # /onboarding: create the initial resume positionings
 
-This is the first-run career intake. It turns a person's CV evidence into the initial `state/profile/resumes.yaml` strategy file.
+This is the first-run career intake. It turns a person's CV evidence into the initial `<profile>/resumes.yaml` strategy file.
 
 It is intentionally agent-driven. There are no paid SDK calls. The agent does the judgement work using its own context; `tools/onboarding.ts` is deterministic glue for loading context and writing validated YAML.
 
@@ -21,7 +23,7 @@ Resolve the repo root first (`references/harness/repo-root.md`).
 
 ### 1. Check prerequisites
 
-- `state/profile/cv-source.md` exists and contains at least 3 role headers under "Professional Experience" (5 or more gives the positioning proposals more to work with).
+- `<profile>/cv-source.md` exists and contains at least 3 role headers under "Professional Experience" (5 or more gives the positioning proposals more to work with).
 - If not, prompt the user for their master CV path and run `npm run markdownify:cv -- --source <path-to-master-cv.docx>` to generate it.
 
 ### 2. Collect supplementary URLs
@@ -54,7 +56,7 @@ Guidance:
 
 - Be specific. "Solution Architect" beats "Consultant".
 - Include stretch positionings only when the CV or supplied URLs provide real evidence.
-- Stable ids matter because downstream artefacts live under `state/profile/resumes/<id>/`.
+- Stable ids matter because downstream artefacts live under `<profile>/resumes/<id>/`.
 
 For fast-moving domains, tools, or market labels named by the user or strongly implied by the CV, read `.claude/skills/resume-strategy/references/market-lens-discovery.md` and run a short market-discovery pass before finalising candidates. Examples: "Claude Code", "applied AI", "agent platforms", "AI engineering leadership".
 
@@ -88,7 +90,7 @@ Critical grounding rules:
 - Never invent experiences or evidence: every claim in `cover_letter_angle` and `should` must be traceable to cv-source.md.
 - `market_lens` may describe what the market expects even when the CV is weak, but it must distinguish safe aliases from proof questions. `acceptable_if_source_mentions` must contain source-specific evidence patterns, not generic keywords. Do not turn proof questions into rendered claims.
 - If a proof question is valuable but unanswered, add it to `market_lens.proof_questions`; do not ask broad "what else?" questions.
-- When a user answers a proof question during onboarding, record the answer in `state/profile/market-confirmations.yaml`. Confirmed facts still must be added to `cv-source.md` before `resume-writer` can render them.
+- When a user answers a proof question during onboarding, record the answer in `<profile>/market-confirmations.yaml`. Confirmed facts still must be added to `cv-source.md` before `resume-writer` can render them.
 - Keep evidence weighting explicit. If a project is technically relevant but weak as employer proof (side project, old work, small scale), put it under `support` or `de_emphasize` rather than letting resume-writer over-feature it.
 - Never invent rate units or channel ids.
 - Do not pre-compose summaries here. `resume-writer` composes positioning-specific summaries at render time from `cover_letter_angle` + featured-experience evidence in cv-source.md.
@@ -103,7 +105,7 @@ For each confirmed positioning, run:
 tsx tools/onboarding.ts write-resume --json '<json>'
 ```
 
-The script validates required fields and appends/replaces the entry under `resumes:` in `state/profile/resumes.yaml`.
+The script validates required fields and appends/replaces the entry under `resumes:` in `<profile>/resumes.yaml`.
 
 ### 8. Verify and route next step
 

@@ -23,7 +23,7 @@ import path from "node:path";
 import os from "node:os";
 import mammoth from "mammoth";
 import YAML from "yaml";
-import { repoPath } from "../repo-root.ts";
+import { profilePath } from "../profile-context.ts";
 
 type CliArgs = {
   source: string;
@@ -47,7 +47,7 @@ const FALLBACK_SOURCE = "~/Documents/Resume/master-cv.docx";
  * documented default; malformed is a stop.
  */
 async function loadDefaultSource(): Promise<{ source: string; meta: string }> {
-  const metaPath = repoPath("state/profile/cv/meta.yaml");
+  const metaPath = profilePath("cv", "meta.yaml");
   let raw: string;
   try {
     raw = await fs.readFile(metaPath, "utf8");
@@ -67,7 +67,7 @@ async function loadDefaultSource(): Promise<{ source: string; meta: string }> {
 
 async function parseArgs(argv: string[]): Promise<CliArgs> {
   let source = "";
-  let out = repoPath("state/profile/cv-source.md");
+  let out = profilePath("cv-source.md");
   let dryRun = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--source") source = expandHome(argv[++i]);
@@ -142,7 +142,7 @@ async function main() {
   await fs.writeFile(out, md, "utf8");
 
   // Update meta.yaml's parsed_at timestamp.
-  const metaPath = repoPath("state/profile/cv/meta.yaml");
+  const metaPath = profilePath("cv", "meta.yaml");
   try {
     const raw = await fs.readFile(metaPath, "utf8");
     const meta = (YAML.parse(raw) ?? {}) as Record<string, unknown>;

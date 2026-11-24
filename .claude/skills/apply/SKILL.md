@@ -3,6 +3,8 @@ name: apply
 description: Submit one specific opportunity end-to-end interactively, right now. Use when the user names a specific opportunity and says "apply to this one", "submit this", "send my application for X", "push this through now", or supplies an opportunity-id with intent to finalise. Also the production entry for Stage 2 (per-opportunity package authoring + submission). Always requires explicit per-submission confirmation; honours validation gate and screening-answer flow. Argument is the opportunity-id.
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /apply: assemble + submit one opportunity's application package
 
 One-shot, synchronous. The skill **orchestrates** Stage 2: it spawns `resume-writer` (only if the opportunity needs JD-tailoring) AND `cover-letter-writer` as **peer subagents**, then bundles the package, then submits (or routes to manual). The skill is the orchestrator because subagents can't spawn other subagents: the apply flow needs three concurrent subagents (resume-writer, cover-letter-writer, optionally submission-runner), and only the skill layer can coordinate them.
@@ -56,13 +58,13 @@ The screener reads the JD's vocabulary, not yours. This step reconciles the JD's
 
 Run this on the **tailor path always**. On the **baseline path, run it only when `classification.profile_relevance` ≥ 80, and report-only**, because no baseline is re-composed here, so the plan just reports coverage and banks answers for the next `/resume-render`.
 
-1. Write the JD snapshot to `state/pipeline/archive/<opportunity-id>/jd.md` first (step 5 needs it anyway; WebFetch the URL if `description` is truncated), then:
+1. Write the JD snapshot to `<archive>/<opportunity-id>/jd.md` first (step 5 needs it anyway; WebFetch the URL if `description` is truncated), then:
 
    ```
-   npm run resume:keywords -- --resume <resume-id> --jd state/pipeline/archive/<opportunity-id>/jd.md --opportunity <opportunity-id>
+   npm run resume:keywords -- --resume <resume-id> --jd <archive>/<opportunity-id>/jd.md --opportunity <opportunity-id>
    ```
 
-   The plan lands at `state/pipeline/archive/<opportunity-id>/keyword-plan.json`.
+   The plan lands at `<archive>/<opportunity-id>/keyword-plan.json`.
 
 2. If `questions` is empty, skip to step 5 of this sub-sequence. Otherwise ask them via `AskUserQuestion` in batches of **at most 4**, highest-value first (must-have terms before nice-to-have). The four reusable options are exactly:
    - `Confirm and update source (Recommended)`
@@ -75,7 +77,7 @@ Run this on the **tailor path always**. On the **baseline path, run it only when
 3. Record every answer deterministically, and never hand-edit the ledger:
 
    ```
-   npm run resume:keyword-confirm -- record --plan state/pipeline/archive/<opportunity-id>/keyword-plan.json \
+   npm run resume:keyword-confirm -- record --plan <archive>/<opportunity-id>/keyword-plan.json \
      --term "<term>" --status confirmed|not_applicable|familiarity|pending --opportunity <opportunity-id> --origin attended
    ```
 
@@ -88,7 +90,7 @@ Run this on the **tailor path always**. On the **baseline path, run it only when
 
 5. Re-run the same `resume:keywords` command so the plan reflects the patched corpus.
 
-6. **Tailor path**: pass `--keyword-plan state/pipeline/archive/<opportunity-id>/keyword-plan.json` in the resume-writer prompt in step 3, and tell it the plan is a surfacing contract (every grounded / alias-grounded / confirmed term appears at least once, in the JD's spelling). **Baseline path**: don't re-render here; report the coverage numbers in step 6 and leave the answers for `/resume-render`.
+6. **Tailor path**: pass `--keyword-plan <archive>/<opportunity-id>/keyword-plan.json` in the resume-writer prompt in step 3, and tell it the plan is a surfacing contract (every grounded / alias-grounded / confirmed term appears at least once, in the JD's spelling). **Baseline path**: don't re-render here; report the coverage numbers in step 6 and leave the answers for `/resume-render`.
 
 Never ask these questions from an unattended run. See "When the daily orchestrator runs apply" below.
 
@@ -109,11 +111,11 @@ Agent(subagent_type: "cover-letter-writer",
 ```
 Agent(subagent_type: "resume-writer",
       description: "Tailored resume for <opp-id>",
-      prompt: "Compose tailored resume for <resume-id> with --tailor against JD at <jd-path>, --keyword-plan <plan-path>. Output dir: state/pipeline/archive/<opportunity-id>/. Seed from the approved baseline's *.composition.json, *.provenance.json sidecar and bench in state/profile/resumes/<resume-id>/; change summary emphasis, headline, evidence order, the screener block and a bounded set of bullets, not unchanged sections. Iterate through `npm run resume:audit --auto-fit` only and return your standard JSON quality report.")
+      prompt: "Compose tailored resume for <resume-id> with --tailor against JD at <jd-path>, --keyword-plan <plan-path>. Output dir: <archive>/<opportunity-id>/. Seed from the approved baseline's *.composition.json, *.provenance.json sidecar and bench in <profile>/resumes/<resume-id>/; change summary emphasis, headline, evidence order, the screener block and a bounded set of bullets, not unchanged sections. Iterate through `npm run resume:audit --auto-fit` only and return your standard JSON quality report.")
 ```
 
 On the baseline path: skip resume-writer. Verify the resume's baseline exists + is approved via `npm run resume:approve -- --check <resume-id>`:
-- Exit 0 (approved) → use the baseline from `state/profile/resumes/<resume-id>/`.
+- Exit 0 (approved) → use the baseline from `<profile>/resumes/<resume-id>/`.
 - Exit 1 (stale) → ask: "Baseline drifted since approval; re-run /resume-render before apply? (recommended) / proceed with stale baseline / cancel?"
 - Exit 2 (fresh/missing) → halt: "No approved baseline for `<resume-id>`; run /resume-render first."
 
@@ -137,14 +139,14 @@ npm run resume:term-grounding -- --content-json <composition.json> --jd <archive
 Skill(skill: "resume-critique", args: "<resume-id> --rounds 2")
 ```
 
-Point it at the tailored composition in `state/pipeline/archive/<opportunity-id>/` rather than the baseline dir, since that is the artefact being sent. A tailored CV is exactly where duplicate bullets, a contradicted number and a rule-breaking framing appear, because the writer re-angled prose against a JD. A `block` verdict stops this application: surface the findings and do not bundle. A `revise` verdict at the round cap bundles with the open findings named in step 7's confirmation.
+Point it at the tailored composition in `<archive>/<opportunity-id>/` rather than the baseline dir, since that is the artefact being sent. A tailored CV is exactly where duplicate bullets, a contradicted number and a rule-breaking framing appear, because the writer re-angled prose against a JD. A `block` verdict stops this application: surface the findings and do not bundle. A `revise` verdict at the round cap bundles with the open findings named in step 7's confirmation.
 
 The baseline path skips this: the baseline was already critiqued and approved by `/resume-render` or `/resume-review`, and `npm run resume:approve` refused it otherwise.
 
 ### 5. Bundle the package
 
-Create `state/pipeline/archive/<opportunity-id>/` and place:
-- Resume: copy baseline (glob `state/profile/resumes/<resume-id>/*.docx` / `*.pdf`, where filenames follow `{Profile-Name}_{Resume-Label}.ext`, e.g. `Jane-Citizen_Solution-Architect.pdf`; don't assume a literal name) OR tailored artefacts (from resume-writer's output).
+Create `<archive>/<opportunity-id>/` and place:
+- Resume: copy baseline (glob `<profile>/resumes/<resume-id>/*.docx` / `*.pdf`, where filenames follow `{Profile-Name}_{Resume-Label}.ext`, e.g. `Jane-Citizen_Solution-Architect.pdf`; don't assume a literal name) OR tailored artefacts (from resume-writer's output).
 - Cover letter: from cover-letter-writer's output (`cover-letter.md`).
 - JD snapshot: write the JD text to `jd.md`, prefixed with the pipeline record's exact title, advertiser and source URL (WebFetch the URL if `description` is truncated). The critic must receive this provenance so a verified advertiser name is not mistaken for an invented claim. Label an advertiser as a recruiter only when evidence establishes that relationship.
 - `keyword-plan.json`: the final (post-patch, post-composition) keyword plan from step 2b.
@@ -163,7 +165,7 @@ Ask via `AskUserQuestion`: "Submit now (recommended if everything green) / let m
 
 ### 7. Submit (only on user confirmation)
 
-Check the channel's `auto_submit` in `state/profile/submission-policy.yaml`:
+Check the channel's `auto_submit` in `<profile>/submission-policy.yaml`:
 - `true` → spawn `submission-runner` subagent for this channel; it walks the channel-specific submit flow (Quick Apply / Easy Apply / recruiter email Gmail draft / portal form). Pauses on unknown screening questions; resumes after user answers.
 - `false` → route to `/manual-applications` mode: open the URL in browser, copy the pre-filled text from the bundle, mark done when the user confirms back.
 

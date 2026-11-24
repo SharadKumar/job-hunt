@@ -1,5 +1,7 @@
 # Keyword triage rules
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 `npm run resume:keyword-triage` decides every pending `kind: keyword` row `keep` or `reject`, and names the rule. The rules are pure functions in `tools/resume/keyword-triage.ts`, each unit-tested against its own examples in `tests/keyword-triage.test.ts`. They decide mechanical facts only. Whether the person HAS a skill is never decided here.
 
 ## Order
@@ -35,7 +37,7 @@
 
 `--apply` records a reject as `status: not_applicable`, `origin: triage`, `notes: "triage: <rule>"`. That is reversible and it only stops the resume claiming the term. It is never a statement about the person.
 
-At `queue` time the same rules run BEFORE the row is created, and a refused term is appended to `state/profile/keyword-rejects.jsonl` (`{at, term, rule, opportunity_id, resume_id}`) instead of entering the ledger, so the same junk cannot come back.
+At `queue` time the same rules run BEFORE the row is created, and a refused term is appended to `<profile>/keyword-rejects.jsonl` (`{at, term, rule, opportunity_id, resume_id}`) instead of entering the ledger, so the same junk cannot come back.
 
 ## Changing a rule
 

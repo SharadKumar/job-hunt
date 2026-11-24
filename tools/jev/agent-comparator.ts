@@ -9,6 +9,7 @@ import { sha256 } from "../lib/hash.ts";
 import { load, type Opportunity } from "../pipeline.ts";
 import { repoPath } from "../repo-root.ts";
 import { currentClassificationContext, currentJevCacheIdentity } from "./classifier.ts";
+import { writeBenchmarkPair } from "./private-benchmarks.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -280,9 +281,8 @@ async function main(): Promise<void> {
     model_usage: Object.fromEntries([...usageByModel].map(([name, usage]) => [name, { ...usage, cost_usd: Number(usage.cost_usd.toFixed(6)) }])),
     records,
   };
-  const out = repoPath(outFile);
-  await fs.mkdir(path.dirname(out), { recursive: true });
-  await fs.writeFile(out, JSON.stringify(report, null, 2) + "\n");
+  // Rationales quote the person's evidence: full report to state/, redacted copy to the public path.
+  const { public: out } = await writeBenchmarkPair(repoPath(outFile), report);
   console.log(JSON.stringify({ out, cohort: rows.length, batches: batches.length, input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: report.metrics.generic_agent_cost_usd, recorded_cost_usd: report.metrics.recorded_agent_cost_usd, wall_ms: wallMs, false_low: falseLow.length, false_high: falseHigh.length }));
 }
 

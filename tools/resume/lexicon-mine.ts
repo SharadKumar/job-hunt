@@ -31,8 +31,8 @@ import { getResume } from "../resumes.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { normalise, stem, STOPWORDS, phraseInText, tokenInText, buildStemSet } from "./keyword-lexicon.ts";
 import { loadKeywordClouds, resolveCloudsForType } from "../keyword-clouds.ts";
-import { repoPath } from "../repo-root.ts";
 import { list as listOpportunities } from "../pipeline.ts";
+import { archiveRoot } from "../store/paths.ts";
 
 /** 1-based cv-source line numbers whose normalised text contains the (normalised, stem-tolerant) term. */
 function corpusLinesFor(term: string, corpusText: string, limit = 5): number[] {
@@ -125,7 +125,7 @@ export async function collectCorpus(opts: {
   pipelinePath?: string;
   archiveDir?: string;
 }): Promise<{ docs: MinedDoc[]; titles: string[]; matchingRows: number; backgroundDocs: MinedDoc[] }> {
-  const archiveDir = opts.archiveDir ?? repoPath("state/pipeline/archive");
+  const archiveDir = opts.archiveDir ?? archiveRoot();
 
   // The pipeline lives in SQLite. Reading state/pipeline/opportunities.json by
   // hand used to yield an empty corpus the moment that file was renamed aside

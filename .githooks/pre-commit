@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks commits that carry personal state, .env files, secrets or private
+# terms. Installed by `npm install` (the prepare script sets core.hooksPath).
+exec npx --no-install tsx tools/leak-check.ts

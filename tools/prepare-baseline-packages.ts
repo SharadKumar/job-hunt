@@ -15,6 +15,8 @@ import { load, patchMany, type Opportunity } from "./pipeline.ts";
 import { canAuthoriseApplication } from "./classification.ts";
 import { sha256 } from "./lib/hash.ts";
 import { repoPath, repoRoot } from "./repo-root.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveDir as packageDir } from "./store/paths.ts";
 
 /** Repo-relative form of a path inside the repo; absolute paths outside it stay as they are. */
 function relToRepo(absolute: string): string {
@@ -63,7 +65,7 @@ async function main(): Promise<void> {
 
     const resumeId = classification.matched_resume_id;
     if (!resumeId) throw new Error(`${id}: matched_resume_id is missing`);
-    const baselineDir = path.join(repoPath("state/profile/resumes"), resumeId);
+    const baselineDir = profilePath("resumes", resumeId);
     const baselineMetadataPath = path.join(baselineDir, "metadata.json");
     const baseline = JSON.parse(await fs.readFile(baselineMetadataPath, "utf8")) as BaselineMetadata;
     if (
@@ -74,7 +76,7 @@ async function main(): Promise<void> {
       throw new Error(`${id}: ${resumeId} baseline is not currently approved`);
     }
 
-    const archiveDir = path.join(repoPath("state/pipeline/archive"), id);
+    const archiveDir = packageDir(id);
     await fs.mkdir(archiveDir, { recursive: true });
 
     // Reference, not copy. A baseline package used to copy the whole approved

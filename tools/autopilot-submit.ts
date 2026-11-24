@@ -53,6 +53,9 @@ import { log as auditLog } from "./audit.ts";
 import { reencodeScreenshots } from "./archive-compact.ts";
 import { repoPath } from "./repo-root.ts";
 import type { SubmitPackage, SubmitResult } from "./channels/_interface.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveDir as packageDir, journalPath, resolveRepoRef } from "./store/paths.ts";
+import { isTwentyStore } from "./store/documents.ts";
 
 const exec = promisify(execFile);
 
@@ -91,7 +94,7 @@ function seekJobId(url: string): string | null {
 
 function frontHalfReportPath(runId: string): string | null {
   const date = runId.match(/^daily-(\d{4}-\d{2}-\d{2})(?:$|[-_])/)?.[1];
-  return date ? repoPath(`state/journal/front-half/${date}.json`) : null;
+  return date ? journalPath("front-half", `${date}.json`) : null;
 }
 
 /** The front-half report is also the run's channel-health checkpoint. Once a
@@ -130,21 +133,22 @@ async function resolveResumeDocx(opportunity: Opportunity, archiveDir: string): 
     // copy that used to sit in the package. submission-gate re-hashes it.
     const named = meta.resume?.ref ?? meta.resume?.docx;
     if (named) {
-      const abs = path.isAbsolute(named) ? named : repoPath(named);
+      const abs = resolveRepoRef(named);
       if (await exists(abs)) return { docx: abs, source: meta.resume?.ref ? "metadata.json baseline ref" : "metadata.json" };
       throw new Error(`metadata.json names a resume docx that does not exist: ${abs}`);
     }
   }
   const resumeId = opportunity.resumeId ?? opportunity.classification?.matched_resume_id;
   if (!resumeId) throw new Error("no metadata.json resume and no matched_resume_id to derive a baseline from");
-  const baselineDir = repoPath(`state/profile/resumes/${resumeId}`);
+  const baselineDir = profilePath("resumes", resumeId);
   const baselineMeta = path.join(baselineDir, "metadata.json");
   if (await exists(baselineMeta)) {
     const m = JSON.parse(await fs.readFile(baselineMeta, "utf8")) as { approval_status?: string; content_hash?: string; approved_hash?: string; artefacts?: { docx?: string } };
     if (m.approval_status !== "approved" || !m.content_hash || m.content_hash !== m.approved_hash) {
       throw new Error(`baseline ${resumeId} is not currently approved; refusing to derive a resume`);
     }
-    if (m.artefacts?.docx && (await exists(m.artefacts.docx))) return { docx: m.artefacts.docx, source: `baseline ${resumeId}` };
+    const docx = m.artefacts?.docx ? (isTwentyStore() ? resolveRepoRef(m.artefacts.docx) : m.artefacts.docx) : null;
+    if (docx && (await exists(docx))) return { docx, source: `baseline ${resumeId}` };
   }
   const files = (await fs.readdir(baselineDir)).filter((f) => f.endsWith(".docx"));
   if (files.length !== 1) throw new Error(`expected exactly one .docx under ${baselineDir}, found ${files.length}`);
@@ -235,7 +239,7 @@ export async function deferForChannelVerification(id: string, reason: string, ru
 export async function appendUnknownQuestion(
   opportunity: Pick<Opportunity, "id" | "company" | "title">,
   q: { text: string; context: string },
-  file = repoPath("state/profile/screening-answers.yaml"),
+  file = profilePath("screening-answers.yaml"),
 ): Promise<boolean> {
   let text = await fs.readFile(file, "utf8");
   const target = normaliseQuestion(q.text);
@@ -327,7 +331,7 @@ async function main() {
     finish(1);
   }
 
-  const archiveDir = repoPath(`state/pipeline/archive/${id}`);
+  const archiveDir = packageDir(id);
   const letterPath = path.join(archiveDir, "cover-letter.md");
   const jdPath = path.join(archiveDir, "jd.md");
   if (!(await exists(letterPath))) {
@@ -444,6 +448,23 @@ async function main() {
     finish(1);
   }
   const { submit, label: adapterLabel } = adapter as { submit: SubmitAdapter; label: string };
+  // On the Twenty store the send switch is the owner's own decisions, read
+  // fresh right before the claim (plan R44). Any doubt means no send, and the
+  // row stays approved for a later run.
+  if (!dryRun && (process.env.HARNESS_STORE ?? "").toLowerCase() === "twenty") {
+    const { readSendSwitch } = await import("./decisions/send-switch.ts");
+    const sw = await readSendSwitch({
+      url: process.env.TWENTY_API_URL ?? "",
+      key: process.env.TWENTY_API_KEY ?? "",
+      ownerMemberId: process.env.TWENTY_OWNER_MEMBER_ID ?? "",
+    });
+    if (!sw.allowed) {
+      summary.outcome = "send_switch_off";
+      summary.reason = sw.reason;
+      finish(1);
+    }
+    summary.notes.push(`send switch: ${sw.reason}`);
+  }
   if (!dryRun) {
     try {
       await setStatus(id, "submission_pending", `autopilot ${runId}: gate cleared, invoking ${adapterLabel}`, { actor: "autopilot" });

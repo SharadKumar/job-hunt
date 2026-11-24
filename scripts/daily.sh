@@ -2,7 +2,9 @@
 # scripts/daily.sh — wrapper used by launchd to fire the daily orchestrator.
 #
 # Picks the agent CLI via HARNESS_CLI (defaults to "claude" for existing installs).
-# Logs to state/journal/launchd/YYYY-MM-DD.log.
+# Logs to <journal>/launchd/YYYY-MM-DD.log, where <journal> is state/journal on
+# the SQLite store and the log folder state/logs/journal on the Twenty store
+# (the person reads run records in Twenty there).
 #
 # Three things launchd needs that a bare `claude -p` does not give us:
 #   * a watchdog — an agent CLI that wedges on a prompt would otherwise hold the
@@ -26,11 +28,33 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(bash "$(dirname "$0")/../.claude/hooks/repo-root.sh" "$(dirname "$0")")}"
 cd "$REPO_DIR"
 
+# The row store the tools use: HARNESS_STORE from the environment, then
+# .env.local, then .env (the order tools/jev/env.ts loads them), else sqlite.
+harness_store() {
+  local f v
+  if [ -n "${HARNESS_STORE:-}" ]; then printf '%s' "$HARNESS_STORE" | tr '[:upper:]' '[:lower:]'; return 0; fi
+  for f in "$REPO_DIR/.env.local" "$REPO_DIR/.env"; do
+    [ -f "$f" ] || continue
+    v=$(sed -n 's/^[[:space:]]*HARNESS_STORE=//p' "$f" | tail -1 | tr -d "\"' " | tr '[:upper:]' '[:lower:]')
+    if [ -n "$v" ]; then printf '%s' "$v"; return 0; fi
+  done
+  printf 'sqlite'
+}
+
 DATE=$(date '+%Y-%m-%d')
 unset HARNESS_SEEK_VERIFICATION_REQUIRED
-LOG_DIR="$REPO_DIR/state/journal/launchd"
+STORE=$(harness_store)
+if [ "$STORE" = "twenty" ]; then
+  # Tools resolve the store synchronously from the environment.
+  export HARNESS_STORE=twenty
+  JOURNAL_DIR="$REPO_DIR/state/logs/journal"
+else
+  JOURNAL_DIR="$REPO_DIR/state/journal" # scan:file-mode
+fi
+JOURNAL_REL="${JOURNAL_DIR#"$REPO_DIR"/}"
+LOG_DIR="$JOURNAL_DIR/launchd"
 LOG_FILE="$LOG_DIR/$DATE.log"
-SUMMARY_DIR="$REPO_DIR/state/journal/summary"
+SUMMARY_DIR="$JOURNAL_DIR/summary"
 mkdir -p "$LOG_DIR"
 
 # Rotate before writing today's log, so a wedged run still leaves the disk sane.
@@ -48,7 +72,7 @@ esac
 
 TIMEOUT_SEC="${HARNESS_TIMEOUT_SEC:-$(( ${HARNESS_TIMEOUT_MIN:-150} * 60 ))}"
 KILL_GRACE_SEC="${HARNESS_KILL_GRACE_SEC:-30}"
-PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in state/journal/front-half/$DATE.json. Also read state/journal/priority/$DATE.json if present: include its confirmed sends and blockers in today's journal, and never retry an uncertain priority attempt. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
+PROMPT="Invoke the 'daily' skill (at .claude/skills/daily/SKILL.md) and continue from the deterministic front half recorded in $JOURNAL_REL/front-half/$DATE.json. Also read $JOURNAL_REL/priority/$DATE.json if present: include its confirmed sends and blockers in today's journal, and never retry an uncertain priority attempt. Do not repeat Sheet pull, saved-job import, channel hunts, classification, scoring or deterministic dedup. You are running headlessly so take safe defaults at any decision fork and log them for the user to review."
 EXIT=0
 TIMED_OUT=0
 
@@ -100,8 +124,39 @@ run_cli() {
 
   FRONT_EXIT=0
   PRIORITY_EXIT=0
-  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
-    REPORT="$REPO_DIR/state/journal/front-half/$DATE.json"
+  # Fail closed on the Twenty store: no pipeline work and no sends when the
+  # workspace can't be read (plan E9). A no-op on the SQLite store.
+  PREFLIGHT_EXIT=0
+  if node -e 'process.exit(require("./package.json").scripts?.["twenty:preflight"] ? 0 : 1)' 2>/dev/null; then
+    npm run -s twenty:preflight || PREFLIGHT_EXIT=$?
+  fi
+  # Twenty store: apply the person's new decisions first (plan F11), so this
+  # run sees their approvals and refusals are recorded on the decision. The
+  # send switch never depends on this step: autopilot:submit re-derives it
+  # from the decisions themselves, so a failed intake is logged, not fatal.
+  if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ "$STORE" = "twenty" ]; then
+    npm run -s twenty:intake || echo "twenty intake failed (tolerated)"
+  fi
+  # Twenty store: materialise the person's documents into this run's cache
+  # (state/cache/run-<id>/profile), which every tool and agent reads through
+  # the profile resolver. A failed materialise stops the run like a failed
+  # preflight.
+  if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ "$STORE" = "twenty" ]; then
+    MATERIALISED=$(npm run -s store:materialise) || PREFLIGHT_EXIT=3
+    RUN_ID=$(printf '%s' "$MATERIALISED" | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{try{const j=JSON.parse(s.trim().split("\n").pop());process.stdout.write(j.ok&&j.runId?j.runId:"")}catch{}})')
+    if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ -n "$RUN_ID" ]; then
+      export HARNESS_RUN_ID="$RUN_ID"
+      echo "=== $(date -Iseconds) materialised documents for run $RUN_ID ==="
+    else
+      PREFLIGHT_EXIT=3
+      echo "=== $(date -Iseconds) document materialise failed: $MATERIALISED ==="
+    fi
+  fi
+  if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
+    echo "=== $(date -Iseconds) store preflight failed (exit $PREFLIGHT_EXIT); skipping all pipeline work and sends ==="
+    EXIT=$PREFLIGHT_EXIT
+  elif [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ]; then
+    REPORT="$JOURNAL_DIR/front-half/$DATE.json"
     if node -e '
       const fs = require("node:fs");
       const [file, localDate] = process.argv.slice(1);
@@ -122,10 +177,14 @@ run_cli() {
     # Prepared, critic-passed packages should not wait behind a long channel
     # discovery scan. The priority pass re-pulls decisions and expires explicit
     # deadlines before using the ordinary autopilot gate and adapter.
+    # Answer parked screening questions from the CV and what the person
+    # already said, so the send pass can resume those applications; only a
+    # question nothing covers stays for the person. Tolerated: it only adds answers.
+    npm run -s screening:resolve-open | tail -1 | cut -c1-400 || echo "screening resolve-open failed (tolerated)"
     PRIORITY_STARTED=$(date -u +%s)
     npm run -s daily:priority || PRIORITY_EXIT=$?
     echo "=== $(date -Iseconds) priority pass exit $PRIORITY_EXIT ==="
-    PRIORITY_REPORT="$REPO_DIR/state/journal/priority/$DATE.json"
+    PRIORITY_REPORT="$JOURNAL_DIR/priority/$DATE.json"
     if [ -f "$PRIORITY_REPORT" ] && node -e '
       const report = require(process.argv[1]);
       if (new Date(report.started_at).getTime() < (Number(process.argv[2]) - 1) * 1000 ||
@@ -137,12 +196,14 @@ run_cli() {
     fi
     npm run -s daily:front-half || FRONT_EXIT=$?
   fi
-  echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
+  [ "$PREFLIGHT_EXIT" -eq 0 ] && echo "=== $(date -Iseconds) deterministic front half exit $FRONT_EXIT ==="
 
   # An explicit reuse request must never fall through to the agent when its
   # source report is missing or unhealthy. The ordinary run still lets the
   # back half recover already-valid packages after a fresh front-half error.
-  if [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ] && [ "$FRONT_EXIT" -ne 0 ]; then
+  if [ "$PREFLIGHT_EXIT" -ne 0 ]; then
+    : # Store unreachable: the agent back half (drafts, sends) does not run either.
+  elif [ "${HARNESS_REUSE_FRONT_HALF:-0}" = "1" ] && [ "$FRONT_EXIT" -ne 0 ]; then
     EXIT="$FRONT_EXIT"
   else
 
@@ -220,6 +281,51 @@ run_cli() {
       echo "notified: $MESSAGE"
     else
       echo "notify POST failed (tolerated): $MESSAGE"
+    fi
+  fi
+
+  # The escalation digest: grouped bullets with links, to Slack when
+  # SLACK_WEBHOOK_URL is set (.env). Tolerated like the POST above: the run's
+  # work is already done.
+  #   - Twenty store: escalations become records (a new P1 also reaches the
+  #     owner's Twenty inbox through the app workflow), deliver.ts posts each
+  #     undelivered one once, and follow-up Tasks are created. If Twenty can't
+  #     be reached for the records or the delivery, notify-escalations.ts is
+  #     the fallback alert.
+  #   - SQLite store: notify-escalations.ts sends the full list on the day's
+  #     first run, then only new escalations, and always on a failed run.
+  NOTIFY_FALLBACK=1
+  if [ "$STORE" = "twenty" ] && [ -f "$REPO_DIR/tools/twenty/escalations.ts" ]; then
+    if npx tsx tools/twenty/escalations.ts; then
+      if npx tsx tools/twenty/deliver.ts --exit "$EXIT"; then
+        NOTIFY_FALLBACK=0
+      else
+        echo "twenty deliver failed (tolerated)"
+      fi
+    else
+      echo "twenty escalations failed (tolerated)"
+    fi
+    npx tsx tools/twenty/followups.ts || echo "twenty followups failed (tolerated)"
+    # The Grok digest: new escalations and failed runs, at most one post per
+    # 15 minutes and 6 a day. Skips itself when the Grok webhook isn't set.
+    if [ -f "$REPO_DIR/tools/twenty/grok-digest.ts" ]; then
+      npx tsx tools/twenty/grok-digest.ts || echo "twenty grok digest failed (tolerated)"
+    fi
+  fi
+  if [ "$NOTIFY_FALLBACK" -eq 1 ] && [ -f "$REPO_DIR/tools/notify-escalations.ts" ]; then
+    npx tsx tools/notify-escalations.ts --exit "$EXIT" || echo "notify-escalations failed (tolerated)"
+  fi
+
+  # Save what the run changed in the cache (packages and baselines as
+  # attachments, machine documents as new revisions, the person's documents
+  # as proposals to confirm), then delete it. A failed finish keeps the cache
+  # for the next materialise to retry and fails the run.
+  if [ -n "${HARNESS_RUN_ID:-}" ]; then
+    FINISH_EXIT=0
+    npm run -s store:finish || FINISH_EXIT=$?
+    if [ "$FINISH_EXIT" -ne 0 ]; then
+      echo "store finish failed (exit $FINISH_EXIT): cache kept; the next materialise retries it"
+      if [ "$EXIT" -eq 0 ]; then EXIT="$FINISH_EXIT"; fi
     fi
   fi
 

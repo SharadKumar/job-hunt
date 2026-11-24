@@ -63,18 +63,20 @@ import { promisify } from "node:util";
 import YAML from "yaml";
 import { load as loadPipeline, type Opportunity } from "./pipeline.ts";
 import { log as auditLog, query as auditQuery, checkDuplicate, distinctSubmittedEvents } from "./audit.ts";
-import { repoPath } from "./repo-root.ts";
 import { readCurrentVerdict } from "./letter-critic.ts";
 import { sha256 } from "./lib/hash.ts";
 import { canSatisfyAutopilotClassificationGate } from "./classification.ts";
 import { classificationFreshnessIssue, type ClassificationIdentity } from "./jev/classification-freshness.ts";
 import { currentJevCacheIdentity } from "./jev/classifier.ts";
 import { blockingDegradation, degradationBlocksAutopilot, readDegradation, type JevDegradation } from "./jev/degradation.ts";
+import { profilePath } from "./profile-context.ts";
+import { archiveDir as packageDir, resolveRepoRef } from "./store/paths.ts";
 
 const exec = promisify(execFile);
 
-const POLICY_PATH = repoPath("state/profile/submission-policy.yaml");
-const PROFILE_PATH = repoPath("state/profile/profile.md");
+// Resolved on use, so importing this module never needs the store.
+const policyPath = () => profilePath("submission-policy.yaml");
+const profileMdPath = () => profilePath("profile.md");
 
 // Channels that are ALWAYS manual regardless of any auto_submit flag: the
 // policy documents these as FORCED FALSE.
@@ -138,7 +140,7 @@ export type Policy = {
 };
 
 async function loadPolicy(): Promise<Policy> {
-  return YAML.parse(await fs.readFile(POLICY_PATH, "utf8")) as Policy;
+  return YAML.parse(await fs.readFile(policyPath(), "utf8")) as Policy;
 }
 
 const VERDICT_BY_CODE: Record<number, "pass" | "warn" | "fail"> = { 0: "pass", 1: "warn", 2: "fail" };
@@ -157,7 +159,7 @@ async function runVerdict(npmScript: string, args: string[]): Promise<"pass" | "
 async function rateIsSet(): Promise<boolean> {
   // Policy intent: "if profile.md still has a TODO for rate, no auto-submit."
   let text: string;
-  try { text = await fs.readFile(PROFILE_PATH, "utf8"); } catch { return false; }
+  try { text = await fs.readFile(profileMdPath(), "utf8"); } catch { return false; }
   const rateLines = text.split("\n").filter((l) => /\brate\b/i.test(l));
   return !rateLines.some((l) => /TODO/i.test(l));
 }
@@ -172,7 +174,7 @@ async function submittedToday(nowISO: string, actor?: string): Promise<number> {
 /** Home city from profile.md (`city:` in the front matter); mirrors score.ts. */
 async function homeCityFromProfile(): Promise<string | undefined> {
   try {
-    const md = await fs.readFile(PROFILE_PATH, "utf8");
+    const md = await fs.readFile(profileMdPath(), "utf8");
     return md.match(/^\s*city:\s*([A-Za-z ]+)\s*$/m)?.[1]?.trim();
   } catch { return undefined; }
 }
@@ -199,7 +201,7 @@ export type EvaluateOpts = {
   nowISO?: string;           // injectable for tests
   opportunities?: Opportunity[];    // injectable for tests (skip disk load)
   policy?: Policy;           // injectable for tests
-  archiveDir?: string;       // injectable for tests; default state/pipeline/archive/<id>
+  archiveDir?: string;       // injectable for tests; default archiveDir(<id>)
   homeCity?: string;         // injectable for tests; default from profile.md
   jevDegradation?: JevDegradation | null;
   classificationIdentity?: ClassificationIdentity; // injectable for tests
@@ -227,7 +229,7 @@ export async function verifyBaselineRef(opts: { archiveDir: string; cvDocxPath?:
   const resume = meta?.resume;
   if (!resume || typeof resume.ref !== "string") return null;
   const ref: string = resume.ref;
-  const refPath = path.isAbsolute(ref) ? ref : repoPath(ref);
+  const refPath = resolveRepoRef(ref);
 
   let bytes: Buffer;
   try {
@@ -380,7 +382,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
     //     additionally never lets a saved row bypass it (hard blocks only).
     // (e) letter-critic pass on the exact letter text.
     if (ap.require_letter_critic_pass !== false) {
-      const archiveDir = opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`);
+      const archiveDir = opts.archiveDir ?? packageDir(opportunity.id);
       const letterPath = opts.coverMdPath ?? `${archiveDir}/cover-letter.md`;
       let letterText: string;
       try { letterText = await fs.readFile(letterPath, "utf8"); } catch { return failGate("autopilot_letter_critic", `cover letter not readable at ${letterPath}`); }
@@ -418,7 +420,7 @@ export async function evaluateSubmission(opts: EvaluateOpts): Promise<GateDecisi
   //     exact artefact the package was prepared from AND that baseline is still
   //     approved with the same hash resume-approve recorded.
   const refCheck = await verifyBaselineRef({
-    archiveDir: opts.archiveDir ?? repoPath(`state/pipeline/archive/${opportunity.id}`),
+    archiveDir: opts.archiveDir ?? packageDir(opportunity.id),
     cvDocxPath: opts.cvDocxPath,
   });
   if (refCheck) {

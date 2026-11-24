@@ -9,6 +9,7 @@ import { repoPath } from "../repo-root.ts";
 import { sha256 } from "../lib/hash.ts";
 import { currentJevCacheIdentity } from "./classifier.ts";
 import { getAdjudicationQueue, isIndependentHumanAdjudication, loadAdjudications } from "./adjudications.ts";
+import { readBenchmark, writeBenchmarkPair } from "./private-benchmarks.ts";
 
 type Label = "apply_worthy" | "not_apply_worthy" | "unlabelled";
 
@@ -165,7 +166,7 @@ async function comparison(): Promise<void> {
   const current = JSON.parse(await fs.readFile(repoPath("docs/benchmarks/jev-current-path-replay.json"), "utf8"));
   const after = JSON.parse(await fs.readFile(repoPath("docs/benchmarks/jev-after.json"), "utf8"));
   const shadow = await fs.readFile(repoPath("docs/benchmarks/jev-shadow-500.json"), "utf8").then(JSON.parse).catch(() => null);
-  const agent = await fs.readFile(repoPath("docs/benchmarks/jev-agent-comparator.json"), "utf8").then(JSON.parse).catch(() => null);
+  const agent = await readBenchmark<any>("docs/benchmarks/jev-agent-comparator.json", null);
   const live = await fs.readFile(repoPath("docs/benchmarks/jev-backtest-live-120.json"), "utf8").then(JSON.parse).catch(() => null);
   const liveRetry = await fs.readFile(repoPath("docs/benchmarks/jev-backtest-live-retry.json"), "utf8").then(JSON.parse).catch(() => null);
   const repeatability = await fs.readFile(repoPath("docs/benchmarks/jev-repeatability.json"), "utf8").then(JSON.parse).catch(() => null);
@@ -663,7 +664,7 @@ async function review(): Promise<void> {
     items,
   }, null, 2) + "\n");
 
-  const agent = await fs.readFile(repoPath("docs/benchmarks/jev-agent-comparator.json"), "utf8").then(JSON.parse).catch(() => null);
+  const agent = await readBenchmark<any>("docs/benchmarks/jev-agent-comparator.json", null);
   const agentById = new Map<string, Record<string, unknown>>((agent?.records ?? []).map((record: Record<string, unknown>) => [String(record.id), record]));
   const cohortIds = new Set<string>(JSON.parse(await fs.readFile(repoPath("docs/benchmarks/jev-cohort.json"), "utf8")));
   const cohortRows = (await load()).filter((row) => cohortIds.has(row.id));
@@ -719,7 +720,7 @@ async function review(): Promise<void> {
     }];
   }).sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   const disagreementOut = repoPath("docs/benchmarks/jev-agent-disagreement-review.json");
-  await fs.writeFile(disagreementOut, JSON.stringify({
+  await writeBenchmarkPair(disagreementOut, {
     schema_version: 1,
     generated_at: new Date().toISOString(),
     purpose: "Human adjudication queue for frozen-cohort disagreements between the retained generic-agent fallback and Jev.",
@@ -737,7 +738,7 @@ async function review(): Promise<void> {
       priority_1: disagreements.filter((item) => item.priority === 1).length,
     },
     items: disagreements,
-  }, null, 2) + "\n");
+  });
   console.log(JSON.stringify({ out, items: items.length, disagreement_out: disagreementOut, disagreement_items: disagreements.length }));
 }
 

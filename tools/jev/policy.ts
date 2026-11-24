@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import YAML from "yaml";
 import { repoPath } from "../repo-root.ts";
 import { sha256 } from "../lib/hash.ts";
+import { profilePath } from "../profile-context.ts";
 
 export type JevPolicy = {
   decision_logic_version: number;
@@ -36,7 +37,7 @@ const DEFAULTS: JevPolicy = {
 };
 
 export async function loadJevPolicy(): Promise<{ policy: JevPolicy; hash: string }> {
-  const paths = [repoPath("state/profile/jev-policy.yaml"), repoPath("templates/profile/jev-policy.yaml")];
+  const paths = [profilePath("jev-policy.yaml"), repoPath("templates/profile/jev-policy.yaml")];
   let parsed: Partial<JevPolicy> = {};
   for (const file of paths) {
     try { parsed = YAML.parse(await fs.readFile(file, "utf8")) ?? {}; break; } catch {}

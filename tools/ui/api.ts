@@ -46,6 +46,7 @@ import { getPolicy, postAutopilot, postKillSwitch, type PolicyToggleBody } from 
 import { readJsonIfExists } from "../lib/fs.ts";
 import { resolveProfileContext } from "../profile-context.ts";
 import { repoPath } from "../repo-root.ts";
+import { archiveRoot, journalPath, pipelineFile } from "../store/paths.ts";
 
 /** Dates in the person's own day, not the machine's. */
 const DEFAULT_TIME_ZONE = "Australia/Sydney";
@@ -256,9 +257,9 @@ export function zonedDay(value: string | Date, timeZone: string): string {
   return new Date(value).toLocaleDateString("en-CA", { timeZone });
 }
 
-const queuePathOf = (ctx: ApiContext): string => ctx.queuePath ?? repoPath("state/pipeline/approval-queue.json");
-const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? repoPath("state/pipeline/archive");
-const journalDirOf = (ctx: ApiContext): string => ctx.journalDir ?? repoPath("state/journal/summary");
+const queuePathOf = (ctx: ApiContext): string => ctx.queuePath ?? pipelineFile("approval-queue.json");
+const archiveDirOf = (ctx: ApiContext): string => ctx.archiveDir ?? archiveRoot();
+const journalDirOf = (ctx: ApiContext): string => ctx.journalDir ?? journalPath("summary");
 
 /** A draftDir may be stored repo-relative; resolve it either way. */
 function resolveDraftDir(draftDir: string): string {

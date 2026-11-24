@@ -31,6 +31,9 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { log as auditLog, logMany as auditLogMany, loadDedupIndex, fingerprintFor, type AuditEventType } from "./audit.ts";
 import { store, type ListFilter } from "./pipeline-store.ts";
+import { rows as rowBackend } from "./store/index.ts";
+import { isTwentyStore } from "./store/documents.ts";
+import { StatusChangedError, type RowPatch, type RowUpsert } from "./store/backend.ts";
 import type { ClassificationV2 } from "./classification.ts";
 
 // Map pipeline statuses to canonical audit event types so the audit log
@@ -116,7 +119,7 @@ export type Opportunity = {
     approvedBy?: string;
     contentHash?: string;
   };
-  draftDir?: string;                // e.g. state/pipeline/archive/<id>/
+  draftDir?: string;                // e.g. the package folder, archiveDir(<id>)
   /** True when the user saved this job on the channel (e.g. SEEK "Saved jobs"); a strong interest signal. */
   userSaved?: boolean;
   userSavedAt?: string;             // ISO timestamp of the first time the saved-jobs watcher saw it
@@ -172,17 +175,17 @@ function sidecar(name: string): string {
 
 /** Every row, fully hydrated (JD included). Kept for readers that want the lot. */
 export async function load(): Promise<Opportunity[]> {
-  return store().list({ withDescription: true });
+  return (await rowBackend()).list({ withDescription: true });
 }
 
 /** One row by id, or null. */
 export async function get(id: string): Promise<Opportunity | null> {
-  return store().get(id);
+  return (await rowBackend()).get(id);
 }
 
 /** Filtered rows. `withDescription` is off by default: the JD is the bulk of the data. */
 export async function list(filter: ListFilter = {}): Promise<Opportunity[]> {
-  return store().list(filter);
+  return (await rowBackend()).list(filter);
 }
 
 /**
@@ -192,20 +195,15 @@ export async function list(filter: ListFilter = {}): Promise<Opportunity[]> {
  * `patch()` / `upsertMany()` / `remove()`, which touch only what changed.
  */
 export async function save(roles: Opportunity[]): Promise<void> {
-  const s = store();
-  s.transaction(() => {
-    const keep = new Set(roles.map((r) => r.id));
-    const stale = s.ids().filter((id) => !keep.has(id));
-    if (stale.length) s.remove(stale);
-    const now = new Date().toISOString();
-    for (const role of roles) s.replaceRow(role, now);
-  });
+  await (await rowBackend()).replaceAll(roles);
   await writeDigest();
 }
 
 /** Rewrite state/pipeline/opportunities.md from the current rows. */
 export async function writeDigest(): Promise<void> {
-  const roles = store().list();
+  // On the Twenty store the person reads the Openings views; no digest file.
+  if (isTwentyStore()) return;
+  const roles = await (await rowBackend()).list();
   const byStatus: Record<string, Opportunity[]> = {};
   for (const r of roles) (byStatus[r.status] ||= []).push(r);
   const lines: string[] = ["# Pipeline digest", ""];
@@ -265,61 +263,61 @@ export async function upsert(opportunity: UpsertInput): Promise<Opportunity> {
 /** Insert or refresh many rows in one transaction, then write the digest once. */
 export async function upsertMany(rows: UpsertInput[], opts: { digest?: boolean } = {}): Promise<Opportunity[]> {
   if (!rows.length) return [];
-  const s = store();
+  const backend = await rowBackend();
   const now = new Date().toISOString();
   const dedupIndex = await loadDedupIndex();
   const events: PendingAudit[] = [];
+  const ops: RowUpsert[] = [];
+  const seen = new Set<string>();
 
-  const out = s.transaction(() => {
-    const result: Opportunity[] = [];
-    for (const opportunity of rows) {
-      const id = opportunity.id ?? opportunityIdFor(opportunity.channel, opportunity.url);
-      if (s.has(id)) {
-        const { status: _status, history: _history, ...refreshFields } = opportunity;
-        result.push(s.updateFields(id, refreshFields, now)!);
-        continue;
-      }
+  for (const opportunity of rows) {
+    const id = opportunity.id ?? opportunityIdFor(opportunity.channel, opportunity.url);
+    if (seen.has(id) || (await backend.has(id))) {
+      const { status: _status, history: _history, ...refreshFields } = opportunity;
+      ops.push({ kind: "refresh", id, fields: refreshFields });
+      seen.add(id);
+      continue;
+    }
+    seen.add(id);
 
-      // Cross-channel dedup check: have we already acted on this company +
-      // role family recently? We still insert (the user should see both), but
-      // the audit trail flags it for the opportunity-finder.
-      const dup = duplicatesFrom(dedupIndex, opportunity.company, opportunity.title, 60);
-      if (dup.length) {
-        events.push({
-          event_type: "duplicate_detected",
-          role_id: id,
-          actor: "pipeline.upsert",
-          channel: opportunity.channel,
-          details: {
-            company: opportunity.company,
-            title: opportunity.title,
-            existing_role_ids: dup.map((m) => m.role_id),
-            existing_statuses: dup.map((m) => m.status),
-          },
-          provenance: { url: opportunity.url, channel: opportunity.channel },
-        });
-      }
-
-      const next: Opportunity = {
-        ...opportunity,
-        id,
-        status: opportunity.status ?? "discovered",
-        history: [{ at: now, from: null, to: opportunity.status ?? "discovered" }],
-      } as Opportunity;
-      s.insert(next, now);
-      result.push(next);
-
+    // Cross-channel dedup check: have we already acted on this company +
+    // role family recently? We still insert (the user should see both), but
+    // the audit trail flags it for the opportunity-finder.
+    const dup = duplicatesFrom(dedupIndex, opportunity.company, opportunity.title, 60);
+    if (dup.length) {
       events.push({
-        event_type: STATUS_TO_EVENT[next.status] ?? "discovered",
+        event_type: "duplicate_detected",
         role_id: id,
         actor: "pipeline.upsert",
         channel: opportunity.channel,
-        details: { company: opportunity.company, title: opportunity.title, score: next.score, duplicate_of: dup.map((m) => m.role_id) },
+        details: {
+          company: opportunity.company,
+          title: opportunity.title,
+          existing_role_ids: dup.map((m) => m.role_id),
+          existing_statuses: dup.map((m) => m.status),
+        },
         provenance: { url: opportunity.url, channel: opportunity.channel },
       });
     }
-    return result;
-  });
+
+    const next: Opportunity = {
+      ...opportunity,
+      id,
+      status: opportunity.status ?? "discovered",
+      history: [{ at: now, from: null, to: opportunity.status ?? "discovered" }],
+    } as Opportunity;
+    ops.push({ kind: "insert", row: next });
+
+    events.push({
+      event_type: STATUS_TO_EVENT[next.status] ?? "discovered",
+      role_id: id,
+      actor: "pipeline.upsert",
+      channel: opportunity.channel,
+      details: { company: opportunity.company, title: opportunity.title, score: next.score, duplicate_of: dup.map((m) => m.role_id) },
+      provenance: { url: opportunity.url, channel: opportunity.channel },
+    });
+  }
+  const out = await backend.upsert(ops);
 
   await auditLogMany(events);
   if (opts.digest !== false) await writeDigest();
@@ -346,27 +344,17 @@ export async function patchMany(
   actor: string,
 ): Promise<Opportunity[]> {
   if (!entries.length) return [];
-  const s = store();
   const now = new Date().toISOString();
-  return s.transaction(() => {
-    const out: Opportunity[] = [];
-    for (const { id, fields, reason } of entries) {
-      const { status: _s, history: _h, ...rest } = fields;
-      const updated = s.updateFields(id, rest, now);
-      if (!updated) throw new Error(`role not found: ${id}`);
-      const names = Object.keys(rest).join(", ");
-      const entry = {
-        at: now,
-        from: updated.status,
-        to: updated.status,
-        reason: `field_update: ${names}${reason ? ` (${reason})` : ""}${actor ? ` [${actor}]` : ""}`,
-      };
-      s.appendHistory(id, entry);
-      updated.history = [...updated.history, entry];
-      out.push(updated);
-    }
-    return out;
+  const patches: RowPatch[] = entries.map(({ id, fields, reason }) => {
+    const { status: _s, history: _h, ...rest } = fields;
+    const names = Object.keys(rest).join(", ");
+    return {
+      id,
+      fields: rest,
+      history: (row: Opportunity) => ({ at: now, from: row.status, to: row.status, reason: `field_update: ${names}${reason ? ` (${reason})` : ""}${actor ? ` [${actor}]` : ""}` }),
+    };
   });
+  return (await rowBackend()).patch(patches);
 }
 
 export async function setStatus(
@@ -375,34 +363,40 @@ export async function setStatus(
   reason?: string,
   extras?: { contact?: any; details?: Record<string, unknown>; actor?: string; expectedStatus?: PipelineStatus },
 ): Promise<Opportunity> {
-  const s = store();
-  // BEGIN IMMEDIATE must precede the status read. Two independent daily runs
-  // must not both observe approved and claim the same portal submission.
-  const { role, updated } = s.transaction(() => {
-    const role = s.get(id);
-    if (!role) throw new Error(`role not found: ${id}`);
-    if (extras?.expectedStatus && role.status !== extras.expectedStatus) {
-      throw new Error(`status changed from ${extras.expectedStatus} to ${role.status} before transition to ${next}`);
+  const backend = await rowBackend();
+  const role = await backend.get(id, { withDescription: false });
+  if (!role) throw new Error(`role not found: ${id}`);
+  if (extras?.expectedStatus && role.status !== extras.expectedStatus) {
+    throw new Error(`status changed from ${extras.expectedStatus} to ${role.status} before transition to ${next}`);
+  }
+  const allowed = VALID_TRANSITIONS[role.status] ?? [];
+  if (!allowed.includes(next)) {
+    throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
+  }
+  const at = new Date().toISOString();
+  const extraFields: Partial<Opportunity> = {};
+  if (next === "parked") {
+    extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
+    extraFields.parkedReason = reason ?? role.parkedReason;
+  }
+  if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
+  if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
+  // The backend refuses the write if another run moved the row after the read above,
+  // so two runs can never both claim the same approved row.
+  let updated: Opportunity;
+  try {
+    updated = await backend.transition({ id, from: role.status, to: next, extraFields, history: { at, from: role.status, to: next, ...(reason ? { reason } : {}) } });
+  } catch (e) {
+    // Another run moved the row between our read and the write. Report it the
+    // way a read inside the write would have: against the status it is now at.
+    if (e instanceof StatusChangedError) {
+      if (extras?.expectedStatus) throw new Error(`status changed from ${extras.expectedStatus} to ${e.actual} before transition to ${next}`);
+      const now = (VALID_TRANSITIONS as Record<string, PipelineStatus[]>)[e.actual] ?? [];
+      if (!now.includes(next)) throw new Error(`invalid transition ${e.actual} → ${next} (allowed: ${now.join(", ") || "none"})`);
+      throw new Error(`status changed from ${role.status} to ${e.actual} before transition to ${next}`);
     }
-    const allowed = VALID_TRANSITIONS[role.status] ?? [];
-    if (!allowed.includes(next)) {
-      throw new Error(`invalid transition ${role.status} → ${next} (allowed: ${allowed.join(", ") || "none"})`);
-    }
-    const from = role.status;
-    const at = new Date().toISOString();
-    const extraFields: Partial<Opportunity> = {};
-    if (next === "parked") {
-      extraFields.parkedBy = !extras?.actor || /^(ui|sheets-sync:pull|pipeline\.setStatus)$/.test(extras.actor) ? "user" : "harness";
-      extraFields.parkedReason = reason ?? role.parkedReason;
-    }
-    if (next === "submitted" && !role.submittedAt) extraFields.submittedAt = at;
-    if (next === "responded" && !role.responseAt) extraFields.responseAt = at;
-    const row = s.setStatusColumn(id, next, extraFields, at)!;
-    const entry = { at, from, to: next, ...(reason ? { reason } : {}) };
-    s.appendHistory(id, entry);
-    row.history = [...row.history, entry];
-    return { role, updated: row };
-  });
+    throw e;
+  }
 
   await auditLog({
     event_type: STATUS_TO_EVENT[next] ?? "discovered",
@@ -419,18 +413,8 @@ export async function setStatus(
 
 /** Delete rows, leaving the removal in each row's history and in the audit log. */
 export async function remove(ids: string[], actor: string, reason: string): Promise<{ removed: number }> {
-  const s = store();
-  const removed: Opportunity[] = [];
   const at = new Date().toISOString();
-  s.transaction(() => {
-    for (const id of ids) {
-      const role = s.get(id, { withDescription: false });
-      if (!role) continue;
-      s.appendHistory(id, { at, from: role.status, to: role.status, reason: `removed: ${reason} [${actor}]` });
-      s.remove([id]);
-      removed.push(role);
-    }
-  });
+  const removed = await (await rowBackend()).remove(ids, (role) => ({ at, from: role.status, to: role.status, reason: `removed: ${reason} [${actor}]` }));
   for (const role of removed) {
     await auditLog({
       event_type: "withdrawn",
@@ -459,8 +443,9 @@ export async function dedup(): Promise<{ removed: number }> {
 
 /** Write the rows out as a compact JSON array (backup, or a hand-off format). */
 export async function exportJson(outPath?: string): Promise<{ out: string; rows: number }> {
-  const target = outPath ? path.resolve(outPath) : sidecar("opportunities.json");
-  const rows = store().list({ withDescription: true });
+  if (!outPath && isTwentyStore()) throw new Error("pipeline export on the Twenty store needs an explicit output path (--out); there is no default export file");
+  const target = outPath ? path.resolve(outPath) : sidecar("opportunities.json"); // scan:file-mode
+  const rows = await (await rowBackend()).list({ withDescription: true });
   const tmp = `${target}.${process.pid}.tmp`;
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(rows));
@@ -474,7 +459,7 @@ export async function exportJson(outPath?: string): Promise<{ out: string; rows:
  * leaves the source file alone.
  */
 export async function migrate(opts: { from?: string; dryRun?: boolean; force?: boolean } = {}): Promise<Record<string, unknown>> {
-  const source = opts.from ? path.resolve(opts.from) : sidecar("opportunities.json");
+  const source = opts.from ? path.resolve(opts.from) : sidecar("opportunities.json"); // scan:file-mode (legacy JSON into SQLite)
   const s = store();
   const existing = s.count();
   if (existing > 0 && !opts.force) {
@@ -519,12 +504,19 @@ export async function migrate(opts: { from?: string; dryRun?: boolean; force?: b
 // CLI
 // ---------------------------------------------------------------------------
 
-function briefCounts(): { line: string; top: string | null } {
-  const s = store();
-  const counts = s.countsByStatus();
-  const n = (k: string) => counts[k] ?? 0;
-  const line = `${s.count()} pipeline | ${n("shortlisted")} queue | ${n("parked")} parked | ${n("awaiting_approval")} awaiting | ${n("manual_action_needed")} manual | ${n("submitted")} submitted`;
-  const tray = s.list({ status: "awaiting_approval" }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+/** Counts by status from the configured store (SQLite or Twenty). */
+async function statusCounts(): Promise<{ total: number; byStatus: Record<string, number>; all: Opportunity[] }> {
+  const all = await (await rowBackend()).list();
+  const byStatus: Record<string, number> = {};
+  for (const r of all) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return { total: all.length, byStatus, all };
+}
+
+async function briefCounts(): Promise<{ line: string; top: string | null }> {
+  const { total, byStatus, all } = await statusCounts();
+  const n = (k: string) => byStatus[k] ?? 0;
+  const line = `${total} pipeline | ${n("shortlisted")} queue | ${n("parked")} parked | ${n("awaiting_approval")} awaiting | ${n("manual_action_needed")} manual | ${n("submitted")} submitted`;
+  const tray = all.filter((r) => r.status === "awaiting_approval").sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
   return { line, top: tray ? `${tray.score} ${String(tray.title).slice(0, 40)} @ ${tray.company}` : null };
 }
 
@@ -571,14 +563,14 @@ async function main() {
     console.log(JSON.stringify(await dedup(), null, 2));
   } else if (cmd === "summary") {
     if (args.brief === "true") {
-      const { line, top } = briefCounts();
+      const { line, top } = await briefCounts();
       console.log(line);
       if (args.top === "true" && top) console.log(top);
       return;
     }
-    const s = store();
-    const total = s.count();
-    console.log(JSON.stringify({ total, byStatus: s.countsByStatus() }, null, 2));
+    // Through the configured store: on Twenty the rows are in the workspace.
+    const { total, byStatus } = await statusCounts();
+    console.log(JSON.stringify({ total, byStatus }, null, 2));
     // Refresh the human digest from the same read, but never let a summary run
     // against an empty or not-yet-migrated database overwrite a real digest.
     if (total > 0) await writeDigest();

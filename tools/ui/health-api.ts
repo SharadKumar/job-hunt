@@ -45,6 +45,7 @@ import { gatewayCredential } from "../jev/env.ts";
 import { activeDegradations, blockingDegradation, readDegradation } from "../jev/degradation.ts";
 import { loadJevPolicy } from "../jev/policy.ts";
 import { decideQuestion, loadScreeningAnswers } from "../channels/seek-submit.ts";
+import { journalPath } from "../store/paths.ts";
 
 /**
  * The person answering a screening question is a policy-shaped act: it changes
@@ -313,7 +314,7 @@ async function enabledChannels(profileId: string | null | undefined): Promise<st
 /** GET /api/health */
 export async function getHealth(opts: HealthOptions = {}): Promise<HarnessHealth> {
   const now = nowOf(opts);
-  const logDir = opts.logDir ?? repoPath("state/journal/launchd");
+  const logDir = opts.logDir ?? journalPath("launchd");
   const channelsDir = opts.channelsDir ?? repoPath("state/channels");
   const plistPath = opts.plistPath ?? path.join(os.homedir(), "Library", "LaunchAgents", PLIST_NAME);
 
@@ -402,6 +403,8 @@ export type UnknownQuestion = {
   context: string | null;
   answer: string | null;
   kind: ScreeningKind;
+  /** Present when the harness derived the answer from the CV source or the profile's framing; the person can change it. */
+  derived?: { method: string; computation: string; sources: string[] };
 };
 
 export type ScreeningSnapshot = {
@@ -488,6 +491,11 @@ export async function getScreening(opts: { profileId?: string | null } = {}): Pr
       context: row.context == null ? null : String(row.context),
       answer,
       kind: kindOf(row, question),
+      ...(row.derived === true && savedAnswer !== null ? { derived: {
+        method: String(row.derived_evidence?.method ?? ""),
+        computation: String(row.derived_evidence?.computation ?? ""),
+        sources: Array.isArray(row.derived_evidence?.sources) ? row.derived_evidence.sources.map(String) : [],
+      } } : {}),
     });
   }
   return {
@@ -628,7 +636,14 @@ export async function postScreeningAnswer(
 
   const hit = await findUnknown(doc, question);
   const source = answerSource(answer, kind);
-  const next = hit ? setAnswerInRow(text, hit.item, source) : appendUnknownRow(text, question, source);
+  let next = hit ? setAnswerInRow(text, hit.item, source) : appendUnknownRow(text, question, source);
+  // The person's answer replaces a harness-derived one: mark the row as theirs.
+  // The derived evidence stays as history.
+  if (hit && hit.item.get("derived") === true) {
+    const again = await findUnknown(YAML.parseDocument(next), question);
+    const pair = again?.item.items.find((p: unknown) => isPair(p) && isScalar(p.key) && p.key.value === "derived");
+    next = (pair && spliceNode(next, pair.value as Node, "false")) ?? next;
+  }
   await writeAtomic(file, next);
 
   await record({ action: "answer", question: await normalise(question), matched: Boolean(hit), kind });

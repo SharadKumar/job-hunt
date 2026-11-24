@@ -1,9 +1,6 @@
 node_modules/
 .env
 .env.local
-state/journal/launchd/*.log
-state/pipeline/archive/**/confirmation.png
-state/channels/storage-state/*.json
 .DS_Store
 *.log
 dist/
@@ -13,44 +10,24 @@ dist/
 templates/resume/*/sample/golden.pdf
 templates/resume/*/sample/golden.html
 
-# Baseline presentation HTML embeds base64 fonts — regenerable, keep out of git.
-state/profile/resumes/*/*.html
-
 # Nested agent worktrees are registered git worktrees, not repo content.
 # Git does not auto-ignore worktrees placed inside the working tree.
 .claude/worktrees/
 
-# Live SEEK / LinkedIn browser sessions (cookies, tokens). Per-user secret; never commit.
-state/channels/chrome-profile/
+# Playwright MCP scratch output and archived templates.
 .playwright-mcp/
-
-# CV and resume content (real person). Never on a remote.
-state/profile/cv/
-state/profile/cv-source.md
-state/profile/voice-samples.md
-state/profile/resumes/
-state/profile/profile-report.html
-state/profiles/
-state/pipeline/archive/
-state/org/team-report.html
 templates/resume/_archived_*/
-
-# Onboarded-user state: identity, positionings, pipeline, audit, journal. Never on a remote.
-state/profile/
-state/pipeline/
-state/audit/
-state/journal/
-state/contacts/
-state/market/
-state/rejected/
-state/jev/
-state/org/team.yaml
-state/org/keyword-clouds.yaml
-state/org/resume-types.yaml
-
-# Optional list of personal terms tests/profile-template.test.ts must not find in the public skeleton.
-state/leak-terms.txt
 
 # skill-creator eval workspaces (fixture roots, run outputs)
 .claude/skills/*-workspace/
 !tests/fixtures/**/*.log
+
+# Personal state never enters git: profile, CV, pipeline, audit, journals,
+# credentials, browser sessions, keys and the private leak-terms list.
+# Only the two example files below are tracked. tools/leak-check.ts (the
+# pre-commit hook) blocks staged state/ paths as a second guard.
+state/*
+!state/org/
+state/org/*
+!state/org/resume-formats.yaml
+!state/org/resume-types.example.yaml

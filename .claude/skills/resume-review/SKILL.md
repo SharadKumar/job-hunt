@@ -3,6 +3,8 @@ name: resume-review
 description: Walk the user through reviewing and approving baseline CVs for every active resume. Use this skill whenever the user says "review my CVs", "approve my baselines", "are my CVs ready", "let me check the baselines", or before any first /apply on a resume. Also use after /onboarding populates new resumes (no baselines yet), after CV/source edits (existing approvals go stale), after positioning edits in resumes.yaml, or when the /apply orchestration reports a stale or missing baseline. This skill invokes resume-writer per resume, and it never bypasses resume-writer to render baselines directly (which would skip quality auditing).
 ---
 
+Paths: `<profile>/` is the profile directory (`npm run -s profile:path`), `<archive>/` the per-opportunity package folders (`npm run -s store:path -- archive`), `<pipeline>/` pipeline side files (`npm run -s store:path -- pipeline`) and `<journal>/` run reports and logs (`npm run -s store:path -- journal`). In file mode they are the folders under `state/`; on the Twenty store they are the run's materialised cache and log folders, and edits to `<profile>/` documents are saved when the run finishes (`npm run -s store:finish`): machine documents as new revisions, the person's documents as proposals they confirm in Twenty. Append to the day's journal with `npm run -s journal -- append --from <file>`.
+
 # /resume-review: per-positioning baseline review + approval
 
 Each active resume gets one approved baseline CV, the version that gets sent across many opportunities matching that positioning. This skill keeps all baselines current and explicitly approved.
@@ -102,7 +104,7 @@ The refresh ends in the evidence interview (`/resume-strategy` step 3c), which m
 
 For each resume with status `missing` (no per-resume render yet), invoke the **resume-writer subagent** (mode: baseline). When there are multiple missing baselines (3 or more), spawn resume-writer subagents in parallel, each in its own context window, by sending multiple Agent tool calls in one message.
 
-For team profiles, resolve paths under `state/profiles/<profile-id>/`; default individual mode remains `state/profile/`.
+For team profiles, resolve paths with `HARNESS_PROFILE=<profile-id> npm run -s profile:path`; default individual mode remains `<profile>/`.
 
 The pattern (one Agent tool call per resume):
 ```
@@ -170,7 +172,7 @@ For every resume whose status is `missing`, `fresh`, or `stale`, and after resum
    - **Approve** → `npm run resume:approve -- --resume <id>`. Snapshots `cv.md` → `approved-cv.md` for future diffs.
    - **Edit before approving** → apply `.claude/skills/resume-render/references/capture-editorial-edits.md`:
      - Ask "What changed?" with structured options (bullet removed / experience demoted / phrasing changed / summary edited / multiple).
-     - Append the entry to `state/profile/resumes/<resume-id>/editorial-rules.md`.
+     - Append the entry to `<profile>/resumes/<resume-id>/editorial-rules.md`.
      - Re-invoke resume-writer for THIS resume only (not the whole batch); loop back to step 3.
      - On threshold crossing (same pattern twice in 7 days): surface promotion-to-global per the procedure.
    - **Answer confirmation/open questions** → update `<profile-dir>/market-confirmations.yaml`; if confirmed, update the canonical source first, then re-render this resume only; loop back to step 3.
@@ -188,7 +190,7 @@ Deterministic render utilities are low-level plumbing only. They:
 - Do not run the multimodal visual review or template-quality report.
 - Provide nothing actionable to the user about why a CV looks the way it does or what might need attention.
 
-resume-writer (the subagent), invoked per resume, produces auditable artefacts AND a structured report that drives this skill's approve/edit/skip decision tree. That's the whole point of the architecture: every CV that lands in `state/profile/resumes/<id>/` should have been audited by resume-writer, not just dumped there by a script.
+resume-writer (the subagent), invoked per resume, produces auditable artefacts AND a structured report that drives this skill's approve/edit/skip decision tree. That's the whole point of the architecture: every CV that lands in `<profile>/resumes/<id>/` should have been audited by resume-writer, not just dumped there by a script.
 
 ## Boundaries
 

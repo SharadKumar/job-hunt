@@ -8,8 +8,7 @@
 
 import { promises as fs } from "node:fs";
 import YAML from "yaml";
-import { resolveProfileContext } from "./profile-context.ts";
-import { repoPath } from "./repo-root.ts";
+import { resolveProfileContext, profilePath } from "./profile-context.ts";
 
 export type ProfileFrontmatter = {
   name: string;
@@ -23,7 +22,8 @@ export type ProfileFrontmatter = {
   github_url?: string;
 };
 
-const DEFAULT_PROFILE_PATH = repoPath("state/profile/profile.md");
+// Resolved on use, so importing this module never needs the store.
+const defaultProfilePath = () => profilePath("profile.md");
 
 /** Timezone, BCP-47 language tag and currency for everything user-facing. */
 export type ResolvedLocale = { timezone: string; language: string; currency: string };
@@ -70,7 +70,7 @@ export async function loadLocale(profileId?: string | null): Promise<ResolvedLoc
 export async function loadProfile(profileId?: string | null): Promise<ProfileFrontmatter> {
   const profilePath = profileId || process.env.HARNESS_PROFILE
     ? resolveProfileContext(profileId).profileMdPath
-    : DEFAULT_PROFILE_PATH;
+    : defaultProfilePath();
   const raw = await fs.readFile(profilePath, "utf8");
   const m = raw.match(/^---\n([\s\S]*?)\n---/);
   if (!m) throw new Error(`No YAML frontmatter found in ${profilePath}`);

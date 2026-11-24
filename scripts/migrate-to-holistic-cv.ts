@@ -20,10 +20,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
+import { profilePath } from "../tools/profile-context.ts";
 
-const CV_DIR = "state/profile/cv";
-const PROFILE_MD = "state/profile/profile.md";
-const OUT = "state/profile/cv-source.md";
+const CV_DIR = profilePath("cv");
+const PROFILE_MD = profilePath("profile.md");
+const OUT = profilePath("cv-source.md");
 
 type ProfileFrontmatter = {
   name: string;

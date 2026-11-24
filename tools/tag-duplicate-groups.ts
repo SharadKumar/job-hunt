@@ -9,9 +9,9 @@
  * distinct recruiter remains independently eligible for application.
  */
 
-import { repoPath } from "./repo-root.ts";
 import { promises as fs } from "node:fs";
 import { load, patchMany, type Opportunity } from "./pipeline.ts";
+import { pipelineFile } from "./store/paths.ts";
 
 type DuplicateGroup = {
   group: string;
@@ -31,7 +31,7 @@ type DuplicateGroup = {
   evidence?: string[];
 };
 
-const GROUPS_PATH = repoPath("state/pipeline/duplicate-groups.json");
+const GROUPS_PATH = pipelineFile("duplicate-groups.json");
 
 export function tagDuplicateGroups(
   opportunities: Opportunity[],
@@ -71,7 +71,11 @@ const TAGGED_FIELDS = [
 ] as const;
 
 async function main(): Promise<void> {
-  const groups = JSON.parse(await fs.readFile(GROUPS_PATH, "utf8")) as DuplicateGroup[];
+  // The curated list is optional: no file means no curated groups. A file
+  // that exists but can't be read or parsed still fails the step.
+  let text = "[]";
+  try { text = await fs.readFile(GROUPS_PATH, "utf8"); } catch (e: any) { if (e?.code !== "ENOENT") throw e; }
+  const groups = JSON.parse(text) as DuplicateGroup[];
   const before = await load();
   const result = tagDuplicateGroups(before, groups);
 
