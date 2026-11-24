@@ -18,23 +18,41 @@ export type SwitchDecision = {
   createdAt: string;
   expiresAt?: string | null;
   createdBy?: ActorStamp | null;
+  result?: string | null;
   updatedBy?: ActorStamp | null;
 };
 
 export type SwitchState = { allowed: boolean; reason: string };
+
+/**
+ * An enable counts when it is the owner's own button: both stamps MANUAL by
+ * the owner. Intake verifies exactly that and then writes the result, which
+ * re-stamps updatedBy as the harness key; so an enable intake has APPLIED
+ * still counts when its createdBy is the owner's MANUAL stamp. Only the
+ * harness key can write result (the person's role cannot), so this opens
+ * nothing to the person's other accounts, AI chat or Grok.
+ */
+export function enableVerified(d: SwitchDecision, ownerMemberId: string): { ok: true } | { ok: false; reason: string } {
+  const direct = verifyConfirmation(d, ownerMemberId);
+  if (direct.ok) return direct;
+  const c = d.createdBy;
+  const createdByOwner = c?.source === "MANUAL" && c.workspaceMemberId === ownerMemberId && !(c.context && "workflowId" in c.context);
+  if (d.result === "APPLIED" && createdByOwner) return { ok: true };
+  return direct;
+}
 
 export function deriveSendSwitch(decisions: SwitchDecision[], ownerMemberId: string, now = new Date()): SwitchState {
   const at = (d: SwitchDecision) => Date.parse(d.createdAt) || 0;
   const latest = (pred: (d: SwitchDecision) => boolean) =>
     decisions.filter(pred).reduce<SwitchDecision | null>((best, d) => (!best || at(d) > at(best) ? d : best), null);
 
-  const enable = latest((d) => d.decisionType === "ENABLE_AUTOPILOT" && verifyConfirmation(d, ownerMemberId).ok);
+  const enable = latest((d) => d.decisionType === "ENABLE_AUTOPILOT" && enableVerified(d, ownerMemberId).ok);
   if (!enable) {
     // Say why an enable that exists does not count (for example, made from
     // another member's account), instead of implying none was ever made.
     const other = latest((d) => d.decisionType === "ENABLE_AUTOPILOT");
     if (other) {
-      const why = verifyConfirmation(other, ownerMemberId);
+      const why = enableVerified(other, ownerMemberId);
       const who = (other.createdBy as any)?.name ? ` (made by ${(other.createdBy as any).name})` : "";
       return { allowed: false, reason: `the latest Enable autopilot${who} is not the owner's own confirmation: ${why.ok ? "unverified" : why.reason}` };
     }

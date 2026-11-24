@@ -222,6 +222,8 @@ export const FIELD_IDS = {
     haltOpen: '43e70e93-5933-4bbc-8152-e2c5e02bc2bc',
     haltedAt: '8aa080e3-d613-4a12-8bae-ca6b4532931d',
     derivedAt: 'a7f5666b-d363-4ad6-b7f5-779cd29eb77e',
+    ownerMemberId: 'ae94201f-5bdb-459b-a559-4ed138fe64fc',
+    ownerName: '5898c37d-e18a-40ba-922b-b57a23c66e87',
   },
   verification: {
     name: 'afa17fdf-5a02-479f-8ef0-2e9c648963e9',
