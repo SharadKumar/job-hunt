@@ -6,9 +6,9 @@
  * A question an employer form asked that the harness could not answer at the
  * time is parked in the screening answers' unknown_questions with no answer.
  * Each run, before the send pass, this sweep offers every parked question to
- * the same resolvers the submit adapters use (tools/screening-derive.ts): the
- * CV source for years and employment, then what the person already said
- * (their facts, earlier answers and skill years). A confident answer is
+ * the same resolver the submit adapters use (tools/screening-derive.ts): a
+ * small model answers from the CV, the profile and what the person already
+ * said, held to deterministic guardrails. A high or medium confidence answer is
  * recorded as derived, with its evidence, and the screening retry queue then
  * resumes the paused application. Only a question nothing covers stays
  * parked for the person.
@@ -16,7 +16,8 @@
  *   npm run -s screening:resolve-open            # resolve and record
  *   npm run -s screening:resolve-open -- --dry-run
  *
- * Prints one JSON line: { ok, checked, answered, remaining, results[] }.
+ * Prints one JSON line: { ok, checked, answered, remaining, results[] }, each
+ * result with its answer and confidence, or the reason it stays parked.
  */
 
 import fs from "node:fs/promises";
@@ -43,16 +44,19 @@ async function main(): Promise<number> {
   }
   const open = (Array.isArray(raw?.unknown_questions) ? raw.unknown_questions : [])
     .filter((u: any) => u && typeof u.question === "string" && (u.answer == null || String(u.answer).trim() === ""));
-  const { resolveFromEvidence } = await import("./screening-derive.ts");
-  const results: { opportunity: string; question: string; answered: boolean }[] = [];
+  const { resolveWithDetail } = await import("./screening-derive.ts");
+  const results: { opportunity: string; question: string; answered: boolean; answer?: string | number; confidence?: string | null; via?: string; reason?: string }[] = [];
   const seen = new Set<string>();
   for (const row of open) {
     const key = `${row.opportunity_id ?? ""}|${row.question}`;
     if (seen.has(key)) continue;
     seen.add(key);
     if (dryRun) { results.push({ opportunity: String(row.opportunity_id ?? ""), question: row.question, answered: false }); continue; }
-    const decision = await resolveFromEvidence({ id: String(row.opportunity_id ?? "any"), company: row.company, title: row.title }, parkedQuestion(row));
-    results.push({ opportunity: String(row.opportunity_id ?? ""), question: String(row.question).slice(0, 160), answered: Boolean(decision) });
+    const detail = await resolveWithDetail({ id: String(row.opportunity_id ?? "any"), company: row.company, title: row.title }, parkedQuestion(row));
+    const base = { opportunity: String(row.opportunity_id ?? ""), question: String(row.question).slice(0, 160) };
+    results.push(detail.decision
+      ? { ...base, answered: true, answer: typeof detail.answer === "string" ? detail.answer.slice(0, 300) : detail.answer, confidence: detail.confidence, via: detail.via }
+      : { ...base, answered: false, reason: detail.reason.slice(0, 300) });
   }
   const answered = results.filter((r) => r.answered).length;
   console.log(JSON.stringify({ ok: true, dryRun, checked: results.length, answered, remaining: results.length - answered, results }));
