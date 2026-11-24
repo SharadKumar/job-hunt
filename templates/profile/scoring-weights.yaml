@@ -41,6 +41,7 @@ thresholds:
   applied_ai_high_relevance_score_floor: 65
   draft_min_score: 70             # auto-fire the application drafter at score >= this
   top_decile_alert_score: 90      # eligible for optional push channel alert
+  interstate_unknown_flexibility_penalty: 10  # interstate role, flexibility unknown: ranks below home-city and remote roles, never below shortlist_min_score
 
 # Points subtracted when the classifier detects the pattern. Pair each entry
 # with a line in profile.md "Red flags" so the classifier knows why it matters.

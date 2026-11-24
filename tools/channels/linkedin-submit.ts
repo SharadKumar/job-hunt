@@ -435,7 +435,7 @@ async function modalErrors(page: Page): Promise<string[]> {
 }
 
 /** Answer every control on the current step; returns the first unanswerable question, if any. */
-async function answerStep(page: Page, answers: ScreeningAnswers, phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
+async function answerStep(page: Page, answers: ScreeningAnswers, phone: string | undefined, coverLetter: string, timeout: number, log: (m: string) => void, opportunity?: Opportunity): Promise<{ unmatched?: ModalQuestion; coverLetterDelivered: boolean }> {
   const questions = await discoverModalQuestions(page);
   let coverLetterDelivered = false;
   for (const q of questions) {
@@ -465,7 +465,7 @@ async function answerStep(page: Page, answers: ScreeningAnswers, phone: string |
     // Already answered (remembered from an earlier application): leave alone.
     if (q.value && q.kind !== "checkbox") continue;
 
-    const decision = await decideQuestionWithJev(q, answers);
+    const decision = await decideQuestionWithJev(q, answers, { opportunity });
     if (decision.kind === "unmatched") {
       // A numeric field the profile answers in words is still answerable when the words carry a number.
       return { unmatched: q, coverLetterDelivered };
@@ -610,7 +610,7 @@ export async function submitLinkedIn(opportunity: Opportunity, pkg: SubmitPackag
       }
 
       // Form controls on this step (screening questions, phone, cover letter).
-      const answered = await answerStep(page, answers, phone, coverLetter, timeout, log);
+      const answered = await answerStep(page, answers, phone, coverLetter, timeout, log, opportunity);
       coverLetterDelivered = coverLetterDelivered || answered.coverLetterDelivered;
       if (answered.unmatched) {
         const q = answered.unmatched;
