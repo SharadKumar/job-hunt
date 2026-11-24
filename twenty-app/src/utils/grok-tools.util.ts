@@ -141,14 +141,18 @@ export const summariseRun = (rec: Record<string, any>) => ({
   summary: clip(rec.summary),
 });
 
-const BRIEF_QUERY = `query GrokBrief($esc: EscalationFilterInput, $prop: ProposalFilterInput, $done: ProposalFilterInput, $queue: OpeningFilterInput, $docs: DocumentFilterInput) {
+const BRIEF_QUERY = `query GrokBrief($esc: EscalationFilterInput, $prop: ProposalFilterInput, $queue: OpeningFilterInput, $docs: DocumentFilterInput) {
   escalations(filter: $esc, first: ${GROK_LIMITS.listSize}, orderBy: [{ createdAt: DescNullsLast }]) { edges { node { ${ESCALATION_FIELDS} } } }
   proposals(filter: $prop, first: ${GROK_LIMITS.listSize}, orderBy: [{ createdAt: DescNullsLast }]) { edges { node { ${PROPOSAL_FIELDS} } } }
-  done: proposals(filter: $done, first: 10, orderBy: [{ updatedAt: DescNullsLast }]) { edges { node { id summary proposalType status outcome updatedAt } } }
   openings(filter: $queue, first: ${GROK_LIMITS.listSize}, orderBy: [{ score: DescNullsLast }]) { edges { node { ${OPENING_FIELDS} } } }
   runs(first: 1, orderBy: [{ startedAt: DescNullsLast }]) { edges { node { ${RUN_FIELDS} } } }
   controls(first: 1, orderBy: [{ derivedAt: DescNullsLast }]) { edges { node { name autopilotEnabled haltOpen derivedAt } } }
   documents(filter: $docs) { edges { node { id kind currentRevision } } }
+}`;
+
+// Twenty allows one root field of a name per query, so this is its own read.
+const DONE_QUERY = `query GrokDone($done: ProposalFilterInput) {
+  proposals(filter: $done, first: 10, orderBy: [{ updatedAt: DescNullsLast }]) { edges { node { id summary proposalType status outcome updatedAt } } }
 }`;
 
 const REVISIONS_QUERY = `query GrokRevisions($f: DocumentRevisionFilterInput) {
@@ -194,12 +198,14 @@ export const brief = async (gql: Gql): Promise<ToolResult> => {
   const data = await gql(BRIEF_QUERY, {
     esc: { status: { eq: 'OPEN' } },
     prop: { status: { eq: 'PROPOSED' } },
-    done: { proposer: { in: ['GROK', 'AI_CHAT'] }, status: { in: ['DONE', 'FAILED', 'CONFIRMED', 'REQUESTED'] } },
     queue: { status: { in: [...GROK_QUEUE_STATUSES] } },
     docs: { kind: { in: ['SUBMISSION_POLICY', 'SCREENING_ANSWERS'] } },
   });
   const [lastRun] = nodes(data.runs).map(summariseRun);
   const control = nodes(data.controls)[0];
+  const done = await gql(DONE_QUERY, {
+    done: { proposer: { in: ['GROK', 'AI_CHAT'] }, status: { in: ['DONE', 'FAILED', 'CONFIRMED', 'REQUESTED'] } },
+  });
 
   // The two documents' current revisions, read for their structure only.
   const docs = nodes(data.documents);
@@ -242,7 +248,7 @@ export const brief = async (gql: Gql): Promise<ToolResult> => {
     escalations: nodes(data.escalations).map(summariseEscalation),
     openScreeningQuestions: openScreeningQuestions(current('SCREENING_ANSWERS')),
     proposalsAwaitingYou: nodes(data.proposals).map(summariseProposal),
-    doneForYou: nodes(data.done).map((rec) => ({
+    doneForYou: nodes(done.proposals).map((rec) => ({
       id: String(rec.id),
       type: clip(rec.proposalType, 40),
       summary: clip(rec.summary),

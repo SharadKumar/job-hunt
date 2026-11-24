@@ -122,6 +122,28 @@ describe('brief and opening_summary', () => {
           proposals: { edges: [{ node: { id: 'p1', summary: 'Redraft', proposalType: 'REDRAFT_LETTER', payload: SECRET } }] },
           openings: { edges: [{ node: leakyOpening }] },
           runs: { edges: [{ node: { id: 'r1', exitCode: 1, lettersSentUnattended: SECRET } }] },
+          controls: { edges: [{ node: { name: 'autopilot off for now', autopilotEnabled: false, haltOpen: false } }] },
+          documents: {
+            edges: [
+              { node: { id: 'd-pol', kind: 'SUBMISSION_POLICY', currentRevision: 2 } },
+              { node: { id: 'd-scr', kind: 'SCREENING_ANSWERS', currentRevision: 1 } },
+            ],
+          },
+        }),
+      },
+      {
+        match: /GrokDone/,
+        reply: () => ({ proposals: { edges: [{ node: { id: 'q1', summary: 'Answer a question', status: 'DONE', outcome: 'answered', payload: SECRET } }] } }),
+      },
+      {
+        match: /GrokRevisions/,
+        reply: () => ({
+          documentRevisions: {
+            edges: [
+              { node: { documentId: 'd-pol', revision: 2, body: `# ${SECRET}\nautopilot:\n  channels: [seek]\n` } },
+              { node: { documentId: 'd-scr', revision: 1, body: `answers:\n  - question: "${SECRET}"\n    answer: "x"\nunknown_questions:\n  - question: "Open one?"\n    answer: null\n` } },
+            ],
+          },
         }),
       },
       { match: /GrokOpening\(/, reply: () => ({ opening: leakyOpening }) },
@@ -139,6 +161,12 @@ describe('brief and opening_summary', () => {
       expect(call.query).not.toMatch(FORBIDDEN_FIELDS);
     }
     expect(calls[0].variables?.queue).toEqual({ status: { in: ['SHORTLISTED', 'AWAITING_APPROVAL'] } });
+    // The documents are read for their structure only: the switch, lanes and open questions.
+    expect(out).toMatchObject({
+      sendSwitch: { allowed: false, reason: 'autopilot off for now' },
+      openScreeningQuestions: [{ question: 'Open one?' }],
+      doneForYou: [{ id: 'q1', status: 'DONE', outcome: 'answered' }],
+    });
   });
 
   it('refuse a malformed id without querying', async () => {
