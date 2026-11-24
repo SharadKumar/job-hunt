@@ -660,7 +660,8 @@ export const callModel: Answerer = async (input) => {
       const schemaPath = path.join(temp, "answer.schema.json");
       const outPath = path.join(temp, "answer.json");
       await fs.writeFile(schemaPath, JSON.stringify(ANSWER_SCHEMA));
-      await run(process.env.CODEX_CLI_BIN ?? "codex", ["exec", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "read-only",
+      const bin = process.env.CODEX_CLI_BIN ?? (process.env.HARNESS_CLI === "codex" ? process.env.HARNESS_CLI_BIN : undefined) ?? "codex";
+      await run(bin, ["exec", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--sandbox", "read-only",
         "--model", model, "-c", "model_reasoning_effort=\"medium\"", "--output-schema", schemaPath, "--output-last-message", outPath, "-C", temp, "-"],
       `${ANSWER_SYSTEM}\n\n${answerPrompt(input)}`, timeoutMs, temp);
       const parsed = parseAnswerJson(await fs.readFile(outPath, "utf8"));
