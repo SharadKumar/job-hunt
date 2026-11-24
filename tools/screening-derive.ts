@@ -387,7 +387,7 @@ export async function deriveFromKnown(q: PageQuestion, ctx: DeriveContext): Prom
     callSite: "screening-derive-known",
     state: {
       question: q.label,
-      known: known.slice(0, 80).map((k) => withhold(k.answer ? `${k.text} → ${k.answer}` : k.text, ctx.neverNamed)),
+      known: known.slice(0, 260).map((k) => withhold(k.answer ? `${k.text} → ${k.answer}` : k.text, ctx.neverNamed)),
     },
     questions: {
       known_answer: {
@@ -411,7 +411,12 @@ export async function deriveFromKnown(q: PageQuestion, ctx: DeriveContext): Prom
   const evidence: DerivedEvidence = {
     method: "from the person's earlier answers and facts: Jev matched them to this question",
     computation: `chose "${label}" with probability ${(probabilities[0] ?? 0).toFixed(2)}`,
-    sources: known.slice(0, 80).map((k) => k.source),
+    // The whole evidence set was read; record its make-up, not every line.
+    sources: Object.entries(known.slice(0, 260).reduce<Record<string, number>>((acc, k) => {
+      const where = k.source.split(/[\s[.]/)[0];
+      acc[where] = (acc[where] ?? 0) + 1;
+      return acc;
+    }, {})).map(([where, n]) => `${where}: ${n} statement${n === 1 ? "" : "s"}`),
     jev: { question_set_hash: evaluation.question_set_hash, model: evaluation.result.response.modelId ?? null },
   };
   if (q.kind === "text") return { derived: { decision: { kind: "text", answer: label }, answer: label, evidence } };
@@ -452,7 +457,30 @@ export async function loadDeriveContext(): Promise<DeriveContext> {
     try { neverNamed.push(new RegExp(String(r.pattern), "i")); } catch { /* an invalid pattern is skipped, as the letter critic does */ }
   }
   const standingRules = Array.isArray(rules?.standing_rules) ? rules.standing_rules.map(String) : [];
-  return { cvSource, standingRules, neverNamed, profileMd, known: knownItems(await readOr(profilePath("screening-answers.yaml"))) };
+  const known = [
+    ...knownItems(await readOr(profilePath("screening-answers.yaml"))),
+    ...cvEvidence(cvSource),
+    ...profileBodyLines(profileMd).map((l) => ({ kind: "fact" as const, text: l.text, source: `profile.md line ${l.line}` })),
+  ];
+  return { cvSource, standingRules, neverNamed, profileMd, known };
+}
+
+/**
+ * The CV source as evidence lines: each dated role, then its bullets, so a
+ * "Do you have experience with X?" question is judged against what the person
+ * actually did. Never-named parties are withheld before Jev sees them.
+ */
+export function cvEvidence(cvSource: string, max = 140): KnownItem[] {
+  const out: KnownItem[] = [];
+  const roles = parseCvRoles(cvSource);
+  for (const r of roles) {
+    if (r.employment) out.push({ kind: "fact", text: `CV role: ${r.heading} (${period(r)})`, source: `cv-source.md line ${r.line}` });
+  }
+  cvSource.split("\n").forEach((line, i) => {
+    const t = line.trim();
+    if (/^[-*]\s+\S/.test(t) && t.length > 20 && out.length < max) out.push({ kind: "fact", text: `CV: ${t.replace(/^[-*]\s+/, "")}`, source: `cv-source.md line ${i + 1}` });
+  });
+  return out.slice(0, max);
 }
 
 /** Everything the person has said, from the screening answers document. */
