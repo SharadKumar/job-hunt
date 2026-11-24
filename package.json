@@ -71,6 +71,7 @@
     "test": "tsc --noEmit && tsx tests/run.ts",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "leak:check": "tsx tools/leak-check.ts",
+    "twenty:intake": "tsx tools/decisions/intake.ts",
     "twenty:preflight": "tsx tools/twenty/preflight.ts",
     "twenty:setup": "tsx tools/twenty/setup.ts",
     "twenty:escalations": "tsx tools/twenty/escalations.ts",
