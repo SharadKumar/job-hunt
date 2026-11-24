@@ -4,6 +4,8 @@ type Row = { id: string; title: string; detail: string; tag?: string };
 export type TodaySnapshot = {
   escalations: Row[];
   proposals: Row[];
+  doneForYou: Row[];
+  sendSwitch: Row | null;
   sentToday: Row[];
   lastRun: Row | null;
 };

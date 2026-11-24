@@ -11,8 +11,9 @@ const LIMIT = 20;
 const label = (value: string | null | undefined, fallback: string) =>
   value && value.trim().length > 0 ? value : fallback;
 
-// Reads the Today page as the signed-in member: open escalations, proposals
-// awaiting confirmation, applications sent today and the latest run.
+// Reads the Today page as the signed-in member: the send switch, open
+// escalations, proposals awaiting confirmation, what agents did on the
+// person's requests, applications sent today and the latest run.
 // A row says what needs the person in a few words; the record holds the rest.
 const KIND_TITLES: Record<string, string> = {
   screening: 'Screening question to answer',
@@ -55,6 +56,10 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
       },
       edges: { node: { id: true, summary: true, proposalType: true } },
     },
+    controls: {
+      __args: { first: 1, orderBy: [{ derivedAt: 'DescNullsLast' }] },
+      edges: { node: { id: true, name: true, autopilotEnabled: true, haltOpen: true } },
+    },
     applications: {
       __args: {
         first: LIMIT,
@@ -79,6 +84,24 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
   });
 
   const run = result.runs?.edges?.[0]?.node;
+  const control = result.controls?.edges?.[0]?.node;
+
+  // What agents did for the person: their requests through Grok or AI chat,
+  // carried out without a second confirmation. A separate read, because the
+  // proposals list above is only what still needs the person.
+  const done = await client.query({
+    proposals: {
+      __args: {
+        first: 10,
+        filter: {
+          proposer: { in: ['GROK', 'AI_CHAT'] },
+          status: { in: ['DONE', 'FAILED', 'CONFIRMED'] },
+        },
+        orderBy: [{ updatedAt: 'DescNullsLast' }],
+      },
+      edges: { node: { id: true, summary: true, status: true, outcome: true } },
+    },
+  });
 
   return {
     escalations: (result.escalations?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
@@ -92,6 +115,19 @@ export const loadToday = async (now: Date = new Date()): Promise<TodaySnapshot> 
       title: label(node.summary, 'Proposal'),
       detail: node.proposalType ?? '',
     })),
+    doneForYou: (done.proposals?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
+      id: node.id,
+      title: label(node.summary, 'Request'),
+      detail: shortReason(String(node.outcome ?? '')),
+      tag: node.status === 'CONFIRMED' ? 'QUEUED' : (node.status ?? undefined),
+    })),
+    sendSwitch: control
+      ? {
+          id: control.id,
+          title: control.haltOpen ? 'Sends halted' : control.autopilotEnabled ? 'Autopilot on' : 'Autopilot off',
+          detail: label(control.name, ''),
+        }
+      : null,
     sentToday: (result.applications?.edges ?? []).map(({ node }: { node: TodayNode }) => ({
       id: node.id,
       title: label(node.name, 'Application'),

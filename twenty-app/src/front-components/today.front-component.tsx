@@ -116,6 +116,12 @@ const Today = () => {
     state.kind === 'ready'
       ? [
           {
+            title: 'Autopilot',
+            rows: state.snapshot.sendSwitch ? [state.snapshot.sendSwitch] : [],
+            empty: 'Not checked yet: the harness records it on its next pass.',
+            object: 'control',
+          },
+          {
             title: 'Open escalations',
             rows: state.snapshot.escalations,
             empty: 'Nothing is escalated.',
@@ -125,6 +131,12 @@ const Today = () => {
             title: 'Proposals awaiting you',
             rows: state.snapshot.proposals,
             empty: 'No proposals are waiting.',
+            object: 'proposal',
+          },
+          {
+            title: 'Done for you',
+            rows: state.snapshot.doneForYou,
+            empty: 'Nothing requested through Grok or AI chat yet.',
             object: 'proposal',
           },
           {
@@ -245,6 +257,6 @@ const HaltSendsButton = () => {
 export default defineFrontComponent({
   universalIdentifier: TODAY_IDS.frontComponent,
   name: 'today',
-  description: 'Open escalations, proposals awaiting you, sends today and the last run',
+  description: 'The send switch, open escalations, proposals awaiting you, what agents did for you, sends today and the last run',
   component: Today,
 });

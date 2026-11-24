@@ -81,6 +81,7 @@ export const PROPOSER_OPTIONS = [
 
 export const PROPOSAL_STATUS_OPTIONS = [
   option('PROPOSED', 'Proposed', 'orange'),
+  option('REQUESTED', 'Requested', 'sky'),
   option('CONFIRMED', 'Confirmed', 'blue'),
   option('DECLINED', 'Declined', 'gray'),
   option('DONE', 'Done', 'green'),

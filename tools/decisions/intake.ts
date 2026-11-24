@@ -107,6 +107,22 @@ export async function runIntake(opts: { url: string; key: string; ownerMemberId:
   return out;
 }
 
+/**
+ * The control record is display only (Today, Grok's brief): the send path
+ * re-derives the switch from the decisions before every send. Its name holds
+ * the switch's reason in plain words.
+ */
+export async function syncControl(url: string, key: string, ownerMemberId: string, fetchImpl?: typeof fetch): Promise<{ allowed: boolean; reason: string }> {
+  const { readSendSwitch } = await import("./send-switch.ts");
+  const state = await readSendSwitch({ url, key, ownerMemberId, fetchImpl });
+  const { call } = twentyClient({ url, key }, fetchImpl);
+  const fields = { name: state.reason.slice(0, 250), autopilotEnabled: state.allowed, haltOpen: state.reason === "sends halted", derivedAt: new Date().toISOString() };
+  const existing = (await call("GET", "/rest/controls?limit=1")).data?.controls?.[0];
+  if (existing) await call("PATCH", `/rest/controls/${existing.id}`, fields);
+  else await call("POST", "/rest/controls", fields);
+  return state;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   (async () => {
     const { loadLocalEnv } = await import("../jev/env.ts");
@@ -121,6 +137,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
     const verdicts = await runIntake({ url, key, ownerMemberId: owner });
     for (const v of verdicts) console.log(JSON.stringify(v));
-    console.log(JSON.stringify({ ok: true, applied: verdicts.filter((v) => v.result === "APPLIED").length, refused: verdicts.filter((v) => v.result === "REFUSED").length, deferred: verdicts.filter((v) => v.result === "DEFERRED").length }));
+    // The person's requests (Grok, AI chat) run after their decisions.
+    const { runRequests } = await import("./requests.ts");
+    const requests = await runRequests({ url, key, ownerMemberId: owner });
+    for (const r of requests) console.log(JSON.stringify({ request: r }));
+    // Keep the control record (what Today and Grok show) in step with the switch.
+    const control = await syncControl(url, key, owner).catch((e) => ({ error: String(e?.message ?? e) }));
+    console.log(JSON.stringify({ ok: true, applied: verdicts.filter((v) => v.result === "APPLIED").length, refused: verdicts.filter((v) => v.result === "REFUSED").length, deferred: verdicts.filter((v) => v.result === "DEFERRED").length, requests: requests.length, control }));
   })().catch((e) => { console.log(JSON.stringify({ ok: false, error: String(e?.message ?? e) })); process.exit(1); });
 }
