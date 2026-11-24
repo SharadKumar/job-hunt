@@ -38,6 +38,7 @@
  *   tsx tools/store/documents.ts finish [--run <id>] [--keep]
  */
 
+import YAML from "yaml";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -74,6 +75,32 @@ export const DOCUMENT_FILES: { kind: string; name: string; file: string }[] = [
  * harness may only propose a change to it (plan Principle 3).
  */
 export const MACHINE_KINDS = new Set(["KEYWORD_CLOUDS", "MARKET_CONFIRMATIONS", "KEYWORD_REJECTS"]);
+
+/**
+ * The screening answers document holds the person's answers and facts and the
+ * harness's own bookkeeping: questions it parked and answers it derived from
+ * the CV or the person's earlier answers. A change that touches only the
+ * harness's part saves directly, so a derived answer never waits for the
+ * person; a change to anything the person wrote stays a proposal.
+ */
+export function onlyHarnessScreeningChanges(before: string, after: string): boolean {
+  let a: any, b: any;
+  try { a = YAML.parse(before) ?? {}; b = YAML.parse(after) ?? {}; } catch { return false; }
+  if (typeof a !== "object" || typeof b !== "object") return false;
+  const same = (x: unknown, y: unknown) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (key !== "unknown_questions" && !same(a[key], b[key])) return false;
+  }
+  const rows = (d: any) => (Array.isArray(d.unknown_questions) ? d.unknown_questions : []);
+  const keyOf = (r: any) => `${r?.opportunity_id ?? ""}|${String(r?.question ?? "").trim().toLowerCase()}`;
+  const after_ = new Map(rows(b).map((r: any) => [keyOf(r), r]));
+  for (const r of rows(a)) {
+    const personAnswered = r?.answer != null && String(r.answer).trim() !== "" && r.derived !== true;
+    if (!personAnswered) continue;
+    if (!same(r, after_.get(keyOf(r)))) return false; // the person's answer moved or went
+  }
+  return true;
+}
 
 /** Documents of kind OTHER are materialised under their name, which must be a plain relative file path. */
 const OTHER_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*\.[A-Za-z0-9]+$/;
@@ -351,7 +378,7 @@ export async function saveDocument(
   const base = rev ? Number(rev.revision) || 0 : null;
   if (rev && rev.body === body) return { action: "unchanged", kind, documentId: doc!.id, revision: base ?? 0 };
 
-  if (!MACHINE_KINDS.has(kind)) {
+  if (!MACHINE_KINDS.has(kind) && !(kind === "SCREENING_ANSWERS" && rev && onlyHarnessScreeningChanges(String(rev.body ?? ""), body))) {
     const j = await call("POST", "/rest/proposals", {
       summary: `Update ${name}${opts.reason ? `: ${opts.reason}` : ""}`.slice(0, 250),
       proposalType: "UPDATE_DOCUMENT",
