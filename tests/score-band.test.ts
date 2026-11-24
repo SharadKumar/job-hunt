@@ -107,3 +107,28 @@ console.log("score band tests passed");
   const onsite = extractMechanicalClassification("Architect", "Contract, 5 days onsite in Sydney.");
   assert.ok(onsite.red_flags.includes("onsite_5_days"));
 }
+
+// Interstate roles with unknown flexibility rank below home-city and remote
+// roles, stay non-blocking, and say why in the reasons.
+{
+  const unknown = classificationV2({ location_flexibility: "unknown", location_flexibility_quote: "", work_arrangement: "unknown", bonuses: [] });
+  const base = { id: "synthetic-loc", channel: "seek", title: "Solution Architect", company: "Example",
+    url: "https://example.test/role", workArrangement: "unknown" as const,
+    description: "Six-month contract delivering a technology change programme." };
+  const local = await scoreRole({ ...base, location: "Parramatta, Sydney NSW" }, unknown);
+  const interstate = await scoreRole({ ...base, location: "Canberra ACT" }, unknown);
+  const remote = await scoreRole({ ...base, location: "Canberra ACT", workArrangement: "remote" as const, description: `${base.description} Fully remote from anywhere in Australia.` },
+    classificationV2({ location_flexibility: "remote", work_arrangement: "remote" }));
+  assert.equal(interstate.ineligible_reason, undefined, "unknown flexibility is not ineligible");
+  assert.equal(interstate.red_flag_blocker, false, "unknown flexibility is not a blocker");
+  assert.ok(interstate.score < local.score, `interstate ${interstate.score} ranks below local ${local.score}`);
+  assert.ok(interstate.score < remote.score, `interstate ${interstate.score} ranks below remote ${remote.score}`);
+  assert.ok(interstate.score >= 55, `the penalty never pushes a shortlist-grade role out of the queue (${interstate.score})`);
+  assert.ok(interstate.reasons.some((r) => /interstate \(Canberra ACT\) with unknown flexibility ranks below Sydney and remote roles/.test(r)), "the reason is visible");
+  assert.ok(!local.reasons.some((r) => /ranks below Sydney/.test(r)), "a local role carries no location penalty");
+  assert.ok(!remote.reasons.some((r) => /ranks below Sydney/.test(r)), "a remote interstate role carries no location penalty");
+  // Confirmed routine interstate attendance stays ineligible.
+  const onsite = await scoreRole({ ...base, location: "Canberra ACT", workArrangement: "hybrid" as const, description: "Six-month contract. Hybrid, three days in the Canberra office." }, unknown);
+  assert.match(onsite.ineligible_reason ?? "", /routine interstate attendance/);
+  console.log("interstate ranking tests passed");
+}

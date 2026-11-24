@@ -431,6 +431,7 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
       : (classification as { location_flexibility?: string }).location_flexibility;
   const isInterstate = Boolean(homeCity && role.location && !new RegExp(`${homeCity}|NSW|Remote`, "i").test(role.location));
   let ineligible_reason: string | undefined;
+  const interstateUnknown = isInterstate && (!locFlex || locFlex === "unknown");
   if (fixedTermEmployee) {
     ineligible_reason = "fixed-term employee engagement, not independent contracting";
     reasons.push(`ineligible: ${ineligible_reason}`);
@@ -468,6 +469,22 @@ export async function scoreRole(role: Role, providedClassification?: Classificat
     if (score < floor) {
       score = floor;
       reasons.push(`reasoning floor: blocker-free ${classification.matched_resume_id} contract at ${relevance}/100 relevance → ${floor}`);
+    }
+  }
+
+  // Sydney and remote roles rank ahead of interstate roles whose flexibility
+  // is unknown. Unknown flexibility stays non-blocking, so the penalty never
+  // pushes a shortlist-grade role out of the queue: it stops at the shortlist
+  // floor. Applied after the reasoning floor, which otherwise lifts a local
+  // and an interstate role to the same score.
+  if (interstateUnknown && !red_flag_blocker && !ineligible_reason) {
+    const penalty = weights.thresholds?.interstate_unknown_flexibility_penalty ?? 10;
+    const shortlistMin = weights.thresholds?.shortlist_min_score ?? 55;
+    const floor = score >= shortlistMin ? shortlistMin : 0;
+    const lowered = Math.max(floor, score - penalty);
+    if (penalty > 0 && lowered < score) {
+      reasons.push(`location: interstate (${role.location}) with unknown flexibility ranks below Sydney and remote roles (-${score - lowered})`);
+      score = lowered;
     }
   }
 
