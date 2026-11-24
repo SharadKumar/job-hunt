@@ -177,6 +177,10 @@ run_cli() {
     # Prepared, critic-passed packages should not wait behind a long channel
     # discovery scan. The priority pass re-pulls decisions and expires explicit
     # deadlines before using the ordinary autopilot gate and adapter.
+    # Answer parked screening questions from the CV and what the person
+    # already said, so the send pass can resume those applications; only a
+    # question nothing covers stays for the person. Tolerated: it only adds answers.
+    npm run -s screening:resolve-open | tail -1 | cut -c1-400 || echo "screening resolve-open failed (tolerated)"
     PRIORITY_STARTED=$(date -u +%s)
     npm run -s daily:priority || PRIORITY_EXIT=$?
     echo "=== $(date -Iseconds) priority pass exit $PRIORITY_EXIT ==="

@@ -296,5 +296,48 @@ assert.equal(derive.unionMonths([{ start: "2020-01", end: "2020-12" }, { start: 
   assert.equal(parsed.unknown_questions[0].derived, true);
 }
 
+
+// What the person already said answers new wordings (facts, earlier answers, skill years).
+{
+  const known = derive.knownItems([
+    "facts:",
+    "  - fact: \"About 2 years as an AI architect\"",
+    "unknown_questions:",
+    "  - question: \"Are you willing to work onsite three days a week?\"",
+    "    answer: \"Yes\"",
+    "answers:",
+    "  - id: notice_period",
+    "    patterns: [\"notice\"]",
+    "    answer: \"1 week\"",
+    "skills_years:",
+    "  azure: 8",
+  ].join("\n"));
+  assert.deepEqual(known.map((k) => k.kind), ["fact", "answered", "answered", "fact"]);
+  assert.equal(known[3].text, "8 years of experience with azure");
+
+  const choose = (choice: string, p = 0.93) => (async (args: any) => {
+    const probabilities: Record<string, number> = {};
+    for (const key of Object.keys(args.questions.known_answer.criteria)) probabilities[key] = key === choice ? p : (1 - p) / 3;
+    return {
+      status: "ok", mode: "live", question_set_hash: "qs-known", question_ids: ["known_answer"], gateway_route_fingerprint: "fp", route_fingerprint_matches: true,
+      resolved_model_version: "jev-1.0", model_version_observable: true, latency_ms: 1, estimated_cost_usd: 0, response_cost_usd: 0, fixture_key: "k",
+      result: { answers: { known_answer: { type: "choice", choice, probabilities } }, usage: {}, response: { modelId: "jev-1.0" } },
+    };
+  }) as any;
+  const ctx = { ...baseCtx, known };
+  const sel = q("Can you work from the office three days a week?", "select", opt("Yes", "No"));
+  const yes = await derive.deriveFromKnown(sel, { ...ctx, evaluate: choose("choice_0") });
+  assert.ok("derived" in yes && yes.derived.answer === "Yes", "an earlier answer covers a new wording");
+  assert.ok("escalate" in (await derive.deriveFromKnown(sel, { ...ctx, evaluate: choose("unsure") })), "unsure escalates");
+  assert.ok("escalate" in (await derive.deriveFromKnown(sel, { ...ctx, evaluate: choose("choice_0", 0.6) })), "a weak match escalates");
+  const text = q("What is your notice period?", "text", []);
+  const t = await derive.deriveFromKnown(text, { ...ctx, evaluate: (async (args: any) => {
+    const crit = args.questions.known_answer.criteria; const key = Object.keys(crit).find((k) => crit[k] === "1 week")!;
+    return (await choose(key)(args));
+  }) as any });
+  assert.ok("derived" in t && t.derived.answer === "1 week", "a free-text field reuses the earlier answer word for word");
+  assert.ok("escalate" in (await derive.deriveFromKnown(sel, { ...baseCtx, known: [], evaluate: choose("choice_0") })), "nothing said yet escalates");
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log("screening-derive tests passed");
