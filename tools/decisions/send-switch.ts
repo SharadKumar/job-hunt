@@ -29,7 +29,17 @@ export function deriveSendSwitch(decisions: SwitchDecision[], ownerMemberId: str
     decisions.filter(pred).reduce<SwitchDecision | null>((best, d) => (!best || at(d) > at(best) ? d : best), null);
 
   const enable = latest((d) => d.decisionType === "ENABLE_AUTOPILOT" && verifyConfirmation(d, ownerMemberId).ok);
-  if (!enable) return { allowed: false, reason: "autopilot has never been enabled by the owner" };
+  if (!enable) {
+    // Say why an enable that exists does not count (for example, made from
+    // another member's account), instead of implying none was ever made.
+    const other = latest((d) => d.decisionType === "ENABLE_AUTOPILOT");
+    if (other) {
+      const why = verifyConfirmation(other, ownerMemberId);
+      const who = (other.createdBy as any)?.name ? ` (made by ${(other.createdBy as any).name})` : "";
+      return { allowed: false, reason: `the latest Enable autopilot${who} is not the owner's own confirmation: ${why.ok ? "unverified" : why.reason}` };
+    }
+    return { allowed: false, reason: "autopilot has never been enabled by the owner" };
+  }
   const stop = latest((d) => d.decisionType === "HALT_SENDS" || d.decisionType === "DISABLE_AUTOPILOT");
   if (stop && at(stop) >= at(enable)) {
     return { allowed: false, reason: stop.decisionType === "HALT_SENDS" ? "sends halted" : "autopilot disabled" };

@@ -130,6 +130,13 @@ run_cli() {
   if node -e 'process.exit(require("./package.json").scripts?.["twenty:preflight"] ? 0 : 1)' 2>/dev/null; then
     npm run -s twenty:preflight || PREFLIGHT_EXIT=$?
   fi
+  # Twenty store: apply the person's new decisions first (plan F11), so this
+  # run sees their approvals and refusals are recorded on the decision. The
+  # send switch never depends on this step: autopilot:submit re-derives it
+  # from the decisions themselves, so a failed intake is logged, not fatal.
+  if [ "$PREFLIGHT_EXIT" -eq 0 ] && [ "$STORE" = "twenty" ]; then
+    npm run -s twenty:intake || echo "twenty intake failed (tolerated)"
+  fi
   # Twenty store: materialise the person's documents into this run's cache
   # (state/cache/run-<id>/profile), which every tool and agent reads through
   # the profile resolver. A failed materialise stops the run like a failed
