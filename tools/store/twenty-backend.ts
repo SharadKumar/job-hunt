@@ -108,7 +108,8 @@ export function fromOpening(rec: Record<string, any>, withDescription = false): 
 export type TwentyConfig = { url: string; key: string };
 type Config = TwentyConfig;
 
-export async function twentyConfig(): Promise<Config> {
+/** Load .env.local, .env and the private state/twenty/keys.env into the environment, never overwriting a set value. */
+export async function loadTwentyEnv(): Promise<void> {
   await loadLocalEnv();
   try {
     const text = await fs.readFile(repoPath("state", "twenty", "keys.env"), "utf8");
@@ -117,6 +118,10 @@ export async function twentyConfig(): Promise<Config> {
       if (m && process.env[m[1]] == null) process.env[m[1]] = m[2].trim();
     }
   } catch { /* optional */ }
+}
+
+export async function twentyConfig(): Promise<Config> {
+  await loadTwentyEnv();
   const url = (process.env.TWENTY_API_URL ?? "").replace(/\/+$/, "");
   const key = process.env.TWENTY_API_KEY ?? "";
   if (!url || !key) throw new Error("HARNESS_STORE=twenty needs TWENTY_API_URL and TWENTY_API_KEY (state/twenty/keys.env)");

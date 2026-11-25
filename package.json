@@ -79,6 +79,8 @@
     "twenty:followups": "tsx tools/twenty/followups.ts",
     "twenty:migrate": "tsx tools/twenty/migrate.ts",
     "twenty:scan-file-access": "tsx tools/twenty/scan-file-access.ts",
+    "twenty:backup": "tsx tools/twenty/backup.ts",
+    "twenty:backup:restore-check": "tsx tools/twenty/backup-restore-check.ts",
     "store:materialise": "tsx tools/store/documents.ts materialise",
     "store:finish": "tsx tools/store/documents.ts finish",
     "profile:path": "tsx tools/store/documents.ts path",
@@ -122,6 +124,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.87",
     "ai": "^7.0.107",
+    "aws4fetch": "^1.0.20",
     "docx": "^9.7.0",
     "googleapis": "^144.0.0",
     "mammoth": "^1.8.0",
